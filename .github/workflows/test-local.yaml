@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  test-24h:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -20,3 +20,16 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
+
+  test-12h:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Test action to cancel stale queued runs
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          max_age_hours: 12

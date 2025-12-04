@@ -12,6 +12,10 @@ inputs:
   repo:
     description: "Target repository in owner/name format"
     required: true
+  max_age_hours:
+    description: "Maximum allowed queue age in hours"
+    default: "24"
+    required: false
 
 runs:
   using: "composite"
@@ -22,5 +26,6 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github_token }}
         REPO: ${{ inputs.repo }}
+        MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
 
 
