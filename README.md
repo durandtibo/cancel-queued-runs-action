@@ -1,5 +1,14 @@
 # 🧹 Cancel Queued Runs Action
 
+<p align="center">
+    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions">
+        <img alt="CI" src="https://github.com/durandtibo/cancel-queued-runs-action/workflows/CI/badge.svg">
+    </a>
+    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions">
+        <img alt="Action Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/workflows/Test%20Stable/badge.svg">
+    </a>
+</p>
+
 Automatically cancel GitHub Actions workflow runs that have been **queued longer than a configurable
 number of hours**. This helps keep your repository’s workflow queue clean and prevents long-running
 backlogs.
@@ -99,7 +108,7 @@ The GitHub CLI (gh) is used internally to interact with GitHub’s Actions API.
 
 Everyone is welcome to contribute to the community.
 If you have any questions or suggestions, you can
-submit [Github Issues](https://github.com/durandtibo/uv-install-package-action/issues).
+submit [Github Issues](https://github.com/durandtibo/cancel-queued-runs-action/issues).
 We will reply to you as soon as possible. Thank you very much.
 
 ## License
