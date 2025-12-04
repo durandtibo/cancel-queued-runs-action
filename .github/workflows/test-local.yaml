@@ -1,4 +1,4 @@
-name: Cancel stale queued runs (local)
+name: Test Local Action
 
 on:
   workflow_call:

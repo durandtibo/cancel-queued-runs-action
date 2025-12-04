@@ -1,4 +1,4 @@
-name: Cancel stale queued runs (stable)
+name: Test Stable Action
 
 on:
   schedule:
