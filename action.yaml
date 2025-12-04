@@ -1,0 +1,26 @@
+name: "cancel-queued-runs"
+description: "Cancels queued workflow runs older than 24 hours"
+author: "Thibaut Durand"
+branding:
+  icon: 'box'
+  color: 'purple'
+
+inputs:
+  github_token:
+    description: "Token with actions:write"
+    required: true
+  repo:
+    description: "Target repository in owner/name format"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run cancel script
+      shell: bash
+      run: ${{ github.action_path }}/scripts/cancel.sh
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ inputs.repo }}
+
+
