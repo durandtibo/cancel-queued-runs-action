@@ -9,6 +9,7 @@ echo "Checking for stale queued workflow runs for ${REPO}..."
 runs=$(gh api \
   -H "Accept: application/vnd.github+json" \
   /repos/$REPO/actions/runs \
+  --paginate \
   --jq '.workflow_runs[] | select(.status=="queued" or .status=="in_progress") | {id: .id, status: .status, created_at: .created_at}')
 
 if [ -z "$runs" ]; then
