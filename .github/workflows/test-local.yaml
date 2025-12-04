@@ -1,0 +1,19 @@
+name: Cancel stale queued runs
+
+on:
+  workflow_call:
+  workflow_dispatch:  # to trigger manually
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Test action to cancel stale queued runs
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
