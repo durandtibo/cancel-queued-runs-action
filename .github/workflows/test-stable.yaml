@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v1.0
+        uses: durandtibo/cancel-queued-runs-action@v1.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v1.0
+        uses: durandtibo/cancel-queued-runs-action@v1.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
