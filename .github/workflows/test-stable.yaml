@@ -1,8 +1,8 @@
-name: Cancel stale queued runs
+name: Cancel stale queued runs (stable)
 
 on:
-  #  schedule:
-  #    - cron: "0 * * * *"
+  schedule:
+    - cron: "0 * * * *"
   workflow_call:
   workflow_dispatch:  # to trigger manually
 
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v0.0.1
+        uses: durandtibo/cancel-queued-runs-action@v1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v0.0.1
+        uses: durandtibo/cancel-queued-runs-action@v1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
