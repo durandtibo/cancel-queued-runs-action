@@ -2,8 +2,8 @@ name: "cancel-queued-runs"
 description: "Cancels queued workflow runs older than 24 hours"
 author: "Thibaut Durand"
 branding:
-  icon: 'box'
-  color: 'purple'
+  icon: 'clock'
+  color: 'blue'
 
 inputs:
   github_token:
