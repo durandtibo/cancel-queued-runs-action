@@ -4,7 +4,7 @@ set -euo pipefail
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 
 echo "Configured max age: ${MAX_AGE_HOURS} hours"
-echo "Checking for stale queued workflow runs..."
+echo "Checking for stale queued workflow runs for ${REPO}..."
 
 runs=$(gh api \
   -H "Accept: application/vnd.github+json" \
