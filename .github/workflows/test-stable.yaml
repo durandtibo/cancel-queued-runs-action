@@ -1,4 +1,4 @@
-name: Cancel stale queued runs
+name: Cancel stale queued runs (stable)
 
 on:
   schedule:
