@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
+
+echo "Configured max age: ${MAX_AGE_HOURS} hours"
 echo "Checking for stale queued workflow runs..."
 
 runs=$(gh api \
@@ -25,7 +28,7 @@ echo "$runs" | jq -c '.' | while read run; do
 
   echo "Run $run_id has been queued for $age_hours hours."
 
-  if [ "$age_hours" -gt 24 ]; then
+  if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
     echo "Cancelling run $run_id..."
     gh api \
       -X POST \
