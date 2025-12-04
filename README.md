@@ -1,11 +1,11 @@
 # 🧹 Cancel Queued Runs Action
 
 <p align="center">
-    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions">
-        <img alt="CI" src="https://github.com/durandtibo/cancel-queued-runs-action/workflows/CI/badge.svg">
+    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/ci.yaml">
+        <img alt="CI" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/ci.yaml/badge.svg">
     </a>
-    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions">
-        <img alt="Action Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/workflows/Test%20Stable/badge.svg">
+    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/nightly-tests.yaml">
+        <img alt="Nightly Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly-tests.yaml/badge.svg">
     </a>
 </p>
 
