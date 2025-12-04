@@ -37,7 +37,21 @@ jobs:
           max_age_hours: 24
 ```
 
-## ⏱ Example: cancel queued runs older than 6 hours
+---
+
+## Inputs
+
+| Name            | Required | Default | Description                                                                   |
+|-----------------|----------|---------|-------------------------------------------------------------------------------|
+| `github_token`  | ✅ Yes    | –       | Token with `actions:write` permissions, usually `${{ secrets.GITHUB_TOKEN }}` |
+| `repo`          | ✅ Yes    | –       | Repository in `owner/name` format                                             |
+| `max_age_hours` | ❌ No     | `24`    | Maximum number of hours a run is allowed to stay queued                       |
+
+---
+
+## ⏱ Examples
+
+### Example: cancel queued runs older than 6 hours
 
 ```yaml
 - uses: durandtibo/cancel-queued-runs-action@v1
@@ -47,7 +61,7 @@ jobs:
     max_age_hours: 6
 ```
 
-## 🛠 Example: scheduled cleanup every hour
+### Example: scheduled cleanup every hour
 
 ```yaml
 name: Cancel stale queued runs
@@ -72,6 +86,8 @@ jobs:
           max_age_hours: 12
 ```
 
+---
+
 ## 🧩 How It Works
 
 - Lists all workflow runs for the target repository
@@ -80,6 +96,8 @@ jobs:
 - Cancels any run older than max_age_hours
 
 The GitHub CLI (gh) is used internally to interact with GitHub’s Actions API.
+
+---
 
 ## Suggestions and Communication
 
@@ -90,5 +108,5 @@ We will reply to you as soon as possible. Thank you very much.
 
 ## License
 
-`uv-install-package-action` is licensed under BSD 3-Clause "New" or "Revised" license available
+`cancel-queued-runs-action` is licensed under BSD 3-Clause "New" or "Revised" license available
 in [LICENSE](LICENSE) file.
