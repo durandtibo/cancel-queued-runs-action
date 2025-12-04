@@ -1,8 +1,8 @@
 # 🧹 Cancel Queued Runs Action
 
 Automatically cancel GitHub Actions workflow runs that have been **queued longer than a configurable
-number of hours**.  
-This helps keep your repository’s workflow queue clean and prevents long-running backlogs.
+number of hours**. This helps keep your repository’s workflow queue clean and prevents long-running
+backlogs.
 
 ---
 
@@ -25,10 +25,6 @@ cancelled.
 jobs:
   cancel-stale-runs:
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-
     steps:
       - uses: durandtibo/cancel-queued-runs-action@v1
         with:
@@ -39,7 +35,7 @@ jobs:
 
 ---
 
-## Inputs
+## 🛠 Inputs
 
 | Name            | Required | Default | Description                                                                   |
 |-----------------|----------|---------|-------------------------------------------------------------------------------|
