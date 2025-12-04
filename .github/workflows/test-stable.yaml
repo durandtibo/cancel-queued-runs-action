@@ -1,8 +1,6 @@
 name: Test Stable Action
 
 on:
-  schedule:
-    - cron: "0 * * * *"
   workflow_call:
   workflow_dispatch:  # to trigger manually
 
