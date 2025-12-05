@@ -3,8 +3,8 @@ set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 
-echo "Configured max age: ${MAX_AGE_HOURS} hours"
-echo "Checking for stale queued workflow runs for ${REPO}..."
+echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
+echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -25,13 +25,13 @@ log_status() {
 
   case "$status" in
     202)
-      echo "Status code: $status - Cancellation request accepted for run $run_id"
+      echo "✅ Status code: $status - Cancellation request accepted for run $run_id"
       ;;
     500)
-      echo "Status code: $status - Internal error for run $run_id"
+      echo "⚠️ Status code: $status - Internal error for run $run_id"
       ;;
     *)
-      echo "Status code: $status for run $run_id"
+      echo "❌ Status code: $status for run $run_id"
       ;;
   esac
 }
@@ -50,7 +50,7 @@ run_count=$(echo "$runs" | jq -s 'length')
 echo "Found $run_count queued workflow run(s)."
 
 if [ "$run_count" -eq 0 ]; then
-  echo "No queued runs found."
+  echo "✅ No queued runs found."
   exit 0
 fi
 
@@ -100,8 +100,8 @@ done
 # Exit with error if any cancellations failed
 # ----------------------------
 if [ "$failed" -gt 0 ]; then
-  echo "Error: $failed run(s) failed to cancel."
+  echo "❌ Error: $failed run(s) failed to cancel."
   exit 1
 fi
 
-echo "All eligible runs processed successfully."
+echo "✅ All eligible runs processed successfully."
