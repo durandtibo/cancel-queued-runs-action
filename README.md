@@ -84,7 +84,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - uses: your-org/cancel-queued-runs-action@v1.0
+      - uses: durandtibo/cancel-queued-runs-action@v1.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
