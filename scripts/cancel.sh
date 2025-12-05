@@ -31,9 +31,11 @@ echo "$runs" | jq -c '.' | while read run; do
 
   if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
     echo "Cancelling run $run_id..."
-    gh api \
-      -X POST \
-      -H "Accept: application/vnd.github+json" \
-      /repos/$REPO/actions/runs/$run_id/cancel
+    status=$(gh api -X POST -H "Accept: application/vnd.github+json" \
+      /repos/$REPO/actions/runs/$run_id/cancel --silent --status 2>/dev/null || true)
+
+    if [ "$status" = "500" ]; then
+      echo "Ignoring 500 error for run $run_id"
+    fi
   fi
 done
