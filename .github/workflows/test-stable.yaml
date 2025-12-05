@@ -31,17 +31,17 @@ jobs:
 
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v1.4
+        uses: durandtibo/cancel-queued-runs-action@v1.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
 
-  test-12h:
+  test-48h:
     runs-on: ubuntu-latest
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v1.4
+        uses: durandtibo/cancel-queued-runs-action@v1.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
-          max_age_hours: 12
+          max_age_hours: 48
