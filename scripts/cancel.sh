@@ -19,6 +19,23 @@ to_unix_ts() {
   fi
 }
 
+log_status() {
+  local status="$1"
+  local run_id="$2"
+
+  case "$status" in
+    202)
+      echo "Status code: $status - Cancellation request accepted for run $run_id"
+      ;;
+    500)
+      echo "Status code: $status - Internal error for run $run_id"
+      ;;
+    *)
+      echo "Status code: $status for run $run_id"
+      ;;
+  esac
+}
+
 # ----------------------------
 # Fetch queued runs
 # ----------------------------
@@ -60,13 +77,15 @@ echo "$runs" | jq -c '.' | while read -r run; do
   if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
     echo "Cancelling run $run_id..."
 
-    status=$(gh api -X POST \
+    response=$(gh api \
+      -X POST \
       -H "Accept: application/vnd.github+json" \
-      "/repos/$REPO/actions/runs/$run_id/cancel" \
-      --silent --status 2>/dev/null || true)
+      "/repos/$REPO/actions/runs/$run_id/force-cancel" \
+      -i 2>/dev/null || true)
 
-    if [ "$status" = "500" ]; then
-      echo "Ignoring 500 error for run $run_id"
-    fi
+    status=$(echo "$response" | head -n 1 | awk '{print $2}')
+    echo "Status code: $status"
+
+    log_status "$status" "$run_id"
   fi
 done
