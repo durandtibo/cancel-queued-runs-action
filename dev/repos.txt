@@ -1,4 +1,5 @@
 durandtibo/arctix
+durandtibo/arkas
 durandtibo/astrotech
 durandtibo/batcharray
 durandtibo/batchtensor
@@ -6,15 +7,18 @@ durandtibo/cancel-queued-runs-action
 durandtibo/coola
 durandtibo/evalix
 durandtibo/feu
+durandtibo/flamme
+durandtibo/grizz
 durandtibo/hatchling-autoextras-hook
 durandtibo/hya
 durandtibo/iden
-durandtibo/iden
 durandtibo/karbonn
+durandtibo/lightcat
 durandtibo/minevent
 durandtibo/minrecord
 durandtibo/objectory
 durandtibo/pip-install-package-action
+durandtibo/redcat
 durandtibo/sonnix
 durandtibo/startorch
 durandtibo/uv-install-package-action
