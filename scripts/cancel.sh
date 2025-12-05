@@ -3,8 +3,8 @@ set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 
-echo "Configured max age: ${MAX_AGE_HOURS} hours"
-echo "Checking for stale queued workflow runs for ${REPO}..."
+echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
+echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -25,13 +25,13 @@ log_status() {
 
   case "$status" in
     202)
-      echo "Status code: $status - Cancellation request accepted for run $run_id"
+      echo "✅ Status code: $status - Cancellation request accepted for run $run_id"
       ;;
     500)
-      echo "Status code: $status - Internal error for run $run_id"
+      echo "⚠️ Status code: $status - Internal error for run $run_id"
       ;;
     *)
-      echo "Status code: $status for run $run_id"
+      echo "❌ Status code: $status for run $run_id"
       ;;
   esac
 }
@@ -50,13 +50,15 @@ run_count=$(echo "$runs" | jq -s 'length')
 echo "Found $run_count queued workflow run(s)."
 
 if [ "$run_count" -eq 0 ]; then
-  echo "No queued runs found."
+  echo "✅ No queued runs found."
   exit 0
 fi
 
 # ----------------------------
 # Process each workflow run
 # ----------------------------
+failed=0  # Counter for failed cancellations
+
 echo "$runs" | jq -c '.' | while read -r run; do
   run_id=$(echo "$run" | jq -r '.id')
   created_at=$(echo "$run" | jq -r '.created_at')
@@ -65,7 +67,6 @@ echo "$runs" | jq -c '.' | while read -r run; do
     continue
   fi
 
-  # Convert timestamps using ISO-8601 UTC format
   now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   now_ts=$(to_unix_ts "$now_iso")
   created_ts=$(to_unix_ts "$created_at")
@@ -87,5 +88,20 @@ echo "$runs" | jq -c '.' | while read -r run; do
     echo "Status code: $status"
 
     log_status "$status" "$run_id"
+
+    if [ "$status" != "202" ]; then
+      echo "⚠️ Cancellation failed for run $run_id"
+      failed=$((failed + 1))
+    fi
   fi
 done
+
+# ----------------------------
+# Exit with error if any cancellations failed
+# ----------------------------
+if [ "$failed" -gt 0 ]; then
+  echo "❌ Error: $failed run(s) failed to cancel."
+  exit 1
+fi
+
+echo "✅ All eligible runs processed successfully."
