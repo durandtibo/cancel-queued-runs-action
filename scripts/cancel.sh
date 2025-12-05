@@ -28,8 +28,6 @@ runs=$(gh api \
   --paginate \
   --jq '.workflow_runs[] | {id: .id, created_at: .created_at}')
 
-echo "$runs"
-
 if [ -z "$runs" ]; then
   echo "No queued runs found."
   exit 0
@@ -50,7 +48,6 @@ echo "$runs" | jq -c '.' | while read -r run; do
 
   # Current time in UTC ISO 8601
   now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  # Convert to UTC timestamp using the same function as created_at
   now_ts=$(to_unix_ts "$now_iso")
 
   age_hours=$(( (now_ts - created_ts) / 3600 ))
