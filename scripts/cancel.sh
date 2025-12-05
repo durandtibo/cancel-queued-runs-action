@@ -11,10 +11,8 @@ echo "Checking for stale queued workflow runs for ${REPO}..."
 # ----------------------------
 to_unix_ts() {
   if date -d "$1" +%s >/dev/null 2>&1; then
-    # Linux (GNU date)
     date -d "$1" -u +%s
   else
-    # macOS (BSD date)
     date -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s
   fi
 }
@@ -57,19 +55,16 @@ fi
 # ----------------------------
 # Process each workflow run
 # ----------------------------
+failed=0  # Counter for failed cancellations
+
 echo "$runs" | jq -c '.' | while read -r run; do
   run_id=$(echo "$run" | jq -r '.id')
   created_at=$(echo "$run" | jq -r '.created_at')
+  [ -z "$run_id" ] || [ -z "$created_at" ] && continue
 
-  if [ -z "$run_id" ] || [ -z "$created_at" ]; then
-    continue
-  fi
-
-  # Convert timestamps using ISO-8601 UTC format
   now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   now_ts=$(to_unix_ts "$now_iso")
   created_ts=$(to_unix_ts "$created_at")
-
   age_hours=$(( (now_ts - created_ts) / 3600 ))
 
   echo "Run $run_id has been queued for $age_hours hours."
@@ -87,5 +82,20 @@ echo "$runs" | jq -c '.' | while read -r run; do
     echo "Status code: $status"
 
     log_status "$status" "$run_id"
+
+    if [ "$status" != "202" ]; then
+      echo "⚠️ Cancellation failed for run $run_id"
+      failed=$((failed + 1))
+    fi
   fi
 done
+
+# ----------------------------
+# Exit with error if any cancellations failed
+# ----------------------------
+if [ "$failed" -gt 0 ]; then
+  echo "Error: $failed run(s) failed to cancel."
+  exit 1
+fi
+
+echo "All eligible runs processed successfully."
