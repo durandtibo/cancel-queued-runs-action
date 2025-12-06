@@ -65,10 +65,7 @@ teardown() {
   [[ "$log_contents" =~ api ]]
   [[ "$log_contents" =~ "-H" ]]
   [[ "$log_contents" =~ "Accept: application/vnd.github+json" ]]
-
-  # Escape ? for portability
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs\?status=queued&per_page=100" ]]
-
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs?status=queued&per_page=100" ]]
   [[ "$log_contents" =~ "--paginate" ]]
   [[ "$log_contents" =~ "--jq" ]]
   [[ "$log_contents" =~ ".workflow_runs" ]]
