@@ -17,10 +17,10 @@
 
 set -euo pipefail
 
-MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
-
-echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
-echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
+#MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
+#
+#echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
+#echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -32,12 +32,20 @@ echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 # Returns:
 #   Unix timestamp (seconds since epoch)
 to_unix_ts() {
-	if date -d "$1" +%s >/dev/null 2>&1; then
+	local ts="$1"
+
+	# Empty input returns 0
+	if [ -z "$ts" ]; then
+		echo 0
+		return 0
+	fi
+
+	if date -d "$ts" +%s >/dev/null 2>&1; then
 		# Linux (GNU date)
-		date -d "$1" -u +%s
+		date -d "$ts" -u +%s
 	else
 		# macOS (BSD date)
-		date -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s
+		date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s
 	fi
 }
 
