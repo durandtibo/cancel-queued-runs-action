@@ -206,7 +206,7 @@ The GitHub API handles this gracefully. If a run starts executing between the ti
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines.
 
 For questions or suggestions, you can submit [GitHub Issues](https://github.com/durandtibo/cancel-queued-runs-action/issues).
 We will reply to you as soon as possible. Thank you very much.
