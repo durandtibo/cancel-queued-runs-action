@@ -59,6 +59,7 @@ teardown() {
   run fetch_runs
 
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
+  echo $log_contents
 
   # REGEX matching is OK because BATS forces bash
   [[ "$log_contents" =~ api ]]
