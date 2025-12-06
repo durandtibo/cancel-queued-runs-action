@@ -1,31 +1,40 @@
 #!/usr/bin/env bats
 
 setup() {
-  # Ensure consistent test directory
+  # ----------------------------
+  # Directories
+  # ----------------------------
+  # Use absolute paths for mocks/logs (macOS BATS can change CWD)
   TEST_DIR="$BATS_TEST_DIRNAME"
   MOCK_DIR="$TEST_DIR/mocks"
   mkdir -p "$MOCK_DIR"
 
-  # Absolute path for logs (macOS BATS sometimes changes CWD)
+  # Log file for captured gh calls
   export MOCK_GH_CALL_LOG="$MOCK_DIR/gh_calls.txt"
-  echo -n > "$MOCK_GH_CALL_LOG"
+  printf "" > "$MOCK_GH_CALL_LOG"
 
-  # Prepend mocks to PATH
-  PATH="$MOCK_DIR:$PATH"
+  # Prepend mocks to PATH so the function uses our fake gh
+  export PATH="$MOCK_DIR:$PATH"
 
+  # ----------------------------
+  # Environment variables
+  # ----------------------------
   export REPO="myorg/myrepo"
-  export MOCK_RESPONSE=202
+  export MOCK_RESPONSE=202  # default mock response
 
+  # ----------------------------
   # Create mock gh command
-  cat > "$MOCK_DIR/gh" << EOF
+  # ----------------------------
+  cat > "$MOCK_DIR/gh" << 'EOF'
 #!/usr/bin/env bash
 
-# Log request arguments
-echo "\$@" >> "$MOCK_GH_CALL_LOG"
+# Log all arguments
+echo "$@" >> "$MOCK_GH_CALL_LOG"
 
-# Return a fake response depending on the test
+# Determine response for cancel endpoints
 if [[ "$@" =~ cancel ]]; then
     if [ "$MOCK_RESPONSE" = "202" ]; then
+        # Use flexible HTTP version to be OS-agnostic
         echo "HTTP/2.0 202 Accepted"
         echo "Content-Type: application/json"
         echo
@@ -42,9 +51,12 @@ EOF
 
   chmod +x "$MOCK_DIR/gh"
 
-  # Source the function under test
+  # ----------------------------
+  # Source the functions under test
+  # ----------------------------
   source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
 }
+
 
 teardown() {
   rm -rf "$MOCK_DIR"
