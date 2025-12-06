@@ -51,18 +51,18 @@ to_unix_ts() {
 #   $1 - HTTP status code
 #   $2 - Workflow run ID
 log_status() {
-	local status="$1"
+	local status_code="$1"
 	local run_id="$2"
 
-	case "$status" in
+	case "$status_code" in
 	202)
-		echo "✅ Status code: $status - Cancellation request accepted for run $run_id"
+		echo "✅ Status code: $status_code - Cancellation request accepted for run $run_id"
 		;;
 	500)
-		echo "❌ Status code: $status - Internal error for run $run_id"
+		echo "❌ Status code: $status_code - Internal error for run $run_id"
 		;;
 	*)
-		echo "❌ Status code: $status for run $run_id"
+		echo "❌ Status code: $status_code for run $run_id"
 		;;
 	esac
 }
@@ -116,6 +116,19 @@ force_cancel_run() {
 }
 
 # ----------------------------
+# Extract HTTP status code from a full HTTP response
+# Args:
+#   $1 - Full HTTP response (string)
+# Returns:
+#   HTTP status code (e.g., 202, 500)
+# ----------------------------
+get_status_code() {
+	local response="$1"
+	# Extract the status code from the first line
+	echo "$response" | head -n1 | awk '{print $2}'
+}
+
+# ----------------------------
 # Main workflow logic
 # ----------------------------
 main() {
@@ -132,7 +145,46 @@ main() {
 		return 0
 	fi
 
-	local failed=0
+	# ----------------------------
+	# Process each workflow run
+	# Calculates age and cancels runs older than MAX_AGE_HOURS
+	# ----------------------------
+	local failed=0 # Counter for failed cancellations
+
+	echo "$runs" | jq -c '.' | while read -r run; do
+		run_id=$(echo "$run" | jq -r '.id')
+		created_at=$(echo "$run" | jq -r '.created_at')
+
+		if [ -z "$run_id" ] || [ -z "$created_at" ]; then
+			continue
+		fi
+
+		now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+		now_ts=$(to_unix_ts "$now_iso")
+		created_ts=$(to_unix_ts "$created_at")
+
+		age_hours=$(((now_ts - created_ts) / 3600))
+
+		echo "Run $run_id has been queued for $age_hours hours."
+
+		if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
+			echo "Cancelling run $run_id..."
+
+			# Use force-cancel endpoint to cancel queued runs
+			# This endpoint bypasses normal cancellation checks
+			response=$(force_cancel_run "$run_id")
+
+			status_code=$(get_status_code "$response")
+			echo "Status code: $status_code"
+
+			log_status "$status_code" "$run_id"
+
+			if [ "$status_code" != "202" ]; then
+				echo "⚠️ Cancellation failed for run $run_id"
+				failed=$((failed + 1))
+			fi
+		fi
+	done
 
 	# Exit with error if any cancellations failed
 	if [ "$failed" -gt 0 ]; then
