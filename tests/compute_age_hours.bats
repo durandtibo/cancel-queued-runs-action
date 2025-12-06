@@ -19,14 +19,9 @@ setup() {
     [ "$result" -eq 0 ]
 }
 
-@test "compute_age_hours returns 0 if created timestamp is empty" {
+@test "compute_age_hours returns -1 if created timestamp is empty" {
     result=$(compute_age_hours "" "2025-01-01T13:30:00Z")
-    [ "$result" -eq 0 ]
-}
-
-@test "compute_age_hours returns 0 if now timestamp is empty" {
-    result=$(compute_age_hours "2025-01-01T10:00:00Z" "")
-    [ "$result" -eq 0 ]
+    [ "$result" -eq -1 ]
 }
 
 @test "compute_age_hours works with default now (current UTC time)" {

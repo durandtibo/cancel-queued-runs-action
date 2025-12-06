@@ -140,17 +140,17 @@ compute_age_hours() {
 	local created_at="$1"
 	local now="${2:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 
+	# Return -1 if any timestamp is empty
+	if [ -z "$created_at" ] || [ -z "$now" ]; then
+		echo -1
+		return
+	fi
+
 	local created_ts
 	local now_ts
 
 	created_ts=$(to_unix_ts "$created_at")
 	now_ts=$(to_unix_ts "$now")
-
-	# If conversion failed, return 0
-	if [ -z "$created_ts" ] || [ -z "$now_ts" ]; then
-		echo 0
-		return
-	fi
 
 	echo $(((now_ts - created_ts) / 3600))
 }
