@@ -50,7 +50,7 @@ You can test the action locally by running:
 # Set required environment variables
 export GH_TOKEN="your-github-token"
 export REPO="owner/repo"
-export MAX_AGE_HOURS=24
+export MAX_AGE_HOURS=24  # optional
 
 # Run the script
 ./scripts/cancel.sh
