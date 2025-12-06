@@ -156,6 +156,45 @@ compute_age_hours() {
 }
 
 # ----------------------------
+# Process a single workflow run
+# Cancels the run if needed and logs the result
+# Args:
+#   $1 - Run ID
+#   $2 - Age in hours
+# Globals:
+#   MAX_AGE_HOURS
+#   failed (incremented if cancellation fails)
+# ----------------------------
+process_run() {
+	local run_id="$1"
+	local age_hours="$2"
+
+	# Do nothing if run_id is empty
+	if [ -z "$run_id" ]; then
+		return
+	fi
+
+	if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
+		echo "Cancelling run $run_id (age=$age_hours)..."
+
+		# Use force-cancel endpoint to cancel queued runs
+		# This endpoint bypasses normal cancellation checks
+		local response
+		response=$(force_cancel_run "$run_id")
+
+		local status_code
+		status_code=$(get_status_code "$response")
+
+		log_status "$status_code" "$run_id"
+
+		if [ "$status_code" != "202" ]; then
+			echo "⚠️ Cancellation failed for run $run_id"
+			failed=$((failed + 1))
+		fi
+	fi
+}
+
+# ----------------------------
 # Main workflow logic
 # ----------------------------
 main() {
@@ -176,7 +215,7 @@ main() {
 	# Process each workflow run
 	# Calculates age and cancels runs older than MAX_AGE_HOURS
 	# ----------------------------
-	local failed=0 # Counter for failed cancellations
+	failed=0 # Counter for failed cancellations
 
 	echo "$runs" | jq -c '.' | while read -r run; do
 		run_id=$(echo "$run" | jq -r '.id')
@@ -189,23 +228,7 @@ main() {
 		age_hours=$(compute_age_hours "$created_at")
 		echo "Run $run_id has been queued for $age_hours hours."
 
-		if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
-			echo "Cancelling run $run_id..."
-
-			# Use force-cancel endpoint to cancel queued runs
-			# This endpoint bypasses normal cancellation checks
-			response=$(force_cancel_run "$run_id")
-
-			status_code=$(get_status_code "$response")
-			echo "Status code: $status_code"
-
-			log_status "$status_code" "$run_id"
-
-			if [ "$status_code" != "202" ]; then
-				echo "⚠️ Cancellation failed for run $run_id"
-				failed=$((failed + 1))
-			fi
-		fi
+		process_run "$run_id" "$age_hours"
 	done
 
 	# Exit with error if any cancellations failed
