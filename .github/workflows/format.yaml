@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  format:
+  format-shell:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -16,7 +16,9 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        run: |
+          sudo apt-get update 
+          sudo apt-get install -y shellcheck
 
       - name: Run ShellCheck
         run: |
@@ -30,3 +32,22 @@ jobs:
         run: |
           echo "✨ Checking formatting using shfmt..."
           shfmt -d **/*.sh
+
+
+  format-yaml:
+    name: Lint YAML files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint
+
+      - name: Run yamllint
+        run: |
+          echo "🔍 Running yamllint..."
+          yamllint -f colored .

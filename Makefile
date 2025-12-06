@@ -4,3 +4,4 @@ SHELL=/bin/bash
 format :
 	shellcheck **/*.sh
 	shfmt -l -w **/*.sh
+	yamllint -f colored .
