@@ -168,17 +168,17 @@ compute_age_hours() {
 process_run() {
 	local run_id="$1"
 	local age_hours="$2"
+	local failed="$3" # take current failed count
 
 	# Do nothing if run_id is empty
 	if [ -z "$run_id" ]; then
+		echo "$failed"
 		return
 	fi
 
 	if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
 		echo "Cancelling run $run_id (age=$age_hours)..."
 
-		# Use force-cancel endpoint to cancel queued runs
-		# This endpoint bypasses normal cancellation checks
 		local response
 		response=$(force_cancel_run "$run_id")
 
@@ -188,10 +188,12 @@ process_run() {
 		log_status "$status_code" "$run_id"
 
 		if [ "$status_code" != "202" ]; then
-			echo "⚠️ Cancellation failed for run $run_id"
+			echo "❌ Cancellation failed for run $run_id"
 			failed=$((failed + 1))
 		fi
 	fi
+
+	echo "$failed" # return the updated counter
 }
 
 # ----------------------------
@@ -228,7 +230,7 @@ main() {
 		age_hours=$(compute_age_hours "$created_at")
 		echo "Run $run_id has been queued for $age_hours hours."
 
-		process_run "$run_id" "$age_hours"
+		failed=$(process_run "456" 4 "$failed")
 	done
 
 	# Exit with error if any cancellations failed
