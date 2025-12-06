@@ -5,8 +5,8 @@
 We release patches for security vulnerabilities. The following versions are currently supported:
 
 | Version | Supported          |
-| ------- | ------------------ |
-| 1.5.x   | :white_check_mark: |
+|---------|--------------------|
+| 1.5     | :white_check_mark: |
 | < 1.5   | :x:                |
 
 ## Reporting a Vulnerability
@@ -20,6 +20,7 @@ If you discover a security vulnerability, please report it responsibly:
 Instead, please report them via email to: **durand.tibo+gh@gmail.com**
 
 Include the following information:
+
 - Type of issue (e.g., token exposure, injection vulnerability, etc.)
 - Full paths of affected source files
 - Location of the affected code (tag/branch/commit or direct URL)
@@ -42,8 +43,8 @@ After submitting a vulnerability report:
 When using this action:
 
 1. **Token Permissions**: Use `GITHUB_TOKEN` with minimal required permissions
-   - Required: `actions: write`
-   - Recommended: `contents: read`
+    - Required: `actions: write`
+    - Recommended: `contents: read`
 
 2. **Pin Action Versions**: Use specific version tags instead of `@main`
    ```yaml
@@ -75,6 +76,7 @@ When using this action:
 ## Dependencies
 
 This action uses:
+
 - GitHub CLI (`gh`) - pre-installed on GitHub Actions runners
 - Standard Unix utilities (`bash`, `jq`, `date`)
 
