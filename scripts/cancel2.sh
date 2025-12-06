@@ -62,7 +62,7 @@ log_status() {
 		echo "✅ Status code: $status - Cancellation request accepted for run $run_id"
 		;;
 	500)
-		echo "⚠️ Status code: $status - Internal error for run $run_id"
+		echo "❌ Status code: $status - Internal error for run $run_id"
 		;;
 	*)
 		echo "❌ Status code: $status for run $run_id"
