@@ -1,8 +1,8 @@
 name: Nightly Tests
 on:
   schedule:
-    - cron: '0 9 * * *' # run at 9:00 AM UTC
-  workflow_dispatch:  # to trigger manually
+    - cron: "0 9 * * *" # run at 9:00 AM UTC
+  workflow_dispatch: # to trigger manually
 
 permissions:
   actions: write

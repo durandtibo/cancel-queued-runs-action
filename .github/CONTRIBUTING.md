@@ -77,6 +77,7 @@ This project follows the [Contributor Covenant Code of Conduct](../CODE_OF_CONDU
 ## Questions?
 
 If you have questions, feel free to:
+
 - Open an issue for discussion
 - Reach out to the maintainers
 

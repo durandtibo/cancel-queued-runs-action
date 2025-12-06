@@ -5,7 +5,7 @@
 We release patches for security vulnerabilities. The following versions are currently supported:
 
 | Version | Supported          |
-|---------|--------------------|
+| ------- | ------------------ |
 | 1.5     | :white_check_mark: |
 | < 1.5   | :x:                |
 
@@ -43,19 +43,21 @@ After submitting a vulnerability report:
 When using this action:
 
 1. **Token Permissions**: Use `GITHUB_TOKEN` with minimal required permissions
-    - Required: `actions: write`
-    - Recommended: `contents: read`
+   - Required: `actions: write`
+   - Recommended: `contents: read`
 
 2. **Pin Action Versions**: Use specific version tags instead of `@main`
+
    ```yaml
    # Good
    uses: durandtibo/cancel-queued-runs-action@v1.5
-   
+
    # Avoid
    uses: durandtibo/cancel-queued-runs-action@main
    ```
 
 3. **Review Permissions**: Always review and limit workflow permissions
+
    ```yaml
    permissions:
      actions: write
@@ -64,7 +66,7 @@ When using this action:
 
 4. **Secrets Management**: Never hardcode tokens; always use GitHub secrets
    ```yaml
-   github_token: ${{ secrets.GITHUB_TOKEN }}  # Good
+   github_token: ${{ secrets.GITHUB_TOKEN }} # Good
    ```
 
 ## Known Limitations

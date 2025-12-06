@@ -2,8 +2,8 @@ name: Cancel stale queued runs
 
 on:
   schedule:
-    - cron: "0 * * * *"   # runs every hour
-  workflow_dispatch:       # optional, for manual triggering
+    - cron: "0 * * * *" # runs every hour
+  workflow_dispatch: # optional, for manual triggering
 
 permissions:
   actions: write

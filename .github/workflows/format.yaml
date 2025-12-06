@@ -1,7 +1,7 @@
 name: Format
 on:
   workflow_call:
-  workflow_dispatch:  # to trigger manually
+  workflow_dispatch: # to trigger manually
 
 permissions:
   contents: read
@@ -32,7 +32,6 @@ jobs:
         run: |
           echo "✨ Checking formatting using shfmt..."
           shfmt -d **/*.sh
-
 
   yaml:
     runs-on: ubuntu-latest

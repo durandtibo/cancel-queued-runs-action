@@ -2,8 +2,8 @@ name: "cancel-queued-runs"
 description: "Automatically cancel GitHub Actions workflow runs that have been queued longer than a configurable number of hours"
 author: "Thibaut Durand"
 branding:
-  icon: 'clock'
-  color: 'blue'
+  icon: "clock"
+  color: "blue"
 
 inputs:
   github_token:
@@ -27,5 +27,3 @@ runs:
         GH_TOKEN: ${{ inputs.github_token }}
         REPO: ${{ inputs.repo }}
         MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
-
-

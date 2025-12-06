@@ -4,4 +4,5 @@ SHELL=/bin/bash
 format :
 	shellcheck **/*.sh
 	shfmt -l -w **/*.sh
+	prettier --write .
 	yamllint -f colored .
