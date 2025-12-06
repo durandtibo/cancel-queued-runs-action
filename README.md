@@ -48,7 +48,8 @@ backlogs.
 
 This action requires:
 
-- **GitHub Token**: The action needs `actions:write` permission to cancel workflow runs. The default `GITHUB_TOKEN` provided by GitHub Actions has this permission.
+- **GitHub Token**: The action needs `actions:write` permission to cancel workflow runs. The default
+  `GITHUB_TOKEN` provided by GitHub Actions has this permission.
 - **GitHub CLI**: Pre-installed on all GitHub-hosted runners (ubuntu-latest, macos-latest, etc.)
 - **Shell Environment**: Works on both Linux (GNU) and macOS (BSD) runners
 
@@ -130,7 +131,8 @@ jobs:
 4. **Cancel**: Sends cancellation requests for eligible runs using the `/force-cancel` endpoint
 5. **Report**: Logs the status of each operation
 
-The action uses the GitHub CLI (`gh`) internally to interact with GitHub's Actions API. It includes cross-platform timestamp parsing to work correctly on both Linux (GNU date) and macOS (BSD date).
+The action uses the GitHub CLI (`gh`) internally to interact with GitHub's Actions API. It includes
+cross-platform timestamp parsing to work correctly on both Linux (GNU date) and macOS (BSD date).
 
 ---
 
@@ -138,19 +140,24 @@ The action uses the GitHub CLI (`gh`) internally to interact with GitHub's Actio
 
 ### Action fails with "gh: command not found"
 
-**Solution**: This should not happen on GitHub-hosted runners. If you're using a self-hosted runner, ensure the GitHub CLI is installed. See [GitHub CLI installation](https://cli.github.com/manual/installation).
+**Solution**: This should not happen on GitHub-hosted runners. If you're using a self-hosted runner,
+ensure the GitHub CLI is installed.
+See [GitHub CLI installation](https://cli.github.com/manual/installation).
 
 ### Cancellation returns status code 500
 
-**Cause**: Very old workflow runs (several months old) may fail to cancel due to GitHub API limitations.
+**Cause**: Very old workflow runs (several months old) may fail to cancel due to GitHub API
+limitations.
 
-**Solution**: These runs may need to be manually deleted. See [dev/README.md](dev/README.md) for notes on handling stale runs.
+**Solution**: These runs may need to be manually deleted. See [dev/README.md](dev/README.md) for
+notes on handling stale runs.
 
 ### Permission denied error
 
 **Cause**: Insufficient permissions for the GitHub token.
 
 **Solution**: Ensure your workflow has the required permissions:
+
 ```yaml
 permissions:
   actions: write
@@ -160,6 +167,7 @@ permissions:
 ### No runs are being cancelled
 
 **Check**:
+
 1. Verify you have queued runs older than `max_age_hours`
 2. Check the action logs to see what runs were found
 3. Ensure the repository name format is correct (`owner/name`)
@@ -170,15 +178,18 @@ permissions:
 
 ### Can this action cancel running workflows?
 
-No, this action only cancels workflow runs in the **queued** state. Running or completed workflows are not affected.
+No, this action only cancels workflow runs in the **queued** state. Running or completed workflows
+are not affected.
 
 ### Will it cancel the workflow that calls this action?
 
-No, the action only processes runs that were queued before it starts executing. The workflow calling this action is typically in a "running" state, not "queued".
+No, the action only processes runs that were queued before it starts executing. The workflow calling
+this action is typically in a "running" state, not "queued".
 
 ### Can I use this for multiple repositories?
 
 Yes, you can either:
+
 - Set up the action in each repository
 - Use a centralized workflow with a matrix strategy to target multiple repositories
 - See `dev/run_for_repos.sh` for batch processing examples
@@ -189,17 +200,21 @@ Yes, as long as the provided token has the necessary permissions for the target 
 
 ### What happens if a run is cancelled while transitioning from queued to running?
 
-The GitHub API handles this gracefully. If a run starts executing between the time it's identified and when the cancel request is sent, the cancellation may fail (with a non-202 status code), but this won't cause the action to error.
+The GitHub API handles this gracefully. If a run starts executing between the time it's identified
+and when the cancel request is sent, the cancellation may fail (with a non-202 status code), but
+this won't cause the action to error.
 
 ---
 
 ## ⚠️ Limitations
 
 - **Queue Status Only**: Only cancels runs in the `queued` state, not `in_progress` or other states
-- **Single Repository**: Each action invocation targets one repository (use multiple steps or matrix strategies for multiple repos)
+- **Single Repository**: Each action invocation targets one repository (use multiple steps or matrix
+  strategies for multiple repos)
 - **API Rate Limits**: Subject to GitHub API rate limits (generally not an issue for typical usage)
 - **Very Old Runs**: Runs that are extremely old (several months) may fail to cancel via the API
-- **Permissions Required**: Needs `actions:write` permission, which may not be available in some restricted environments
+- **Permissions Required**: Needs `actions:write` permission, which may not be available in some
+  restricted environments
 - **Pagination**: Fetches up to 100 queued runs per page (uses automatic pagination)
 
 ---
@@ -208,11 +223,13 @@ The GitHub API handles this gracefully. If a run starts executing between the ti
 
 Contributions are welcome! Please see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines.
 
-For questions or suggestions, you can submit [GitHub Issues](https://github.com/durandtibo/cancel-queued-runs-action/issues).
+For questions or suggestions, you can
+submit [GitHub Issues](https://github.com/durandtibo/cancel-queued-runs-action/issues).
 We will reply to you as soon as possible. Thank you very much.
 
 ---
 
 ## License
 
-`cancel-queued-runs-action` is licensed under BSD 3-Clause "New" or "Revised" license available in [LICENSE](LICENSE) file.
+`cancel-queued-runs-action` is licensed under BSD 3-Clause "New" or "Revised" license available
+in [LICENSE](LICENSE) file.
