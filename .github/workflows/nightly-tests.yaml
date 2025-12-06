@@ -11,7 +11,10 @@ permissions:
 jobs:
   format:
     uses: ./.github/workflows/format.yaml
+    timeout-minutes: 10
   test-local:
     uses: ./.github/workflows/test-local.yaml
+    timeout-minutes: 10
   test-stable:
     uses: ./.github/workflows/test-stable.yaml
+    timeout-minutes: 10
