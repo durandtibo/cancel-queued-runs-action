@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  format-shell:
+  shell:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -34,9 +34,9 @@ jobs:
           shfmt -d **/*.sh
 
 
-  format-yaml:
-    name: Lint YAML files
+  yaml:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repo
