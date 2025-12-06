@@ -41,8 +41,10 @@ to_unix_ts() {
 	fi
 
 	if date -d "$ts" +%s >/dev/null 2>&1; then
+	  # Linux (GNU date)
 		date -d "$ts" -u +%s
 	else
+	  # macOS (BSD date)
 		date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s
 	fi
 }
