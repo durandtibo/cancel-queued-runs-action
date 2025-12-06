@@ -7,10 +7,10 @@ branding:
 
 inputs:
   github_token:
-    description: "GitHub token with actions:write permission. Use ${{ secrets.GITHUB_TOKEN }} for standard workflows"
+    description: "GitHub token with actions:write permission."
     required: true
   repo:
-    description: "Target repository in owner/name format (e.g., 'octocat/hello-world'). Use ${{ github.repository }} for current repo"
+    description: "Target repository in owner/name format (e.g., 'octocat/hello-world')."
     required: true
   max_age_hours:
     description: "Maximum number of hours a workflow run is allowed to stay queued before being cancelled. Must be a positive integer"
