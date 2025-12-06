@@ -34,7 +34,7 @@ to_unix_ts() {
 	# Empty input returns 0
 	if [ -z "$ts" ]; then
 		echo 0
-		return 0
+		return
 	fi
 
 	if date -d "$ts" +%s >/dev/null 2>&1; then
@@ -129,6 +129,33 @@ get_status_code() {
 }
 
 # ----------------------------
+# Compute the age in hours between two ISO 8601 timestamps
+# Args:
+#   $1 - ISO 8601 timestamp for "created_at" (e.g., "2025-01-01T10:00:00Z")
+#   $2 - ISO 8601 timestamp for "now" (optional, defaults to current UTC time)
+# Returns:
+#   Age in hours (integer)
+# ----------------------------
+compute_age_hours() {
+	local created_at="$1"
+	local now="${2:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
+
+	local created_ts
+	local now_ts
+
+	created_ts=$(to_unix_ts "$created_at")
+	now_ts=$(to_unix_ts "$now")
+
+	# If conversion failed, return 0
+	if [ -z "$created_ts" ] || [ -z "$now_ts" ]; then
+		echo 0
+		return
+	fi
+
+	echo $(((now_ts - created_ts) / 3600))
+}
+
+# ----------------------------
 # Main workflow logic
 # ----------------------------
 main() {
@@ -159,12 +186,7 @@ main() {
 			continue
 		fi
 
-		now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-		now_ts=$(to_unix_ts "$now_iso")
-		created_ts=$(to_unix_ts "$created_at")
-
-		age_hours=$(((now_ts - created_ts) / 3600))
-
+		age_hours=$(compute_age_hours "$created_at")
 		echo "Run $run_id has been queued for $age_hours hours."
 
 		if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
