@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated action.yaml with more detailed input descriptions
 - Cleaned up .gitignore to remove Python-specific entries
 
-## [1.5] - 2025-01-XX
+## [1.5]
 
 ### Features
 - Composite action to cancel GitHub Actions workflow runs queued longer than a configurable time
