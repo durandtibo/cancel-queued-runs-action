@@ -106,6 +106,11 @@ cancel_run() {
 force_cancel_run() {
 	local run_id="$1"
 
+	if [ -z "$run_id" ]; then
+		echo "❌ cancel_run error: run_id is empty" >&2
+		return 1
+	fi
+
 	gh api \
 		-X POST \
 		-H "Accept: application/vnd.github+json" \
