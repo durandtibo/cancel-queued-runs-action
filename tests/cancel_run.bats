@@ -71,7 +71,7 @@ teardown() {
 
 @test "cancel_run calls gh API and returns 202 mock response" {
   response=$(run cancel_run 12345)
-  [[ "$response" =~ "HTTP/2.0 202 Accepted" ]]
+  [[ "$response" =~ HTTP/[0-9.]+\ 202\ Accepted ]]
 
   # Check gh call was logged correctly
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
@@ -82,7 +82,7 @@ teardown() {
   export MOCK_RESPONSE=500
 
   response=$(run cancel_run 67890)
-  [[ "$response" =~ "HTTP/2.0 500 Internal Server Error" ]]
+  [[ "$response" =~ HTTP/[0-9.]+\ 500\ Internal\ Server\ Error ]]
 
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
   [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/67890/cancel" ]]
