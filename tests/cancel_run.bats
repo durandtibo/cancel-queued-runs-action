@@ -14,6 +14,7 @@ setup() {
   PATH="$MOCK_DIR:$PATH"
 
   export REPO="myorg/myrepo"
+  export MOCK_RESPONSE=202
 
   # Create mock gh command
   cat > "$MOCK_DIR/gh" << EOF
@@ -24,10 +25,17 @@ echo "\$@" >> "$MOCK_GH_CALL_LOG"
 
 # Return a fake response depending on the test
 if [[ "$@" =~ cancel ]]; then
-    echo "HTTP/1.1 202 Accepted"
-    echo "Content-Type: application/json"
-    echo
-    echo "{}"
+    if [ "$MOCK_RESPONSE" = "202" ]; then
+        echo "HTTP/2.0 202 Accepted"
+        echo "Content-Type: application/json"
+        echo
+        echo "{}"
+    else
+        echo "HTTP/2.0 500 Internal Server Error"
+        echo "Content-Type: application/json"
+        echo
+        echo '{"message":"internal error"}'
+    fi
 fi
 exit 0
 EOF
@@ -61,15 +69,30 @@ teardown() {
   [[ "$log_contents" =~ "Accept: application/vnd.github+json" ]]
 }
 
+@test "cancel_run calls gh API and returns 202 mock response" {
+  response=$(run cancel_run 12345)
+  [[ "$response" =~ "HTTP/2.0 202 Accepted" ]]
+
+  # Check gh call was logged correctly
+  log_contents="$(cat "$MOCK_GH_CALL_LOG")"
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]]
+}
+
+@test "cancel_run calls gh API and handles 500 mock response" {
+  export MOCK_RESPONSE=500
+
+  response=$(run cancel_run 67890)
+  [[ "$response" =~ "HTTP/2.0 500 Internal Server Error" ]]
+
+  log_contents="$(cat "$MOCK_GH_CALL_LOG")"
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/67890/cancel" ]]
+}
+
 #----------------------------
 # Test cancel_run with empty run ID
 #----------------------------
-@test "cancel_run with empty run ID still calls gh" {
+@test "cancel_run fails if run_id is empty" {
   run cancel_run ""
-
-  [ "$status" -eq 0 ]
-
-  log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs//cancel" ]]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"run_id is empty"* ]]
 }
