@@ -5,7 +5,7 @@ on:
   workflow_dispatch: # to trigger manually
 
 jobs:
-  tests:
+  test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:

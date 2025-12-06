@@ -17,10 +17,7 @@
 
 set -euo pipefail
 
-#MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
-#
-#echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
-#echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
+MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -117,3 +114,34 @@ force_cancel_run() {
 		"/repos/$REPO/actions/runs/$run_id/force-cancel" \
 		-i 2>/dev/null || true
 }
+
+# ----------------------------
+# Main workflow logic
+# ----------------------------
+main() {
+	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
+	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
+
+	runs=$(fetch_runs)
+
+	run_count=$(echo "$runs" | jq -s 'length')
+	echo "Found $run_count queued workflow run(s)."
+
+	if [ "$run_count" -eq 0 ]; then
+		echo "✅ No queued runs found."
+		return 0
+	fi
+
+	local failed=0
+
+	# Exit with error if any cancellations failed
+	if [ "$failed" -gt 0 ]; then
+		echo "❌ Error: $failed run(s) failed to cancel."
+		return 1
+	fi
+
+	echo "✅ All eligible runs processed successfully."
+}
+
+# Only run when not sourced
+[[ "${BASH_SOURCE[0]}" == "$0" ]] && main "$@"
