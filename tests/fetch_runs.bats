@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 
 setup() {
-  TEST_DIR="$(cd "$BATS_TEST_DIRNAME" && pwd)"   # absolute, stable path
+  # Ensure consistent test directory
+  TEST_DIR="$BATS_TEST_DIRNAME"
   MOCK_DIR="$TEST_DIR/mocks"
   mkdir -p "$MOCK_DIR"
 
@@ -15,7 +16,7 @@ setup() {
   export REPO="myorg/myrepo"
 
   # Create mock gh command
-  cat > "$MOCK_DIR/gh" <<EOF
+  cat > "$MOCK_DIR/gh" << EOF
 #!/usr/bin/env bash
 
 # Log request arguments
@@ -59,7 +60,6 @@ teardown() {
   run fetch_runs
 
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  echo $log_contents
 
   # REGEX matching is OK because BATS forces bash
   [[ "$log_contents" =~ api ]]
