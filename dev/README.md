@@ -21,7 +21,7 @@ Attempts to cancel these runs manually through the web interface also fail.
 
 **Example output:**
 
-```
+```text
 Run 12947114653 has been queued for 7558 hours.
 Force-cancelling run 12947114653 (age=7558)...
 ❌ Status code: 500 - Internal error for run 12947114653
@@ -71,7 +71,7 @@ The `run_for_repos.sh` script allows you to test the cancel action across multip
 
 1. Add repository names to `dev/repos.txt`, one per line in `owner/name` format:
 
-   ```
+   ```text
    octocat/hello-world
    octocat/spoon-knife
    ```
@@ -148,6 +148,7 @@ The action uses a two-tier cancellation strategy:
    - Necessary because old runs may not respond to standard cancellation
 
 **Example:**
+
 - `MAX_AGE_HOURS=24`
 - Runs queued 25-27 hours: Standard cancel
 - Runs queued >27 hours: Force cancel
@@ -157,6 +158,7 @@ This design helps handle edge cases where runs have been stuck in the queue for 
 ### Cross-Platform Compatibility
 
 The script handles date parsing differences between:
+
 - **Linux**: GNU `date` command with `-d` flag
 - **macOS**: BSD `date` command with `-j -f` flags
 

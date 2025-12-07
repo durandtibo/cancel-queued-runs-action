@@ -186,6 +186,7 @@ jobs:
 ```
 
 **Token Requirements:**
+
 - `actions:write` - Required to cancel workflow runs
 - `contents:read` - Optional but recommended
 
@@ -210,12 +211,14 @@ See [custom-permissions.yaml](./custom-permissions.yaml) for a complete example.
 ### Monitoring
 
 Check the action logs to see:
+
 - How many runs were found in the queue
 - Which runs were cancelled
 - Any failures or errors
 
 Example log output:
-```
+
+```text
 ⏱ Configured max age: 24 hours
 🔎 Checking for stale queued workflow runs for owner/repo...
 Found 5 queued workflow run(s).
