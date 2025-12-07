@@ -30,6 +30,7 @@ backlogs.
 - [FAQ](#-faq)
 - [Limitations](#-limitations)
 - [Contributing](#-contributing)
+- [Changelog](#-changelog)
 - [License](#license)
 
 ---
@@ -121,6 +122,16 @@ jobs:
           max_age_hours: 12
 ```
 
+### More Examples
+
+For additional use cases and complete workflow examples, see the [examples/](examples/) directory:
+
+- **[Basic Usage](examples/basic-usage.yaml)** - Simple integration in any workflow
+- **[Scheduled Cleanup](examples/scheduled-cleanup.yaml)** - Automated cleanup on a schedule
+- **[Multi-Repository](examples/multi-repo-cleanup.yaml)** - Clean up multiple repos with matrix strategy
+- **[CI Integration](examples/ci-integration.yaml)** - Integrate with existing CI/CD pipelines
+- **[Custom Permissions](examples/custom-permissions.yaml)** - Use custom tokens and permissions
+
 ---
 
 ## 🧩 How It Works
@@ -128,11 +139,30 @@ jobs:
 1. **Fetch Queued Runs**: Uses the GitHub API to list all workflow runs with status `queued`
 2. **Calculate Age**: Determines how long each run has been queued (in hours)
 3. **Filter**: Identifies runs older than the configured `max_age_hours`
-4. **Cancel**: Sends cancellation requests for eligible runs using the `/force-cancel` endpoint
+4. **Cancel**: Sends cancellation requests for eligible runs
 5. **Report**: Logs the status of each operation
 
 The action uses the GitHub CLI (`gh`) internally to interact with GitHub's Actions API. It includes
 cross-platform timestamp parsing to work correctly on both Linux (GNU date) and macOS (BSD date).
+
+### Cancellation Strategy
+
+The action uses a two-tier cancellation approach:
+
+- **Standard Cancel**: For runs between `max_age_hours` and `max_age_hours + 3` hours old
+  - Uses the standard `/cancel` endpoint
+  - Graceful cancellation for recently queued runs
+
+- **Force Cancel**: For runs older than `max_age_hours + 3` hours
+  - Uses the `/force-cancel` endpoint
+  - More aggressive approach necessary for very old, stuck runs
+
+**Example**: If `max_age_hours: 24`:
+
+- Runs queued 25-27 hours: Standard cancel
+- Runs queued >27 hours: Force cancel
+
+This design helps handle edge cases where runs have been stuck in the queue for extended periods.
 
 ---
 
