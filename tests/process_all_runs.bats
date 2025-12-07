@@ -3,7 +3,6 @@
 setup() {
   # Log file for calls
   export LOG_FILE="$BATS_TEST_TMPDIR/calls.log"
-  echo -n > "$LOG_FILE"
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
