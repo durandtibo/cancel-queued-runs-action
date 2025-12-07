@@ -1,0 +1,47 @@
+name: Shell Unit Tests
+
+on:
+  workflow_call:
+  workflow_dispatch: # to trigger manually
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      max-parallel: 8
+      fail-fast: false
+      matrix:
+        os:
+          [
+            ubuntu-latest,
+            ubuntu-24.04,
+            ubuntu-22.04,
+            ubuntu-24.04-arm,
+            ubuntu-22.04-arm,
+            macos-latest,
+            macos-26,
+            macos-15,
+            macos-14,
+            macos-15-intel,
+          ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install bats-core on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Install bats-core on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install bats-core
+
+      - name: Run unit tests
+        run: |
+          bats --recursive tests
