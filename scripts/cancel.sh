@@ -252,7 +252,10 @@ main() {
 	fi
 
 	# Process runs and get failed count from helper function
-	failed=$(process_all_runs "$runs")
+	result=$(process_all_runs "$runs")
+	output=$(echo "$result" | sed '$d')
+	failed=$(echo "$result" | tail -n1)
+	echo "$output"
 
 	# Exit with error if any cancellations failed
 	if [ "$failed" -gt 0 ]; then
