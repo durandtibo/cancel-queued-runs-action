@@ -15,7 +15,7 @@ on:
   schedule:
     # Run daily at midnight UTC
     - cron: "0 0 * * *"
-  
+
   workflow_dispatch:
     inputs:
       max_age_hours:
@@ -39,7 +39,7 @@ jobs:
           - owner/repo1
           - owner/repo2
           - owner/repo3
-    
+
     steps:
       - name: Cancel stale queued runs for ${{ matrix.repo }}
         uses: durandtibo/cancel-queued-runs-action@v1.7
@@ -47,6 +47,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ matrix.repo }}
           max_age_hours: ${{ github.event.inputs.max_age_hours || 24 }}
-      
+
       - name: Log completion
         run: echo "Cleanup completed for ${{ matrix.repo }}"

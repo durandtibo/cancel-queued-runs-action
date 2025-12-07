@@ -18,25 +18,25 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
-    
+
     # Explicitly declare minimal required permissions
     permissions:
       actions: write    # Required to cancel workflow runs
       contents: read    # Optional but recommended
-    
+
     steps:
       - name: Cancel stale queued runs
         uses: durandtibo/cancel-queued-runs-action@v1.7
         with:
           # Option 1: Use the default GITHUB_TOKEN
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          
+
           # Option 2: Use a custom token (uncomment to use)
           # github_token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
-          
+
           repo: ${{ github.repository }}
           max_age_hours: ${{ inputs.max_age_hours }}
-      
+
       - name: Log completion
         run: |
           echo "Cleanup completed"

@@ -14,7 +14,7 @@ on:
   schedule:
     # Run every 6 hours
     - cron: "0 */6 * * *"
-  
+
   # Allow manual triggering for testing
   workflow_dispatch:
 
@@ -32,6 +32,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
           max_age_hours: 12
-      
+
       - name: Log completion
         run: echo "Cleanup completed at $(date)"
