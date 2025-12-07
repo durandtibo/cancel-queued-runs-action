@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: durandtibo/cancel-queued-runs-action@v1.5
+      - uses: durandtibo/cancel-queued-runs-action@v1.6
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
