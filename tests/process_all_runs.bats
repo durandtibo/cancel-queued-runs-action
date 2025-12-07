@@ -81,7 +81,6 @@ teardown() {
 }
 
 @test "process_all_runs skips runs with missing fields" {
-  bats_require_minimum_version 1.5.0
   runs_stream=$(
     printf '%s\n' \
       '{"id": 333, "created_at": "2025-03-01T05:00:00Z"}' \
@@ -100,8 +99,8 @@ teardown() {
   grep -q "process_run 555 5 0" "$LOG_FILE"
 
   # Ensure skipped runs do NOT appear
-  run ! grep -q "process_run 444" "$LOG_FILE"
-  run ! grep -q "process_run  \"\"" "$LOG_FILE"
+  if grep -q "process_run 444" "$LOG_FILE"; then false; fi
+  if grep -q "process_run  \"\"" "$LOG_FILE"; then false; fi
 }
 
 @test "process_all_runs prints queue age" {
