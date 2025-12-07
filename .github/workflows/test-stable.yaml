@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v1.6
+        uses: durandtibo/cancel-queued-runs-action@v1.7
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Test action to cancel stale queued runs
-        uses: durandtibo/cancel-queued-runs-action@v1.6
+        uses: durandtibo/cancel-queued-runs-action@v1.7
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}

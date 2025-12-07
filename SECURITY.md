@@ -6,8 +6,8 @@ We release patches for security vulnerabilities. The following versions are curr
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.6     | :white_check_mark: |
-| < 1.6   | :x:                |
+| 1.7     | :white_check_mark: |
+| < 1.7   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -50,7 +50,7 @@ When using this action:
 
    ```yaml
    # Good
-   uses: durandtibo/cancel-queued-runs-action@v1.6
+   uses: durandtibo/cancel-queued-runs-action@v1.7
 
    # Avoid
    uses: durandtibo/cancel-queued-runs-action@main
