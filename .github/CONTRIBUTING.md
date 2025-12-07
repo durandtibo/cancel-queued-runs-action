@@ -63,12 +63,44 @@ For testing across multiple repositories:
 1. Add repository names to `dev/repos.txt` (one per line in `owner/name` format)
 2. Run: `./dev/run_for_repos.sh`
 
+See [dev/README.md](../dev/README.md) for more details on development and debugging.
+
+### Running Tests
+
+The project uses BATS (Bash Automated Testing System) for unit tests:
+
+```bash
+# Install BATS
+# On Ubuntu/Debian:
+sudo apt-get install bats
+
+# On macOS:
+brew install bats-core
+
+# Run all tests
+bats --recursive tests
+
+# Run specific test file
+bats tests/to_unix_ts.bats
+```
+
 ## Code Style
 
 - Follow shell scripting best practices
 - Use shellcheck to validate scripts
 - Add comments for complex logic
 - Keep functions small and focused
+- Update tests when modifying functionality
+- Update documentation and examples when adding features
+
+## Documentation
+
+When making changes, please update relevant documentation:
+
+- Update [README.md](../README.md) for user-facing changes
+- Update [CHANGELOG.md](../CHANGELOG.md) with your changes
+- Add examples to [examples/](../examples/) for new use cases
+- Update [dev/README.md](../dev/README.md) for development-related information
 
 ## Code of Conduct
 

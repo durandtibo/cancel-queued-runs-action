@@ -1,0 +1,37 @@
+# Scheduled Cleanup Example
+#
+# This example runs the cleanup action on a schedule to automatically
+# keep your workflow queue clean. It runs every 6 hours and cancels
+# runs that have been queued for more than 12 hours.
+#
+# Cron schedule explanation:
+# "0 */6 * * *" means: At minute 0 past every 6th hour
+# (runs at 00:00, 06:00, 12:00, 18:00 UTC)
+
+name: Scheduled Queue Cleanup
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: "0 */6 * * *"
+  
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel stale queued runs
+        uses: durandtibo/cancel-queued-runs-action@v1.7
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          max_age_hours: 12
+      
+      - name: Log completion
+        run: echo "Cleanup completed at $(date)"

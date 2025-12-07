@@ -23,7 +23,9 @@ inputs:
   max_age_hours:
     description: >
       Maximum number of hours a workflow run is allowed to stay queued before being
-      cancelled. Must be a positive integer
+      cancelled. Must be a positive integer. The action uses standard cancel for runs
+      between max_age_hours and max_age_hours+3, and force-cancel for runs older than
+      max_age_hours+3 hours.
     default: "24"
     required: false
 

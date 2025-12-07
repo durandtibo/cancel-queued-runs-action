@@ -158,13 +158,22 @@ compute_age_hours() {
 # ----------------------------
 # Process a single workflow run
 # Cancels the run if needed and logs the result
+#
+# Uses a two-tier cancellation strategy:
+# 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + 3
+#    - Uses /cancel endpoint for recently queued runs
+# 2. Force cancel: age > MAX_AGE_HOURS + 3
+#    - Uses /force-cancel endpoint for very old runs
+#    - More aggressive approach needed for stuck runs
+#
 # Args:
 #   $1 - Run ID
 #   $2 - Age in hours
 #   $3 - Current failed count
 # Globals:
-#   MAX_AGE_HOURS
-#   failed (incremented if cancellation fails)
+#   MAX_AGE_HOURS - Base threshold for cancellation
+# Returns:
+#   Updated failed count (echoed to stdout)
 # ----------------------------
 process_run() {
 	local run_id="$1"
@@ -180,6 +189,8 @@ process_run() {
 	local response=""
 	local status_code=""
 
+	# Force-cancel runs older than MAX_AGE_HOURS + 3 hours
+	# The 3-hour buffer ensures standard cancellation is tried first
 	if [ "$age_hours" -gt $((MAX_AGE_HOURS + 3)) ]; then
 		echo "Force-cancelling run $run_id (age=$age_hours)..."
 		response=$(force_cancel_run "$run_id")
