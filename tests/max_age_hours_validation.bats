@@ -1,6 +1,12 @@
 #!/usr/bin/env bats
 
 # Test MAX_AGE_HOURS validation
+# Note: Duplication is intentional here as the source command needs specific
+# handling with environment variables that doesn't work well with helper functions
+
+setup() {
+  SCRIPT_PATH="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+}
 
 @test "script accepts valid positive integer MAX_AGE_HOURS" {
   export MAX_AGE_HOURS=10
@@ -8,7 +14,7 @@
   export GH_TOKEN="test-token"
   
   # Source should succeed
-  run bash -c "source $BATS_TEST_DIRNAME/../scripts/cancel.sh 2>&1; echo 'success'"
+  run bash -c "source $SCRIPT_PATH 2>&1; echo 'success'"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "success" ]]
 }
@@ -18,7 +24,7 @@
   export REPO="test/repo"
   export GH_TOKEN="test-token"
   
-  run bash -c "source $BATS_TEST_DIRNAME/../scripts/cancel.sh 2>&1"
+  run bash -c "source $SCRIPT_PATH 2>&1"
   [ "$status" -eq 1 ]
   [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
   [[ "$output" =~ "abc" ]]
@@ -29,7 +35,7 @@
   export REPO="test/repo"
   export GH_TOKEN="test-token"
   
-  run bash -c "source $BATS_TEST_DIRNAME/../scripts/cancel.sh 2>&1"
+  run bash -c "source $SCRIPT_PATH 2>&1"
   [ "$status" -eq 1 ]
   [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
   [[ "$output" =~ "0" ]]
@@ -40,7 +46,7 @@
   export REPO="test/repo"
   export GH_TOKEN="test-token"
   
-  run bash -c "source $BATS_TEST_DIRNAME/../scripts/cancel.sh 2>&1"
+  run bash -c "source $SCRIPT_PATH 2>&1"
   [ "$status" -eq 1 ]
   [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
 }
@@ -50,7 +56,7 @@
   export REPO="test/repo"
   export GH_TOKEN="test-token"
   
-  run bash -c "source $BATS_TEST_DIRNAME/../scripts/cancel.sh 2>&1"
+  run bash -c "source $SCRIPT_PATH 2>&1"
   [ "$status" -eq 1 ]
   [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
   [[ "$output" =~ "3.5" ]]
@@ -62,7 +68,7 @@
   export GH_TOKEN="test-token"
   
   # Source and check the value
-  run bash -c "source $BATS_TEST_DIRNAME/../scripts/cancel.sh 2>&1; echo MAX_AGE_HOURS=\$MAX_AGE_HOURS"
+  run bash -c "source $SCRIPT_PATH 2>&1; echo MAX_AGE_HOURS=\$MAX_AGE_HOURS"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "MAX_AGE_HOURS=24" ]]
 }
