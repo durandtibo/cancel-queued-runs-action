@@ -2,7 +2,7 @@
 
 setup() {
   # Source the script under test
-  source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
 @test "get_status_code extracts 202 from HTTP/1.1 response" {

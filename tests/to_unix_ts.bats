@@ -3,7 +3,7 @@
 # Load the function under test
 setup() {
   # Absolute path to the script defining to_unix_ts
-  source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
 #----------------------------

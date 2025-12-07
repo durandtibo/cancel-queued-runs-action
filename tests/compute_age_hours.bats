@@ -2,7 +2,7 @@
 
 setup() {
   # Source the script under test
-  source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
 @test "compute_age_hours returns correct age in hours" {

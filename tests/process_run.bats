@@ -5,7 +5,7 @@ setup() {
     export MAX_AGE_HOURS=2
 
     # Source the script under test
-    source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
+    source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 
     # Mock functions
     cancel_run() {

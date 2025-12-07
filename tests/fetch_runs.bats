@@ -37,7 +37,7 @@ EOF
 
   # Load the script under test
   # Use absolute path to avoid macOS BATS cwd issues
-  source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
 teardown() {
