@@ -1,0 +1,82 @@
+name: Check Outdated Actions
+
+on:
+  schedule:
+    - cron: "0 10 * * 1" # Run every Monday at 10:00 AM UTC
+  workflow_dispatch: # to trigger manually
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-outdated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check for outdated actions
+        id: check
+        run: |
+          echo "## Checking for outdated GitHub Actions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Find all workflow files
+          WORKFLOWS=$(find .github/workflows -name "*.yaml" -o -name "*.yml")
+
+          # Extract action versions
+          echo "### Current Actions:" >> $GITHUB_STEP_SUMMARY
+          for file in $WORKFLOWS; do
+            echo "#### $(basename $file)" >> $GITHUB_STEP_SUMMARY
+            grep -E "uses: " "$file" | grep -v "#" | \
+              sed 's/.*uses: /- /' >> $GITHUB_STEP_SUMMARY || true
+            echo "" >> $GITHUB_STEP_SUMMARY
+          done
+
+      - name: Create issue if outdated actions found
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Creating issue for outdated actions check..."
+          gh issue create \
+            --title "🔄 Weekly Check: Review GitHub Actions Versions" \
+            --body "## 🤖 Automated Actions Version Check
+
+          This is an automated weekly check to ensure our GitHub Actions are
+          up-to-date.
+
+          ### Review Checklist
+
+          Please review the following actions for updates:
+
+          - [ ] **actions/checkout** - Check for latest version
+          - [ ] **actions/setup-node** - Check for latest version
+          - [ ] **actions/cache** - Check for latest version
+          - [ ] **github/codeql-action** - Check for latest version
+          - [ ] **actions/dependency-review-action** - Check for latest version
+          - [ ] Other actions used in workflows
+
+          ### Update Process
+
+          1. Check current versions in workflow files
+          2. Compare with latest releases on GitHub Marketplace
+          3. Update version references in workflow files
+          4. Test workflows after updates
+          5. Update dependabot configuration if needed
+
+          ---
+
+          *This issue was automatically created by the outdated actions check
+          workflow.*
+          *Workflow:
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}*" \
+            --label "dependencies,automated" \
+            || echo "Issue creation skipped or failed"

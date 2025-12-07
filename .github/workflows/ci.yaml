@@ -20,6 +20,9 @@ jobs:
   format:
     uses: ./.github/workflows/format.yaml
 
+  actionlint:
+    uses: ./.github/workflows/actionlint.yaml
+
   test-shell:
     uses: ./.github/workflows/test-shell.yaml
     needs: format
@@ -27,3 +30,16 @@ jobs:
   test-local:
     uses: ./.github/workflows/test-local.yaml
     needs: format
+
+  ci-summary:
+    runs-on: ubuntu-latest
+    needs: [format, actionlint, test-shell, test-local]
+    if: always()
+    steps:
+      - name: CI Summary
+        run: |
+          echo "## CI Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Format checks: ${{ needs.format.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Actionlint: ${{ needs.actionlint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Shell tests: ${{ needs.test-shell.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Local tests: ${{ needs.test-local.result }}" >> $GITHUB_STEP_SUMMARY

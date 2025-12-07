@@ -1,0 +1,51 @@
+name: Actionlint
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+  workflow_dispatch: # to trigger manually
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download actionlint
+        id: download-actionlint
+        shell: bash
+        run: |
+          DOWNLOAD_URL="https://raw.githubusercontent.com/rhysd"
+          DOWNLOAD_URL="${DOWNLOAD_URL}/actionlint/main/scripts"
+          curl -sSL "${DOWNLOAD_URL}/download-actionlint.bash" | bash
+
+      - name: Check workflow files
+        run: |
+          echo "🔍 Running actionlint on workflow files..."
+          ./actionlint -color
+          echo "✅ Actionlint validation passed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload actionlint sarif
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: actionlint.sarif
