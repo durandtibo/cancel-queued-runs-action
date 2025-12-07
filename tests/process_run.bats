@@ -78,3 +78,33 @@ setup() {
     # The line of output is the updated failed count
     [ "$output" -eq 0 ]
 }
+
+@test "process_run does nothing if age_hours equals MAX_AGE_HOURS exactly" {
+    output=$(process_run "789" 2 0)
+
+    # failed counter should remain 0 (not > MAX_AGE_HOURS)
+    # The line of output is the updated failed count
+    [ "$output" -eq 0 ]
+}
+
+@test "process_run cancels if age_hours is exactly MAX_AGE_HOURS + 1" {
+    output=$(process_run "123" 3 0)
+
+    # Should cancel since 3 > 2
+    [[ "$output" =~ "Cancelling run 123" ]]
+    [[ "$output" =~ "Status code: 202" ]]
+
+    failed=$(echo "$output" | tail -n1)
+    [ "$failed" -eq 0 ]
+}
+
+@test "process_run force cancels if age_hours is exactly MAX_AGE_HOURS + 4" {
+    output=$(process_run "111" 6 0)
+
+    # Should force-cancel since 6 > (2 + 3)
+    [[ "$output" =~ "Force-cancelling run 111" ]]
+    [[ "$output" =~ "Status code: 202" ]]
+
+    failed=$(echo "$output" | tail -n1)
+    [ "$failed" -eq 0 ]
+}

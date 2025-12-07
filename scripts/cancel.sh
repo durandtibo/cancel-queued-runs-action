@@ -19,15 +19,20 @@ set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 
-# ----------------------------
-# Cross-platform timestamp parser
-# Handles both GNU date (Linux) and BSD date (macOS)
+# Validate MAX_AGE_HOURS is a positive integer
+if ! [[ "$MAX_AGE_HOURS" =~ ^[0-9]+$ ]] || [ "$MAX_AGE_HOURS" -lt 1 ]; then
+	echo "❌ Error: MAX_AGE_HOURS must be a positive integer (got: '$MAX_AGE_HOURS')" >&2
+	exit 1
+fi
+
 # ----------------------------
 # Converts ISO 8601 timestamp to Unix timestamp
+# Handles both GNU date (Linux) and BSD date (macOS)
 # Args:
 #   $1 - ISO 8601 timestamp (e.g., "2025-01-15T10:30:00Z")
 # Returns:
-#   Unix timestamp (seconds since epoch)
+#   Unix timestamp (seconds since epoch), or 0 for empty input
+# ----------------------------
 to_unix_ts() {
 	local ts="$1"
 
@@ -46,10 +51,14 @@ to_unix_ts() {
 	fi
 }
 
+# ----------------------------
 # Logs the HTTP status code with appropriate emoji and message
 # Args:
 #   $1 - HTTP status code
 #   $2 - Workflow run ID
+# Returns:
+#   None (outputs log message to stdout)
+# ----------------------------
 log_status() {
 	local status_code="$1"
 	local run_id="$2"
@@ -70,6 +79,10 @@ log_status() {
 # ----------------------------
 # Fetch queued runs from GitHub API
 # Uses pagination to handle repositories with many queued runs
+# Globals:
+#   REPO - Repository in owner/name format
+# Returns:
+#   JSON stream of workflow runs (line-delimited objects)
 # ----------------------------
 fetch_runs() {
 	gh api \
@@ -81,6 +94,12 @@ fetch_runs() {
 
 # ----------------------------
 # Cancel a run normally
+# Args:
+#   $1 - Workflow run ID
+# Globals:
+#   REPO - Repository in owner/name format
+# Returns:
+#   HTTP response with headers (including status code)
 # ----------------------------
 cancel_run() {
 	local run_id="$1"
@@ -98,13 +117,19 @@ cancel_run() {
 }
 
 # ----------------------------
-# Force cancel a run
+# Force cancel a run (for runs stuck in queue for very long time)
+# Args:
+#   $1 - Workflow run ID
+# Globals:
+#   REPO - Repository in owner/name format
+# Returns:
+#   HTTP response with headers (including status code)
 # ----------------------------
 force_cancel_run() {
 	local run_id="$1"
 
 	if [ -z "$run_id" ]; then
-		echo "❌ cancel_run error: run_id is empty" >&2
+		echo "❌ force_cancel_run error: run_id is empty" >&2
 		return 1
 	fi
 
@@ -157,14 +182,17 @@ compute_age_hours() {
 
 # ----------------------------
 # Process a single workflow run
-# Cancels the run if needed and logs the result
+# Cancels the run if it exceeds age thresholds:
+#   - Normal cancel: age > MAX_AGE_HOURS
+#   - Force cancel: age > MAX_AGE_HOURS + 3
 # Args:
 #   $1 - Run ID
 #   $2 - Age in hours
 #   $3 - Current failed count
 # Globals:
-#   MAX_AGE_HOURS
-#   failed (incremented if cancellation fails)
+#   MAX_AGE_HOURS - Threshold for cancellation
+# Returns:
+#   Updated failed count (echoed to stdout)
 # ----------------------------
 process_run() {
 	local run_id="$1"
@@ -205,10 +233,11 @@ process_run() {
 
 # ----------------------------
 # Process all workflow runs
+# Iterates through runs, computes age, and processes each one
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
-#   Echoes the final failed count (as integer)
+#   Combined output: log messages + final failed count on last line
 # ----------------------------
 process_all_runs() {
 	local runs_stream="$1"
@@ -236,6 +265,12 @@ process_all_runs() {
 
 # ----------------------------
 # Main workflow logic
+# Fetches queued runs, processes them, and reports results
+# Globals:
+#   MAX_AGE_HOURS - Maximum queue age threshold
+#   REPO - Repository in owner/name format
+# Returns:
+#   Exit code 0 on success, 1 if any cancellations failed
 # ----------------------------
 main() {
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"

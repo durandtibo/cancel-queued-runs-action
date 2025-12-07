@@ -116,5 +116,5 @@ teardown() {
 @test "force_cancel_run fails if run_id is empty" {
   run force_cancel_run ""
   [ "$status" -ne 0 ]
-  [[ "$output" == *"run_id is empty"* ]]
+  [[ "$output" == *"force_cancel_run error: run_id is empty"* ]]
 }
