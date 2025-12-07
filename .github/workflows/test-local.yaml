@@ -36,9 +36,15 @@ jobs:
 
       - name: Test action to cancel stale queued runs
         uses: ./
+        continue-on-error: false
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
+
+      - name: Report test result
+        if: success()
+        run: |
+          echo "✅ Local action test passed on ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
 
   test-48h:
     runs-on: ubuntu-latest
@@ -49,7 +55,13 @@ jobs:
 
       - name: Test action to cancel stale queued runs
         uses: ./
+        continue-on-error: false
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
           max_age_hours: 48
+
+      - name: Report test result
+        if: success()
+        run: |
+          echo "✅ Local action test passed with 48h max age" >> $GITHUB_STEP_SUMMARY

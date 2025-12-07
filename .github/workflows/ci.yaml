@@ -19,7 +19,11 @@ permissions:
 jobs:
   format:
     uses: ./.github/workflows/format.yaml
+
   test-shell:
     uses: ./.github/workflows/test-shell.yaml
+    needs: format
+
   test-local:
     uses: ./.github/workflows/test-local.yaml
+    needs: format

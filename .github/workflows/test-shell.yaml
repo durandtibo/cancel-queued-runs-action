@@ -64,4 +64,6 @@ jobs:
 
       - name: Run unit tests
         run: |
+          echo "🧪 Running BATS unit tests on ${{ matrix.os }}..."
           bats --recursive tests
+          echo "✅ All unit tests passed on ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
