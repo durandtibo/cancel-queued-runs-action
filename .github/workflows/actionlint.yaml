@@ -19,6 +19,7 @@ concurrency:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   actionlint:
@@ -43,9 +44,15 @@ jobs:
           ./actionlint -color
           echo "✅ Actionlint validation passed" >> $GITHUB_STEP_SUMMARY
 
+      - name: Generate SARIF report
+        if: always()
+        run: |
+          ./actionlint -format sarif -output actionlint.sarif || true
+
       - name: Upload actionlint sarif
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
         with:
           sarif_file: actionlint.sarif
+          category: actionlint

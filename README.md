@@ -7,8 +7,15 @@
     <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly-tests.yaml">
         <img alt="Nightly Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly-tests.yaml/badge.svg">
     </a>
+    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/codeql.yaml">
+        <img alt="CodeQL" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/codeql.yaml/badge.svg">
+    </a>
+    <br/>
     <a href="https://github.com/durandtibo/cancel-queued-runs-action/blob/main/LICENSE">
         <img alt="License" src="https://img.shields.io/badge/License-BSD_3--Clause-blue.svg">
+    </a>
+    <a href=".github/WORKFLOWS.md">
+        <img alt="Workflows" src="https://img.shields.io/badge/Workflows-Documentation-green.svg">
     </a>
 </p>
 
