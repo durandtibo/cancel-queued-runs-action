@@ -65,7 +65,7 @@ jobs:
   cancel-stale-runs:
     runs-on: ubuntu-latest
     steps:
-      - uses: durandtibo/cancel-queued-runs-action@v1.6
+      - uses: durandtibo/cancel-queued-runs-action@v1.7
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
@@ -89,7 +89,7 @@ jobs:
 ### Example: cancel queued runs older than 6 hours
 
 ```yaml
-- uses: durandtibo/cancel-queued-runs-action@v1.6
+- uses: durandtibo/cancel-queued-runs-action@v1.7
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     repo: ${{ github.repository }}
@@ -114,7 +114,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - uses: durandtibo/cancel-queued-runs-action@v1.6
+      - uses: durandtibo/cancel-queued-runs-action@v1.7
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
