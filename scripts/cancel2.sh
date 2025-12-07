@@ -197,6 +197,37 @@ process_run() {
 }
 
 # ----------------------------
+# Process all workflow runs
+# Args:
+#   $1 - JSON array stream from fetch_runs (line-delimited objects)
+# Returns:
+#   Echoes the final failed count (as integer)
+# ----------------------------
+process_all_runs() {
+	local runs_stream="$1"
+	local failed=0
+
+	# Use stdin redirection instead of a pipeline to avoid subshell issues
+	while read -r run; do
+		run_id=$(echo "$run" | jq -r '.id')
+		created_at=$(echo "$run" | jq -r '.created_at')
+
+		# skip invalid entries
+		if [ -z "$run_id" ] || [ -z "$created_at" ]; then
+			continue
+		fi
+
+		age_hours=$(compute_age_hours "$created_at")
+		echo "Run $run_id has been queued for $age_hours hours."
+
+		# process the run and get updated failed count
+		failed=$(process_run "$run_id" "$age_hours" "$failed")
+	done <<<"$runs_stream"
+
+	echo "$failed"
+}
+
+# ----------------------------
 # Main workflow logic
 # ----------------------------
 main() {
@@ -213,25 +244,8 @@ main() {
 		return 0
 	fi
 
-	# ----------------------------
-	# Process each workflow run
-	# Calculates age and cancels runs older than MAX_AGE_HOURS
-	# ----------------------------
-	failed=0 # Counter for failed cancellations
-
-	echo "$runs" | jq -c '.' | while read -r run; do
-		run_id=$(echo "$run" | jq -r '.id')
-		created_at=$(echo "$run" | jq -r '.created_at')
-
-		if [ -z "$run_id" ] || [ -z "$created_at" ]; then
-			continue
-		fi
-
-		age_hours=$(compute_age_hours "$created_at")
-		echo "Run $run_id has been queued for $age_hours hours."
-
-		failed=$(process_run "456" 4 "$failed")
-	done
+	# Process runs and get failed count from helper function
+	failed=$(process_all_runs "$runs")
 
 	# Exit with error if any cancellations failed
 	if [ "$failed" -gt 0 ]; then
