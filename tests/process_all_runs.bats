@@ -2,7 +2,7 @@
 
 setup() {
   # Log file for calls
-  LOG_FILE="$BATS_TEST_TMPDIR/calls.log"
+  export LOG_FILE="$BATS_TEST_TMPDIR/calls.log"
   echo -n > "$LOG_FILE"
 
   # Source the script under test
