@@ -2,7 +2,11 @@
 
 setup() {
   # Log file for calls
-  export LOG_FILE="$BATS_TEST_TMPDIR/calls.log"
+  # Use absolute paths for mocks/logs (macOS BATS can change CWD)
+  TEST_DIR="$BATS_TEST_DIRNAME"
+  MOCK_DIR="$TEST_DIR/mocks"
+  mkdir -p "$MOCK_DIR"
+  export LOG_FILE="$MOCK_DIR/calls.log"
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
@@ -30,6 +34,10 @@ setup() {
   }
 
   export MOCK_RESULT="success"
+}
+
+teardown() {
+  rm -rf "$MOCK_DIR"
 }
 
 # --------------------------------------------------------
