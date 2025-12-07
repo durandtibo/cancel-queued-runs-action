@@ -158,6 +158,7 @@ The action uses a two-tier cancellation approach:
   - More aggressive approach necessary for very old, stuck runs
 
 **Example**: If `max_age_hours: 24`:
+
 - Runs queued 25-27 hours: Standard cancel
 - Runs queued >27 hours: Force cancel
 
@@ -255,12 +256,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](.github/CONTRIBUTING.md)
 For questions or suggestions, you can
 submit [GitHub Issues](https://github.com/durandtibo/cancel-queued-runs-action/issues).
 We will reply to you as soon as possible. Thank you very much.
-
----
-
-## 📜 Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes and version releases.
 
 ---
 
