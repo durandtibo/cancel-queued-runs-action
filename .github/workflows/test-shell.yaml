@@ -30,11 +30,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-bats-${{ hashFiles('.github/workflows/test-shell.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-bats-
+            ${{ runner.os }}-apt-
+
       - name: Install bats-core on Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y bats
+
+      - name: Cache Homebrew packages
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-brew-bats-${{ hashFiles('.github/workflows/test-shell.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-brew-bats-
+            ${{ runner.os }}-brew-
 
       - name: Install bats-core on macOS
         if: runner.os == 'macOS'

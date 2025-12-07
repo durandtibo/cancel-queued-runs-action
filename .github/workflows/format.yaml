@@ -19,6 +19,17 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "latest"
+          cache: "npm"
+          cache-dependency-path: "**/package-lock.json"
+
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-markdownlint-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-markdownlint-
+            ${{ runner.os }}-npm-
 
       - name: Install markdownlint-cli
         run: npm install -g markdownlint-cli
@@ -33,6 +44,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-shellcheck-${{ hashFiles('.github/workflows/format.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-shellcheck-
+            ${{ runner.os }}-apt-
 
       - name: Install ShellCheck
         run: |
@@ -59,6 +79,15 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v6
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-yamllint-${{ hashFiles('.github/workflows/format.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-yamllint-
+            ${{ runner.os }}-apt-
 
       - name: Install yamllint
         run: |
