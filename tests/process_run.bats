@@ -8,12 +8,19 @@ setup() {
     source "$BATS_TEST_DIRNAME/../scripts/cancel2.sh"
 
     # Mock functions
+    cancel_run() {
+        local run_id="$1"
+        case "$run_id" in
+            "456") echo -e "HTTP/2.0 500 Internal Server Error\nContent-Type: application/json\n\n{\"message\":\"error\"}" ;;
+            *) echo -e "HTTP/2.0 202 Accepted\nContent-Type: application/json\n\n{}" ;;
+        esac
+    }
+
     force_cancel_run() {
         local run_id="$1"
         case "$run_id" in
-            "123") echo -e "HTTP/2.0 202 Accepted\nContent-Type: application/json\n\n{}" ;;
-            "456") echo -e "HTTP/2.0 500 Internal Server Error\nContent-Type: application/json\n\n{\"message\":\"error\"}" ;;
-            *) echo -e "HTTP/2.0 202 Accepted\nContent-Type: application/json\n\n{}" ;;
+            "111") echo -e "HTTP/2.0 202 Accepted\nContent-Type: application/json\n\n{}" ;;
+            *) echo -e "HTTP/2.0 500 Internal Server Error\nContent-Type: application/json\n\n{\"message\":\"error\"}" ;;
         esac
     }
 }
@@ -41,6 +48,19 @@ setup() {
     # The last line of output is the updated failed count
     failed=$(echo "$output" | tail -n1)
     [ "$failed" -eq 1 ]
+}
+
+@test "process_run force cancels run older than MAX_AGE_HOURS with 202 response" {
+    output=$(process_run "111" 24 0)
+
+    # Check output contains cancellation info and log_status
+    [[ "$output" =~ "Force-cancelling run 123" ]]
+    [[ "$output" =~ "Status code: 202" ]]
+
+    # failed counter should remain 0
+    # The last line of output is the updated failed count
+    failed=$(echo "$output" | tail -n1)
+    [ "$failed" -eq 0 ]
 }
 
 @test "process_run does nothing if age_hours is below MAX_AGE_HOURS" {

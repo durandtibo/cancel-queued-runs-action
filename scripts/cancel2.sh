@@ -161,6 +161,7 @@ compute_age_hours() {
 # Args:
 #   $1 - Run ID
 #   $2 - Age in hours
+#   $3 - Current failed count
 # Globals:
 #   MAX_AGE_HOURS
 #   failed (incremented if cancellation fails)
@@ -168,7 +169,7 @@ compute_age_hours() {
 process_run() {
 	local run_id="$1"
 	local age_hours="$2"
-	local failed="$3" # take current failed count
+	local failed="$3"
 
 	# Do nothing if run_id is empty
 	if [ -z "$run_id" ]; then
@@ -176,24 +177,30 @@ process_run() {
 		return
 	fi
 
-	if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
-		echo "Cancelling run $run_id (age=$age_hours)..."
+	local response=""
+	local status_code=""
 
-		local response
+	if [ "$age_hours" -gt $((MAX_AGE_HOURS + 3)) ]; then
+		echo "Force-cancelling run $run_id (age=$age_hours)..."
 		response=$(force_cancel_run "$run_id")
-
-		local status_code
-		status_code=$(get_status_code "$response")
-
-		log_status "$status_code" "$run_id"
-
-		if [ "$status_code" != "202" ]; then
-			echo "❌ Cancellation failed for run $run_id"
-			failed=$((failed + 1))
-		fi
+	elif [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
+		echo "Cancelling run $run_id (age=$age_hours)..."
+		response=$(cancel_run "$run_id")
+	else
+		# Age does not exceed thresholds, nothing to do
+		echo "$failed"
+		return
 	fi
 
-	echo "$failed" # return the updated counter
+	status_code=$(get_status_code "$response")
+	log_status "$status_code" "$run_id"
+
+	if [ "$status_code" != "202" ]; then
+		echo "❌ Cancellation failed for run $run_id"
+		failed=$((failed + 1))
+	fi
+
+	echo "$failed" # return updated failed count
 }
 
 # ----------------------------
