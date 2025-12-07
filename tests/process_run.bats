@@ -50,11 +50,11 @@ setup() {
     [ "$failed" -eq 1 ]
 }
 
-@test "process_run force cancels run older than MAX_AGE_HOURS with 202 response" {
+@test "process_run force cancels run older than MAX_AGE_HOURS + 3h with 202 response" {
     output=$(process_run "111" 24 0)
 
     # Check output contains cancellation info and log_status
-    [[ "$output" =~ "Force-cancelling run 123" ]]
+    [[ "$output" =~ "Force-cancelling run 111" ]]
     [[ "$output" =~ "Status code: 202" ]]
 
     # failed counter should remain 0
