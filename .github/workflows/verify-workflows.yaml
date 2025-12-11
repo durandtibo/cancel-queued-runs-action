@@ -1,0 +1,36 @@
+name: Verify Workflows
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/*" # Trigger on changes to workflow files
+  push:
+    paths:
+      - ".github/workflows/*" # Trigger on changes to workflow files
+  workflow_dispatch: # to trigger manually
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install actionlint
+        run: |
+          ACTIONLINT_URL="https://raw.githubusercontent.com/rhysd/actionlint/"
+          ACTIONLINT_URL+="main/scripts/download-actionlint.bash"
+          bash <(curl -sSL $ACTIONLINT_URL) latest
+
+      - name: actionlint version
+        run: |
+          ./actionlint --version
+
+      - name: Run actionlint on workflow files
+        run: |
+          ./actionlint .github/workflows/*
