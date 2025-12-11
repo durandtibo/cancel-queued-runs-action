@@ -24,3 +24,4 @@ durandtibo/startorch
 durandtibo/uv-install-package-action
 durandtibo/votingsys
 durandtibo/setup-venv-uv-action
+durandtibo/verify-github-workflow-action
