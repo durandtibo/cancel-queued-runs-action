@@ -19,9 +19,9 @@ durandtibo/minrecord
 durandtibo/objectory
 durandtibo/pip-install-package-action
 durandtibo/redcat
+durandtibo/setup-venv-uv-action
 durandtibo/sonnix
 durandtibo/startorch
 durandtibo/uv-install-package-action
-durandtibo/votingsys
-durandtibo/setup-venv-uv-action
 durandtibo/verify-github-workflow-action
+durandtibo/votingsys
