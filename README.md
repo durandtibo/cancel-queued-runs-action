@@ -251,7 +251,7 @@ this won't cause the action to error.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 For questions or suggestions, you can
 submit [GitHub Issues](https://github.com/durandtibo/cancel-queued-runs-action/issues).
