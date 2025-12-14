@@ -55,23 +55,5 @@ jobs:
       - name: Run unit tests
         run: |
           echo "🧪 Running tests on ${{ matrix.os }}..."
-
-          # Build bats command with available flags
-          BATS_CMD="bats --recursive"
-
-          # Check for --timing flag support
-          if bats --help 2>&1 | grep -q '\-\-timing'; then
-            echo "✓ Using --timing flag"
-            BATS_CMD="$BATS_CMD --timing"
-          fi
-
-          # Check for --print-output-on-failure flag support
-          if bats --help 2>&1 | grep -q '\-\-print-output-on-failure'; then
-            echo "✓ Using --print-output-on-failure flag"
-            BATS_CMD="$BATS_CMD --print-output-on-failure"
-          fi
-
-          echo "Running: $BATS_CMD tests"
-          $BATS_CMD tests
-
+          bats --recursive tests
           echo "✅ All tests passed"
