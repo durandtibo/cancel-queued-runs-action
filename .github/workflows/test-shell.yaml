@@ -55,14 +55,5 @@ jobs:
       - name: Run unit tests
         run: |
           echo "🧪 Running tests on ${{ matrix.os }}..."
-
-          # Check if --print-output-on-failure is supported
-          if bats --help 2>&1 | grep -q '\-\-print-output-on-failure'; then
-            echo "Using --print-output-on-failure flag"
-            bats --recursive --timing --print-output-on-failure tests
-          else
-            echo "Flag --print-output-on-failure not supported, running without it"
-            bats --recursive --timing tests
-          fi
-
+          bats --recursive --timing tests
           echo "✅ All tests passed"
