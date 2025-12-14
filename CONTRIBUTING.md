@@ -63,7 +63,7 @@ For testing across multiple repositories:
 1. Add repository names to `dev/repos.txt` (one per line in `owner/name` format)
 2. Run: `./dev/run_for_repos.sh`
 
-See [dev/README.md](../dev/README.md) for more details on development and debugging.
+See [dev/README.md](dev/README.md) for more details on development and debugging.
 
 ### Running Tests
 
@@ -97,14 +97,14 @@ bats tests/to_unix_ts.bats
 
 When making changes, please update relevant documentation:
 
-- Update [README.md](../README.md) for user-facing changes
+- Update [README.md](README.md) for user-facing changes
 - Update [CHANGELOG.md](../CHANGELOG.md) with your changes
 - Add examples to [examples/](../examples/) for new use cases
-- Update [dev/README.md](../dev/README.md) for development-related information
+- Update [dev/README.md](dev/README.md) for development-related information
 
 ## Code of Conduct
 
-This project follows the [Contributor Covenant Code of Conduct](../CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
 
 ## Questions?
 
