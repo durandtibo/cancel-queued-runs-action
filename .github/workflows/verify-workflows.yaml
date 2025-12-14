@@ -1,0 +1,25 @@
+name: Verify Workflows
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/*" # Trigger on changes to workflow files
+  push:
+    paths:
+      - ".github/workflows/*" # Trigger on changes to workflow files
+  workflow_dispatch: # to trigger manually
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify GitHub Workflows
+        uses: durandtibo/verify-github-workflow-action@v0.0.2
