@@ -30,18 +30,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install bats-core on Linux
+      - name: Install bats-core (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          echo "📦 Installing bats-core..."
+          sudo apt-get update -qq
           sudo apt-get install -y bats
+          echo "✅ Installation complete"
 
-      - name: Install bats-core on macOS
+      - name: Install bats-core (macOS)
         if: runner.os == 'macOS'
         run: |
+          echo "🍺 Installing bats-core..."
           brew update
           brew install bats-core
+          echo "✅ Installation complete"
+
+      - name: Verify bats installation
+        run: |
+          echo "✓ Verifying bats installation..."
+          bats --version
+          echo "✅ bats is installed and ready"
 
       - name: Run unit tests
         run: |
-          bats --recursive tests
+          echo "🧪 Running tests on ${{ matrix.os }}..."
+          bats --recursive --timing --print-output-on-failure tests
+          echo "✅ All tests passed"
