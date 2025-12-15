@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  verify-workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
