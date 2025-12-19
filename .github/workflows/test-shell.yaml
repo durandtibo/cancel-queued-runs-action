@@ -4,6 +4,9 @@ on:
   workflow_call:
   workflow_dispatch: # to trigger manually
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
