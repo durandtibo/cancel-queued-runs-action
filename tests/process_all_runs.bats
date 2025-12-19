@@ -24,12 +24,12 @@ setup() {
   # Controlled by MOCK_RESULT
   # -------------------------
   process_run() {
-    echo "process_run $1 $2 $3" >> "$LOG_FILE"
+    echo "process_run $1 $2" >> "$LOG_FILE"
 
     if [[ "$MOCK_RESULT" == "fail" ]]; then
-      echo $(( $3 + 1 ))
+      return 1
     else
-      echo "$3"
+      return 0
     fi
   }
 
@@ -51,17 +51,19 @@ teardown() {
       '{"id": 202, "created_at": "2025-01-01T02:00:00Z"}'
   )
 
-  output=$(process_all_runs "$runs_stream")
+  run process_all_runs "$runs_stream"
 
-  # The last line of output is the updated failed count
-  failed=$(echo "$output" | tail -n1)
-  [ "$failed" -eq 0 ]
+  # Exit code should be 0 (success)
+  [ "$status" -eq 0 ]
 
-  grep -q "process_run 101 5 0" "$LOG_FILE"
-  grep -q "process_run 202 5 0" "$LOG_FILE"
+  # Output should NOT contain error message
+  [[ ! "$output" =~ "Error:" ]]
+
+  grep -q "process_run 101 5" "$LOG_FILE"
+  grep -q "process_run 202 5" "$LOG_FILE"
 }
 
-@test "process_all_runs increments failed when process_run fails" {
+@test "process_all_runs returns 1 when process_run fails" {
   export MOCK_RESULT="fail"
 
   runs_stream=$(
@@ -70,14 +72,16 @@ teardown() {
       '{"id": 222, "created_at": "2025-02-01T04:00:00Z"}'
   )
 
-  output=$(process_all_runs "$runs_stream")
+  run process_all_runs "$runs_stream"
 
-  # The last line of output is the updated failed count
-  failed=$(echo "$output" | tail -n1)
-  [ "$failed" -eq 2 ]
+  # Exit code should be 1 (failure)
+  [ "$status" -eq 1 ]
 
-  grep -q "process_run 111 5 0" "$LOG_FILE"
-  grep -q "process_run 222 5 1" "$LOG_FILE"
+  # Output should contain error message with count
+  [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]]
+
+  grep -q "process_run 111 5" "$LOG_FILE"
+  grep -q "process_run 222 5" "$LOG_FILE"
 }
 
 @test "process_all_runs skips runs with missing fields" {
@@ -89,24 +93,51 @@ teardown() {
       '{"id": 555, "created_at": "2025-03-01T07:00:00Z"}'
   )
 
-  output=$(process_all_runs "$runs_stream")
+  run process_all_runs "$runs_stream"
 
-  # The last line of output is the updated failed count
-  failed=$(echo "$output" | tail -n1)
-  [ "$failed" -eq 0 ]
+  # Exit code should be 0 (success)
+  [ "$status" -eq 0 ]
 
-  grep -q "process_run 333 5 0" "$LOG_FILE"
-  grep -q "process_run 555 5 0" "$LOG_FILE"
+  grep -q "process_run 333 5" "$LOG_FILE"
+  grep -q "process_run 555 5" "$LOG_FILE"
 
   # Ensure skipped runs do NOT appear
   if grep -q "process_run 444" "$LOG_FILE"; then false; fi
-  if grep -q "process_run  \"\"" "$LOG_FILE"; then false; fi
+  if grep -q 'process_run ""' "$LOG_FILE"; then false; fi
 }
 
 @test "process_all_runs prints queue age" {
   runs_stream='{"id": 999, "created_at": "2025-03-10T09:00:00Z"}'
 
-  output=$(process_all_runs "$runs_stream")
+  run process_all_runs "$runs_stream"
 
   [[ "$output" =~ "Run 999 has been queued for 5 hours." ]]
+}
+
+@test "process_all_runs counts partial failures correctly" {
+  # Create a mock that fails on second call only
+  process_run() {
+    echo "process_run $1 $2" >> "$LOG_FILE"
+
+    if [[ "$1" == "222" ]]; then
+      return 1
+    else
+      return 0
+    fi
+  }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 111, "created_at": "2025-02-01T03:00:00Z"}' \
+      '{"id": 222, "created_at": "2025-02-01T04:00:00Z"}' \
+      '{"id": 333, "created_at": "2025-02-01T05:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  # Exit code should be 1 (failure)
+  [ "$status" -eq 1 ]
+
+  # Output should contain error message showing 1 failure
+  [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]]
 }

@@ -26,55 +26,54 @@ setup() {
 }
 
 @test "process_run cancels run older than MAX_AGE_HOURS with 202 response" {
-    output=$(process_run "123" 3 0)
+    run process_run "123" 3
 
     # Check output contains cancellation info and log_status
     [[ "$output" =~ "Cancelling run 123" ]]
     [[ "$output" =~ "Status code: 202" ]]
 
-    # failed counter should remain 0
-    # The last line of output is the updated failed count
-    failed=$(echo "$output" | tail -n1)
-    [ "$failed" -eq 0 ]
+    # Exit code should be 0 (success)
+    [ "$status" -eq 0 ]
 }
 
-@test "process_run increments failed counter for 500 response" {
-    output=$(process_run "456" 4 0)
+@test "process_run returns failure exit code for 500 response" {
+    run process_run "456" 4
 
     [[ "$output" =~ "Cancelling run 456" ]]
     [[ "$output" =~ "Status code: 500" ]]
     [[ "$output" =~ "Cancellation failed for run 456" ]]
 
-    # The last line of output is the updated failed count
-    failed=$(echo "$output" | tail -n1)
-    [ "$failed" -eq 1 ]
+    # Exit code should be 1 (failure)
+    [ "$status" -eq 1 ]
 }
 
 @test "process_run force cancels run older than MAX_AGE_HOURS + 3h with 202 response" {
-    output=$(process_run "111" 24 0)
+    run process_run "111" 24
 
     # Check output contains cancellation info and log_status
     [[ "$output" =~ "Force-cancelling run 111" ]]
     [[ "$output" =~ "Status code: 202" ]]
 
-    # failed counter should remain 0
-    # The last line of output is the updated failed count
-    failed=$(echo "$output" | tail -n1)
-    [ "$failed" -eq 0 ]
+    # Exit code should be 0 (success)
+    [ "$status" -eq 0 ]
 }
 
 @test "process_run does nothing if age_hours is below MAX_AGE_HOURS" {
-    output=$(process_run "789" 1 0)
+    run process_run "789" 1
 
-    # failed counter should remain 0
-    # The line of output is the updated failed count
-    [ "$output" -eq 0 ]
+    # Should have no output (nothing happens)
+    [ -z "$output" ]
+
+    # Exit code should be 0 (success - nothing to do)
+    [ "$status" -eq 0 ]
 }
 
 @test "process_run does nothing if run_id is empty" {
-    output=$(process_run "" 5 0)
+    run process_run "" 5
 
-    # failed counter should remain 0
-    # The line of output is the updated failed count
-    [ "$output" -eq 0 ]
+    # Should have no output (nothing happens)
+    [ -z "$output" ]
+
+    # Exit code should be 0 (success - nothing to do)
+    [ "$status" -eq 0 ]
 }
