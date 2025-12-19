@@ -35,7 +35,7 @@ body:
 
         ```yaml
         # Your workflow configuration
-        - uses: durandtibo/cancel-queued-runs-action@v1.7
+        - uses: durandtibo/cancel-queued-runs-action@v1.8
           with:
             github_token: ${{ secrets.GITHUB_TOKEN }}
             repo: ${{ github.repository }}
