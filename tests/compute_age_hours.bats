@@ -31,3 +31,26 @@ setup() {
     [ "$result" -ge 1 ]  # Should be roughly 2 hours, allow >=1 for timing
 }
 
+@test "compute_age_hours returns correct age in hours (1 second difference)" {
+    created="2025-01-01T10:00:00Z"
+    now="2025-01-01T10:00:01Z"
+
+    result=$(compute_age_hours "$created" "$now")
+    [ "$result" -eq 0 ]
+}
+
+@test "compute_age_hours returns correct age in hours (1 minute difference)" {
+    created="2025-01-01T10:00:00Z"
+    now="2025-01-01T10:01:00Z"
+
+    result=$(compute_age_hours "$created" "$now")
+    [ "$result" -eq 0 ]
+}
+
+@test "compute_age_hours returns correct age in hours (1h01 difference)" {
+    created="2025-01-01T10:00:00Z"
+    now="2025-01-01T11:01:00Z"
+
+    result=$(compute_age_hours "$created" "$now")
+    [ "$result" -eq 1 ]
+}

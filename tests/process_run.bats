@@ -77,3 +77,17 @@ setup() {
     # Exit code should be 0 (success - nothing to do)
     [ "$status" -eq 0 ]
 }
+
+@test "process_run cancels all runs when MAX_AGE_HOURS=0" {
+    export MAX_AGE_HOURS=0
+
+    # Even runs with age 1 hour should be cancelled when MAX_AGE_HOURS=0
+    run process_run "999" 1
+
+    # Check output contains cancellation info
+    [[ "$output" =~ "Cancelling run 999" ]]
+    [[ "$output" =~ "Status code: 202" ]]
+
+    # Exit code should be 0 (success)
+    [ "$status" -eq 0 ]
+}
