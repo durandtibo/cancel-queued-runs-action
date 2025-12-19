@@ -47,8 +47,8 @@ teardown() {
 @test "process_all_runs returns 0 when all runs succeed" {
   runs_stream=$(
     printf '%s\n' \
-      '{"id": 101, "created_at": "2025-01-01T01:00:00Z"}' \
-      '{"id": 202, "created_at": "2025-01-01T02:00:00Z"}'
+      '{"id": 101, "updated_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 202, "updated_at": "2025-01-01T02:00:00Z"}'
   )
 
   run process_all_runs "$runs_stream"
@@ -68,8 +68,8 @@ teardown() {
 
   runs_stream=$(
     printf '%s\n' \
-      '{"id": 111, "created_at": "2025-02-01T03:00:00Z"}' \
-      '{"id": 222, "created_at": "2025-02-01T04:00:00Z"}'
+      '{"id": 111, "updated_at": "2025-02-01T03:00:00Z"}' \
+      '{"id": 222, "updated_at": "2025-02-01T04:00:00Z"}'
   )
 
   run process_all_runs "$runs_stream"
@@ -87,10 +87,10 @@ teardown() {
 @test "process_all_runs skips runs with missing fields" {
   runs_stream=$(
     printf '%s\n' \
-      '{"id": 333, "created_at": "2025-03-01T05:00:00Z"}' \
-      '{"id": "", "created_at": "2025-03-01T06:00:00Z"}' \
-      '{"id": 444, "created_at": ""}' \
-      '{"id": 555, "created_at": "2025-03-01T07:00:00Z"}'
+      '{"id": 333, "updated_at": "2025-03-01T05:00:00Z"}' \
+      '{"id": "", "updated_at": "2025-03-01T06:00:00Z"}' \
+      '{"id": 444, "updated_at": ""}' \
+      '{"id": 555, "updated_at": "2025-03-01T07:00:00Z"}'
   )
 
   run process_all_runs "$runs_stream"
@@ -107,7 +107,7 @@ teardown() {
 }
 
 @test "process_all_runs prints queue age" {
-  runs_stream='{"id": 999, "created_at": "2025-03-10T09:00:00Z"}'
+  runs_stream='{"id": 999, "updated_at": "2025-03-10T09:00:00Z"}'
 
   run process_all_runs "$runs_stream"
 
@@ -128,9 +128,9 @@ teardown() {
 
   runs_stream=$(
     printf '%s\n' \
-      '{"id": 111, "created_at": "2025-02-01T03:00:00Z"}' \
-      '{"id": 222, "created_at": "2025-02-01T04:00:00Z"}' \
-      '{"id": 333, "created_at": "2025-02-01T05:00:00Z"}'
+      '{"id": 111, "updated_at": "2025-02-01T03:00:00Z"}' \
+      '{"id": 222, "updated_at": "2025-02-01T04:00:00Z"}' \
+      '{"id": 333, "updated_at": "2025-02-01T05:00:00Z"}'
   )
 
   run process_all_runs "$runs_stream"
