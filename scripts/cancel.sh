@@ -146,13 +146,13 @@ compute_age_hours() {
 		return
 	fi
 
-	local created_ts
+	local updated_ts
 	local now_ts
 
-	created_ts=$(to_unix_ts "$updated_at")
+	updated_ts=$(to_unix_ts "$updated_at")
 	now_ts=$(to_unix_ts "$now")
 
-	echo $(((now_ts - created_ts) / 3600))
+	echo $(((now_ts - updated_ts) / 3600))
 }
 
 # ----------------------------
