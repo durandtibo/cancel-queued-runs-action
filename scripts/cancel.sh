@@ -169,21 +169,18 @@ compute_age_hours() {
 # Args:
 #   $1 - Run ID
 #   $2 - Age in hours
-#   $3 - Current failed count
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
 # Returns:
-#   Updated failed count (echoed to stdout)
+#   0 on success, 1 on failure (via exit code)
 # ----------------------------
 process_run() {
 	local run_id="$1"
 	local age_hours="$2"
-	local failed="$3"
 
 	# Do nothing if run_id is empty
 	if [ -z "$run_id" ]; then
-		echo "$failed"
-		return
+		return 0
 	fi
 
 	local response=""
@@ -199,8 +196,7 @@ process_run() {
 		response=$(cancel_run "$run_id")
 	else
 		# Age does not exceed thresholds, nothing to do
-		echo "$failed"
-		return
+		return 0
 	fi
 
 	status_code=$(get_status_code "$response")
@@ -208,10 +204,10 @@ process_run() {
 
 	if [ "$status_code" != "202" ]; then
 		echo "❌ Cancellation failed for run $run_id"
-		failed=$((failed + 1))
+		return 1
 	fi
 
-	echo "$failed" # return updated failed count
+	return 0
 }
 
 # ----------------------------
@@ -219,7 +215,7 @@ process_run() {
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
-#   Echoes the final failed count (as integer)
+#   Exit code: 0 on success, 1 if any failures
 # ----------------------------
 process_all_runs() {
 	local runs_stream="$1"
@@ -238,11 +234,19 @@ process_all_runs() {
 		age_hours=$(compute_age_hours "$created_at")
 		echo "Run $run_id has been queued for $age_hours hours."
 
-		# process the run and get updated failed count
-		failed=$(process_run "$run_id" "$age_hours" "$failed")
+		# process the run and track failures
+		if ! process_run "$run_id" "$age_hours"; then
+			failed=$((failed + 1))
+		fi
 	done <<<"$runs_stream"
 
-	echo "$failed"
+	# Return failure if any cancellations failed
+	if [ "$failed" -gt 0 ]; then
+		echo "❌ Error: $failed run(s) failed to cancel."
+		return 1
+	fi
+
+	return 0
 }
 
 # ----------------------------
@@ -262,19 +266,13 @@ main() {
 		return 0
 	fi
 
-	# Process runs and get failed count from helper function
-	result=$(process_all_runs "$runs")
-	output=$(echo "$result" | sed '$d')
-	failed=$(echo "$result" | tail -n1)
-	echo "$output"
-
-	# Exit with error if any cancellations failed
-	if [ "$failed" -gt 0 ]; then
-		echo "❌ Error: $failed run(s) failed to cancel."
+	# Process runs
+	if process_all_runs "$runs"; then
+		echo "✅ All eligible runs processed successfully."
+		return 0
+	else
 		return 1
 	fi
-
-	echo "✅ All eligible runs processed successfully."
 }
 
 # ----------------------------
