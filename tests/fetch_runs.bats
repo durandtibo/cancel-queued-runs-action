@@ -26,8 +26,8 @@ echo "\$@" >> "$MOCK_GH_CALL_LOG"
 cat <<JSON
 {
   "workflow_runs": [
-    { "id": 111, "created_at": "2025-01-01T10:00:00Z" },
-    { "id": 222, "created_at": "2025-01-01T11:00:00Z" }
+    { "id": 111, "updated_at": "2025-01-01T10:00:00Z" },
+    { "id": 222, "updated_at": "2025-01-01T11:00:00Z" }
   ]
 }
 JSON
@@ -50,10 +50,10 @@ teardown() {
 
   # Portable grep usage (POSIX)
   echo "$output" | grep '"id": 111' >/dev/null
-  echo "$output" | grep '"created_at": "2025-01-01T10:00:00Z"' >/dev/null
+  echo "$output" | grep '"updated_at": "2025-01-01T10:00:00Z"' >/dev/null
 
   echo "$output" | grep '"id": 222' >/dev/null
-  echo "$output" | grep '"created_at": "2025-01-01T11:00:00Z"' >/dev/null
+  echo "$output" | grep '"updated_at": "2025-01-01T11:00:00Z"' >/dev/null
 }
 
 @test "fetch_runs calls gh with correct arguments" {

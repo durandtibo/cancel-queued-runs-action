@@ -76,7 +76,7 @@ fetch_runs() {
 		-H "Accept: application/vnd.github+json" \
 		"/repos/$REPO/actions/runs?status=queued&per_page=100" \
 		--paginate \
-		--jq '.workflow_runs[] | {id: .id, created_at: .created_at}'
+		--jq '.workflow_runs[] | {id: .id, updated_at: .updated_at}'
 }
 
 # ----------------------------
@@ -131,17 +131,17 @@ get_status_code() {
 # ----------------------------
 # Compute the age in hours between two ISO 8601 timestamps
 # Args:
-#   $1 - ISO 8601 timestamp for "created_at" (e.g., "2025-01-01T10:00:00Z")
+#   $1 - ISO 8601 timestamp for "updated_at" (e.g., "2025-01-01T10:00:00Z")
 #   $2 - ISO 8601 timestamp for "now" (optional, defaults to current UTC time)
 # Returns:
 #   Age in hours (integer)
 # ----------------------------
 compute_age_hours() {
-	local created_at="$1"
+	local updated_at="$1"
 	local now="${2:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 
 	# Return -1 if any timestamp is empty
-	if [ -z "$created_at" ] || [ -z "$now" ]; then
+	if [ -z "$updated_at" ] || [ -z "$now" ]; then
 		echo -1
 		return
 	fi
@@ -149,7 +149,7 @@ compute_age_hours() {
 	local created_ts
 	local now_ts
 
-	created_ts=$(to_unix_ts "$created_at")
+	created_ts=$(to_unix_ts "$updated_at")
 	now_ts=$(to_unix_ts "$now")
 
 	echo $(((now_ts - created_ts) / 3600))
@@ -224,14 +224,14 @@ process_all_runs() {
 	# Use stdin redirection instead of a pipeline to avoid subshell issues
 	while read -r run; do
 		run_id=$(echo "$run" | jq -r '.id')
-		created_at=$(echo "$run" | jq -r '.created_at')
+		updated_at=$(echo "$run" | jq -r '.updated_at')
 
 		# skip invalid entries
-		if [ -z "$run_id" ] || [ -z "$created_at" ]; then
+		if [ -z "$run_id" ] || [ -z "$updated_at" ]; then
 			continue
 		fi
 
-		age_hours=$(compute_age_hours "$created_at")
+		age_hours=$(compute_age_hours "$updated_at")
 		echo "Run $run_id has been queued for $age_hours hours."
 
 		# process the run and track failures
