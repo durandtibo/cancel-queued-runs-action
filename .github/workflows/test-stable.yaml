@@ -11,7 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 2
     strategy:
       max-parallel: 8
       fail-fast: false
@@ -39,7 +39,7 @@ jobs:
 
   test-48h:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - name: Test action to cancel stale queued runs
         uses: durandtibo/cancel-queued-runs-action@v1.9
