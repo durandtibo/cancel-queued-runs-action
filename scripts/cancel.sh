@@ -104,7 +104,7 @@ force_cancel_run() {
 	local run_id="$1"
 
 	if [ -z "$run_id" ]; then
-		echo "❌ cancel_run error: run_id is empty" >&2
+		echo "❌ force_cancel_run error: run_id is empty" >&2
 		return 1
 	fi
 
@@ -163,8 +163,8 @@ compute_age_hours() {
 # 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + 3
 #    - Uses /cancel endpoint for recently queued runs
 # 2. Force cancel: age > MAX_AGE_HOURS + 3
-#    - Uses /force-cancel endpoint for very old runs
-#    - More aggressive approach needed for stuck runs
+#    - Tries /cancel first, then falls back to /force-cancel (which returns
+#      409 if no regular cancel was attempted) for very old, stuck runs
 #
 # Args:
 #   $1 - Run ID
@@ -190,7 +190,12 @@ process_run() {
 	# The 3-hour buffer ensures standard cancellation is tried first
 	if [ "$age_hours" -gt $((MAX_AGE_HOURS + 3)) ]; then
 		echo "Force-cancelling run $run_id (age=$age_hours)..."
-		response=$(force_cancel_run "$run_id")
+		# The force-cancel endpoint returns 409 unless a regular cancel was
+		# attempted first, so try the standard cancel and fall back to force.
+		response=$(cancel_run "$run_id")
+		if [ "$(get_status_code "$response")" != "202" ]; then
+			response=$(force_cancel_run "$run_id")
+		fi
 	elif [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
 		echo "Cancelling run $run_id (age=$age_hours)..."
 		response=$(cancel_run "$run_id")
@@ -220,6 +225,7 @@ process_run() {
 process_all_runs() {
 	local runs_stream="$1"
 	local failed=0
+	local run run_id updated_at age_hours
 
 	# Use stdin redirection instead of a pipeline to avoid subshell issues
 	while read -r run; do
@@ -253,6 +259,15 @@ process_all_runs() {
 # Main workflow logic
 # ----------------------------
 main() {
+	if ! [[ "$MAX_AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+		echo "❌ MAX_AGE_HOURS must be a positive integer (got '$MAX_AGE_HOURS')" >&2
+		return 1
+	fi
+	if [ -z "${REPO:-}" ]; then
+		echo "❌ REPO is required (owner/name)" >&2
+		return 1
+	fi
+
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 

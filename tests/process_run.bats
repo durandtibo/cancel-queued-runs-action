@@ -91,3 +91,14 @@ setup() {
     # Exit code should be 0 (success)
     [ "$status" -eq 0 ]
 }
+
+@test "process_run falls back to force cancel when regular cancel fails for old run" {
+    cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+    force_cancel_run() { echo -e "HTTP/2.0 202 Accepted\n\n{}"; }
+
+    run process_run "789" 24
+
+    [[ "$output" =~ "Force-cancelling run 789" ]]
+    [[ "$output" =~ "Status code: 202" ]]
+    [ "$status" -eq 0 ]
+}
