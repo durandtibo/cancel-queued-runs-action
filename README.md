@@ -77,11 +77,11 @@ jobs:
 
 ## 🛠 Inputs
 
-| Name            | Required | Default | Description                                                                   |
-| --------------- | -------- | ------- | ----------------------------------------------------------------------------- |
-| `github_token`  | ✅ Yes   | –       | Token with `actions:write` permissions, usually `${{ secrets.GITHUB_TOKEN }}` |
-| `repo`          | ✅ Yes   | –       | Repository in `owner/name` format                                             |
-| `max_age_hours` | ❌ No    | `24`    | Maximum number of hours a run is allowed to stay queued                       |
+| Name            | Required | Default                    | Description                                             |
+| --------------- | -------- | -------------------------- | ------------------------------------------------------- |
+| `github_token`  | ❌ No    | `${{ github.token }}`      | Token with `actions:write` permissions                  |
+| `repo`          | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                       |
+| `max_age_hours` | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued |
 
 ---
 

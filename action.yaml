@@ -13,12 +13,15 @@ branding:
 inputs:
   github_token:
     description: "GitHub token with actions:write permission."
-    required: true
+    default: ${{ github.token }}
+    required: false
 
   repo:
     description: >
       Target repository in owner/name format (e.g., 'octocat/hello-world').
-    required: true
+      Defaults to the repository running the workflow.
+    default: ${{ github.repository }}
+    required: false
 
   max_age_hours:
     description: >
