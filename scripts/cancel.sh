@@ -233,7 +233,7 @@ process_all_runs() {
 		updated_at=$(echo "$run" | jq -r '.updated_at')
 
 		# skip invalid entries
-		if [ -z "$run_id" ] || [ -z "$updated_at" ]; then
+		if [ -z "$run_id" ] || [ "$run_id" = "null" ] || [ -z "$updated_at" ] || [ "$updated_at" = "null" ]; then
 			continue
 		fi
 
