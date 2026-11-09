@@ -427,3 +427,58 @@ record_calls() {
 
   [[ "$output" =~ "Would force-cancel run 123" ]]
 }
+
+# --------------------------------------------------------
+# Outcome reported to the caller (PROCESS_RUN_OUTCOME)
+# --------------------------------------------------------
+# These tests call process_run without `run` so that the global is visible.
+
+@test "process_run sets the outcome to cancelled after a 202" {
+  process_run "123" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "cancelled" ]
+}
+
+@test "process_run sets the outcome to cancelled after a force-cancel 202" {
+  process_run "111" $((24 * 3600)) > /dev/null || true
+
+  [ "$PROCESS_RUN_OUTCOME" = "cancelled" ]
+}
+
+@test "process_run sets the outcome to failed after a 500" {
+  process_run "456" $((3 * 3600)) > /dev/null || true
+
+  [ "$PROCESS_RUN_OUTCOME" = "failed" ]
+}
+
+@test "process_run sets the outcome to skipped after a 409" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  process_run "123" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+}
+
+@test "process_run sets the outcome to would-cancel in dry run" {
+  export DRY_RUN=true
+
+  process_run "123" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "would-cancel" ]
+}
+
+@test "process_run sets the outcome to noop for a recent run" {
+  PROCESS_RUN_OUTCOME="stale"
+
+  process_run "123" $((1 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "noop" ]
+}
+
+@test "process_run sets the outcome to noop for an empty run id" {
+  PROCESS_RUN_OUTCOME="stale"
+
+  process_run "" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "noop" ]
+}

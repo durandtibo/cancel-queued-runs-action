@@ -90,3 +90,31 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   [[ "$output" =~ "REPO must be in owner/name format" ]]
   [ ! -s "$MOCK_GH_CALL_LOG" ]
 }
+
+@test "end-to-end: writes the outputs and the summary" {
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_OUTPUT"
+  : > "$GITHUB_STEP_SUMMARY"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -qx "found_count=2" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=1" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+  grep -qx "would_cancel_count=0" "$GITHUB_OUTPUT"
+  grep -q "Cancelled | 1 |" "$GITHUB_STEP_SUMMARY"
+}
+
+@test "end-to-end: dry run reports would_cancel_count and no cancelled run" {
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+  export DRY_RUN=true
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -qx "cancelled_count=0" "$GITHUB_OUTPUT"
+  grep -qx "would_cancel_count=1" "$GITHUB_OUTPUT"
+}
