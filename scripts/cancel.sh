@@ -86,6 +86,13 @@ LISTING_TRUNCATED=false
 # is set by throttle_requests, which must not be called in a subshell.
 REQUEST_SENT=false
 
+# Directory of the temporary files of an execution. It is created and removed
+# by the entry point (see create_work_dir and cleanup_work_dir), so that the
+# files are removed even when the script is stopped by a signal. When it is
+# empty (for example when the functions are sourced by tests), the temporary
+# files are created in TMPDIR and removed by the function that created them.
+WORK_DIR=""
+
 # Outcome of the last process_run call: one of
 #   noop, cancelled, skipped, would-cancel, failed
 PROCESS_RUN_OUTCOME=""
@@ -94,6 +101,50 @@ RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
 RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
 RUNS_LISTING_LIMIT="${RUNS_LISTING_LIMIT:-1000}"
 SUMMARY_MAX_RUNS="${SUMMARY_MAX_RUNS:-50}"
+
+# ----------------------------
+# Create the directory of the temporary files of an execution
+# Args:
+#   none
+# Globals:
+#   WORK_DIR - Set to the new directory (mode 700). It must not be called in a
+#              subshell such as $(...)
+# Returns:
+#   0 on success, mktemp's exit code otherwise
+# ----------------------------
+create_work_dir() {
+	WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cancel-queued-runs.XXXXXX") || return 1
+}
+
+# ----------------------------
+# Remove the directory of the temporary files, with its content
+# It is the EXIT trap of the entry point: it runs when the script ends, with
+# success, with a failure or because of a signal (SIGINT, SIGTERM, which is what
+# a cancelled or timed out job sends), and leaves nothing in TMPDIR. Nothing is
+# removed when WORK_DIR is empty or is not a directory.
+# Globals:
+#   WORK_DIR - Reset to an empty string
+# Returns:
+#   Always 0
+# ----------------------------
+cleanup_work_dir() {
+	if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+		rm -rf "$WORK_DIR"
+	fi
+	WORK_DIR=""
+}
+
+# ----------------------------
+# Create an empty temporary file
+# The file is created in WORK_DIR when it is set, in TMPDIR (/tmp by default)
+# otherwise. In the second case the caller must remove it.
+# Prints the path of the file on stdout.
+# Returns:
+#   0 on success, mktemp's exit code otherwise
+# ----------------------------
+make_temp_file() {
+	mktemp "${WORK_DIR:-${TMPDIR:-/tmp}}/cancel-queued-runs.XXXXXX"
+}
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -310,7 +361,7 @@ post_run_endpoint() {
 	local stderr_file
 	local response
 
-	stderr_file=$(mktemp "${TMPDIR:-/tmp}/cancel-queued-runs.XXXXXX")
+	stderr_file=$(make_temp_file)
 
 	response=$(
 		gh api \
@@ -1172,7 +1223,7 @@ main() {
 	# fetch_runs sets LISTING_TRUNCATED, so it cannot run in a subshell: its
 	# output goes through a file
 	LISTING_TRUNCATED=false
-	runs_file=$(mktemp "${TMPDIR:-/tmp}/cancel-queued-runs.XXXXXX")
+	runs_file=$(make_temp_file)
 
 	# The outputs are written even when the listing fails, so that the next
 	# steps do not read empty values
@@ -1216,5 +1267,7 @@ main() {
 # Entry point
 # ----------------------------
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	create_work_dir
+	trap cleanup_work_dir EXIT
 	main
 fi
