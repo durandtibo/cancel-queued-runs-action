@@ -348,6 +348,21 @@ permission, a wrong `repo` or `workflow`, a network error or a GitHub outage. Th
 **Solution**: Fix the cause reported by `gh`. No run is cancelled in this case, the step fails, and
 the [outputs](#-outputs) are all set to `0` so that the next steps do not read empty values.
 
+A transient error (a rate limit, a server error such as `HTTP 502`, or a network error) is retried
+before the step fails, see the next entry. An error that is not transient (`401`, `403` without a
+rate limit, `404`, ...) is not retried.
+
+### Log shows `::warning::Listing the runs with the status ... failed`
+
+**Cause**: The call that lists the runs failed with a transient error: a rate limit (`HTTP 429`, or
+`403` with a rate limit message), a server error (`HTTP 500`, `502`, `503`, `504`) or a network
+error (timeout, connection reset).
+
+**Solution**: Nothing to do if the next attempt succeeds. The call is retried up to 3 times, waiting
+5, 10 and 20 seconds. If the last attempt fails too, the warning says that the action gives up and
+the step fails with `::error::Cannot list the workflow runs of ...` (see above): run the action
+again later.
+
 ### Log shows `::error::Cannot parse the list of workflow runs of ...`
 
 **Cause**: The runs were listed but the list could not be read as JSON (for example a corrupted
@@ -475,8 +490,10 @@ processed, and the step exits with code `1` (unless `fail_on_error` is `false`).
   cancelled
 - **Single Repository**: Each action invocation targets one repository (use multiple steps or matrix
   strategies for multiple repos)
-- **API Rate Limits**: Subject to GitHub API rate limits. Use `cancel_delay_seconds` to space the
-  cancel requests when many runs are cancelled at once. A cancel request rejected because of a
+- **API Rate Limits**: Subject to GitHub API rate limits. The call that lists the runs is retried up
+  to 3 times (waiting 5, 10 and 20 seconds) when it fails with a transient error (a rate limit, an
+  `HTTP 500`, `502`, `503` or `504` error, or a network error). Use `cancel_delay_seconds` to space
+  the cancel requests when many runs are cancelled at once. A cancel request rejected because of a
   rate limit (HTTP `429`, or `403` with a rate limit header or message) is retried up to 3 times,
   waiting for the delay requested by GitHub (`Retry-After` or `X-RateLimit-Reset`) or, if there is
   none, 5, 10 and 20 seconds. A limit that requires waiting more than 60 seconds is not waited for:

@@ -30,12 +30,14 @@
 #
 # Internal tuning (not action inputs, integers in seconds/counts, validated by
 # validate_tuning_variables):
-#   MAX_RETRIES - Retries of a rate-limited cancel request (default: 3)
+#   MAX_RETRIES - Retries of a rate-limited cancel request, and of a call that
+#                 lists the runs and failed with a transient error (default: 3)
 #   RETRY_BASE_DELAY - First backoff delay in seconds, doubled at each retry
 #                      when GitHub gives no delay (default: 5)
 #   RETRY_MAX_DELAY - Longest delay we are willing to wait, in seconds; a
-#                     rate limit that requires waiting longer is not retried
-#                     (default: 60)
+#                     rate limit that requires waiting longer is not retried,
+#                     and the backoff between two listing attempts does not
+#                     exceed it (default: 60)
 #   RUNS_LISTING_LIMIT - Number of runs after which GitHub stops listing the
 #                        runs of a status (default: 1000, the documented limit
 #                        of the API); reaching it gives a warning
@@ -254,6 +256,102 @@ dedupe_runs() {
 }
 
 # ----------------------------
+# Tell whether the error message of a failed gh call is transient
+# A transient error is one that the same call can succeed after a while: a
+# rate limit (HTTP 429, or 403 that mentions a rate limit or an abuse
+# detection), a server error (HTTP 500, 502, 503 or 504) or a network error
+# (timeout, connection reset, unexpected EOF). Anything else (401, 403
+# without rate limit, 404, 422, ...) fails the same way every time.
+# Args:
+#   $1 - The message that gh wrote on stderr
+# Returns:
+#   0 if the error is transient, 1 otherwise (also for an empty message)
+# ----------------------------
+is_transient_error() {
+	local message="${1:-}"
+	local server_error='HTTP (429|50[0234])([^0-9]|$)'
+	local forbidden='HTTP 403([^0-9]|$)'
+
+	if [[ "$message" =~ $server_error ]]; then
+		return 0
+	fi
+
+	if [[ "$message" =~ $forbidden ]] &&
+		printf '%s\n' "$message" | grep -qiE 'rate limit|abuse|secondary'; then
+		return 0
+	fi
+
+	printf '%s\n' "$message" | grep -qiE 'timeout|timed out|connection reset|unexpected EOF|temporary failure'
+}
+
+# ----------------------------
+# List the runs that have a status, with all their pages
+# The call is retried when it fails with a transient error (see
+# is_transient_error), at most MAX_RETRIES times, after RETRY_BASE_DELAY
+# seconds doubled at each retry and never more than RETRY_MAX_DELAY. The
+# output is only printed once a call has succeeded, so a failure on a late page
+# does not print the first pages twice. The error of gh is forwarded on stderr:
+# a failure that is not transient is reported at once, the others once the
+# retries are used up.
+# Args:
+#   $1 - API path of the runs (with or without a workflow)
+#   $2 - Run status to list
+# Returns:
+#   0 on success, 1 when the call failed
+# ----------------------------
+list_runs_of_status() {
+	local runs_path="$1"
+	local run_status="$2"
+	local attempt=0
+	local stderr_file output message delay
+
+	stderr_file=$(make_temp_file) || return 1
+
+	while :; do
+		if output=$(
+			gh api \
+				-H "Accept: application/vnd.github+json" \
+				"$runs_path?status=$run_status&per_page=100" \
+				--paginate \
+				--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}' \
+				2>"$stderr_file"
+		); then
+			if [ -s "$stderr_file" ]; then
+				cat "$stderr_file" >&2
+			fi
+			rm -f "$stderr_file"
+			if [ -n "$output" ]; then
+				printf '%s\n' "$output"
+			fi
+			return 0
+		fi
+
+		message=$(tr '\n' ' ' <"$stderr_file")
+		attempt=$((attempt + 1))
+
+		if ! is_transient_error "$message"; then
+			break
+		fi
+
+		if [ "$attempt" -gt "$MAX_RETRIES" ]; then
+			echo "::warning::Listing the runs with the status '$run_status' failed with a transient error, giving up (max $MAX_RETRIES retries)" >&2
+			break
+		fi
+
+		delay=$(get_retry_delay "" "$attempt")
+		if [ "$delay" -gt "$RETRY_MAX_DELAY" ]; then
+			delay="$RETRY_MAX_DELAY"
+		fi
+		echo "::warning::Listing the runs with the status '$run_status' failed (${message}), retrying in ${delay}s (retry $attempt/$MAX_RETRIES)" >&2
+		sleep "$delay"
+	done
+
+	cat "$stderr_file" >&2
+	rm -f "$stderr_file"
+	return 1
+}
+
+# ----------------------------
 # Fetch the runs to consider from GitHub API
 # Uses pagination to handle repositories with many runs
 #
@@ -261,7 +359,8 @@ dedupe_runs() {
 # per-workflow endpoint (the filtering is done by GitHub).
 #
 # The API accepts a single status per request, so each status of STATUSES
-# (comma-separated, duplicates ignored) is listed with its own paginated call.
+# (comma-separated, duplicates ignored) is listed with its own paginated call
+# (see list_runs_of_status, which retries it after a transient error).
 #
 # Prints one JSON object per line with the fields:
 #   id        - workflow run ID
@@ -279,7 +378,7 @@ dedupe_runs() {
 # in a subshell such as $(...): redirect its output to a file instead.
 #
 # Returns:
-#   0 on success, 1 as soon as a listing call fails (the runs already printed
+#   0 on success, 1 as soon as a listing call fails for good (the runs already printed
 #   are incomplete then, so the caller must not use them). The check is
 #   explicit because "set -e" is ignored when the function is called in an
 #   "if" condition.
@@ -307,13 +406,7 @@ fetch_runs() {
 		fi
 		seen="$seen$run_status,"
 
-		listed=$(
-			gh api \
-				-H "Accept: application/vnd.github+json" \
-				"$runs_path?status=$run_status&per_page=100" \
-				--paginate \
-				--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}'
-		) || return 1
+		listed=$(list_runs_of_status "$runs_path" "$run_status") || return 1
 
 		if [ -n "$listed" ]; then
 			all="${all}${listed}"$'\n'
