@@ -155,13 +155,16 @@ The action uses a two-tier cancellation approach:
   - Graceful cancellation for recently queued runs
 
 - **Force Cancel**: For runs older than `max_age_hours + 3` hours
-  - Uses the `/force-cancel` endpoint
+  - Sends a standard `/cancel` request first: this is required because GitHub rejects
+    `/force-cancel` (HTTP `409`) for a run that never received a regular cancel request
+  - Falls back to the `/force-cancel` endpoint **only if** the standard request is not accepted
+    (anything other than HTTP `202`)
   - More aggressive approach necessary for very old, stuck runs
 
 **Example**: If `max_age_hours: 24`:
 
 - Runs queued more than 24 hours and up to 27 hours: Standard cancel
-- Runs queued more than 27 hours: Force cancel
+- Runs queued more than 27 hours: Standard cancel first, then force cancel if it was not accepted
 
 Ages are compared with a one-second precision, so a run queued for 24 hours and 30 minutes is
 already eligible for cancellation.
