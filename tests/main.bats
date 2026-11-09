@@ -545,7 +545,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer (got '-1')" ]]
+  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer (got '-1')" ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 

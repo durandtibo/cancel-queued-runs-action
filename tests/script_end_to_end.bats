@@ -235,7 +235,7 @@ JSON
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer" ]]
+  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer" ]] || false
   [ "$(posts)" -eq 0 ]
 }
 
