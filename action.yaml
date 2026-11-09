@@ -32,6 +32,13 @@ inputs:
     default: "24"
     required: false
 
+  dry_run:
+    description: >
+      If "true", only log the runs that would be cancelled, without cancelling anything.
+      Must be "true" or "false".
+    default: "false"
+    required: false
+
 runs:
   using: "composite"
   steps:
@@ -42,3 +49,4 @@ runs:
         GH_TOKEN: ${{ inputs.github_token }}
         REPO: ${{ inputs.repo }}
         MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
+        DRY_RUN: ${{ inputs.dry_run }}

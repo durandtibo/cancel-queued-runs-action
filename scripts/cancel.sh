@@ -10,6 +10,8 @@
 #              GITHUB_TOKEN is set or gh is logged in with "gh auth login")
 #   REPO - Repository in owner/name format (required)
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
+#   DRY_RUN - "true" to only log the runs that would be cancelled, without
+#             calling the cancel endpoints; "false" otherwise (default: false)
 #
 # Internal tuning (not action inputs, positive integers in seconds/counts):
 #   MAX_RETRIES - Retries of a rate-limited cancel request (default: 3)
@@ -27,6 +29,7 @@
 set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
+DRY_RUN="${DRY_RUN:-false}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
 RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
@@ -360,11 +363,15 @@ format_age() {
 # completed between the listing and the cancel request. It is reported as a
 # warning and is not a failure.
 #
+# When DRY_RUN is "true", the run that would be cancelled is only logged and
+# no request is sent.
+#
 # Args:
 #   $1 - Run ID
 #   $2 - Age in seconds
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
+#   DRY_RUN - "true" to log without cancelling
 # Returns:
 #   0 on success or if the run is no longer cancellable, 1 on failure
 # ----------------------------
@@ -387,6 +394,10 @@ process_run() {
 	# Force-cancel runs older than MAX_AGE_HOURS + 3 hours
 	# The 3-hour buffer ensures standard cancellation is tried first
 	if [ "$age_seconds" -gt "$force_age_seconds" ]; then
+		if [ "$DRY_RUN" = "true" ]; then
+			echo "🧪 [dry-run] Would force-cancel run $run_id (age=$age)"
+			return 0
+		fi
 		echo "Force-cancelling run $run_id (age=$age)..."
 		# The force-cancel endpoint returns 409 unless a regular cancel was
 		# attempted first, so try the standard cancel and fall back to force.
@@ -395,6 +406,10 @@ process_run() {
 			response=$(force_cancel_run "$run_id")
 		fi
 	elif [ "$age_seconds" -gt "$max_age_seconds" ]; then
+		if [ "$DRY_RUN" = "true" ]; then
+			echo "🧪 [dry-run] Would cancel run $run_id (age=$age)"
+			return 0
+		fi
 		echo "Cancelling run $run_id (age=$age)..."
 		response=$(cancel_run "$run_id")
 	else
@@ -492,6 +507,22 @@ validate_max_age_hours() {
 }
 
 # ----------------------------
+# Validate the dry run flag
+# Args:
+#   $1 - "true" or "false"
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_dry_run() {
+	local dry_run="${1:-}"
+
+	if [ "$dry_run" != "true" ] && [ "$dry_run" != "false" ]; then
+		echo "::error::DRY_RUN must be 'true' or 'false' (got '$dry_run')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
 # Validate the target repository
 # The value is used to build API paths, so only the characters allowed in
 # GitHub owner and repository names are accepted and "." / ".." are rejected.
@@ -540,9 +571,13 @@ validate_auth() {
 main() {
 	validate_max_age_hours "$MAX_AGE_HOURS" || return 1
 	validate_repo "${REPO:-}" || return 1
+	validate_dry_run "$DRY_RUN" || return 1
 	validate_auth || return 1
 
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
+	if [ "$DRY_RUN" = "true" ]; then
+		echo "🧪 Dry run enabled: no run will be cancelled."
+	fi
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 
 	runs=$(fetch_runs)
