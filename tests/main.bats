@@ -582,7 +582,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "FAIL_ON_ERROR must be 'true' or 'false' (got 'sometimes')" ]]
+  [[ "$output" =~ "FAIL_ON_ERROR must be 'true' or 'false' (got 'sometimes')" ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -611,7 +611,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "::warning::" ]]
+  [[ "$output" =~ "::warning::" ]] || false
   [[ "$output" =~ "fail_on_error is false" ]]
 }
 

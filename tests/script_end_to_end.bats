@@ -266,6 +266,6 @@ JSON
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "FAIL_ON_ERROR must be 'true' or 'false'" ]]
+  [[ "$output" =~ "FAIL_ON_ERROR must be 'true' or 'false'" ]] || false
   [ "$(posts)" -eq 0 ]
 }
