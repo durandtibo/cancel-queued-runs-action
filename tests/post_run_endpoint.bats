@@ -119,7 +119,7 @@ teardown() {
 
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
 
-  [[ "$err" == *"::warning::gh api (cancel) failed for run 12345"* ]]
+  [[ "$err" == *"::warning::gh api (cancel) failed for run 12345"* ]] || false
   [[ "$err" == *"HTTP 403"* ]]
 }
 
