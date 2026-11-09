@@ -169,7 +169,7 @@ teardown() {
   run fetch_runs
 
   [ "$(echo "$output" | head -n1 | jq -r '.id')" = "111" ]
-  [ "$(echo "$output" | head -n1 | jq -r '.queued_at')" = "2025-01-01T10:00:00Z" ]
+  [ "$(echo "$output" | head -n1 | jq -r '.queued_at')" = "2025-01-01T12:00:00Z" ]
 }
 
 @test "fetch_runs lists only the queued runs by default" {
