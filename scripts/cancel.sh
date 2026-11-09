@@ -11,7 +11,7 @@
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
 #
 # Exit Codes:
-#   0 - Success (all eligible runs cancelled)
+#   0 - Success (all eligible runs cancelled, or no longer cancellable)
 #   1 - One or more cancellations failed
 #
 
@@ -238,13 +238,18 @@ format_age() {
 #    - Tries /cancel first, then falls back to /force-cancel (which returns
 #      409 if no regular cancel was attempted) for very old, stuck runs
 #
+# A final HTTP 404 (run not found) or 409 (run cannot be cancelled) means that
+# the run is gone or already finished, typically because it started or
+# completed between the listing and the cancel request. It is reported as a
+# warning and is not a failure.
+#
 # Args:
 #   $1 - Run ID
 #   $2 - Age in seconds
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
 # Returns:
-#   0 on success, 1 on failure (via exit code)
+#   0 on success or if the run is no longer cancellable, 1 on failure
 # ----------------------------
 process_run() {
 	local run_id="$1"
@@ -281,6 +286,12 @@ process_run() {
 	fi
 
 	status_code=$(get_status_code "$response")
+
+	if [ "$status_code" = "404" ] || [ "$status_code" = "409" ]; then
+		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code): it is no longer queued or cannot be cancelled, skipping."
+		return 0
+	fi
+
 	log_status "$status_code" "$run_id"
 
 	if [ "$status_code" != "202" ]; then
