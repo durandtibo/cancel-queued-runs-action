@@ -55,7 +55,7 @@ teardown() {
   run validate_auth
 
   [ "$status" -eq 0 ]
-  [[ "$(cat "$MOCK_GH_CALL_LOG")" =~ "auth status" ]]
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" =~ "auth status" ]] || false
 }
 
 @test "validate_auth fails without a token when gh is not logged in" {
@@ -64,7 +64,7 @@ teardown() {
   run validate_auth
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::No GitHub credentials found" ]]
+  [[ "$output" =~ "::error::No GitHub credentials found" ]] || false
 }
 
 @test "validate_auth fails when GH_TOKEN is empty and gh is not logged in" {
@@ -74,5 +74,5 @@ teardown() {
   run validate_auth
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "No GitHub credentials found" ]]
+  [[ "$output" =~ "No GitHub credentials found" ]] || false
 }

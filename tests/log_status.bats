@@ -15,7 +15,7 @@ setup() {
   [ "$status" -eq 0 ]
 
   # Output contains the accepted message
-  [[ "$output" == "✅ Status code: 202 - Cancellation request accepted for run 12345" ]]
+  [[ "$output" == "✅ Status code: 202 - Cancellation request accepted for run 12345" ]] || false
 }
 
 #----------------------------
@@ -25,7 +25,7 @@ setup() {
   run log_status 500 67890
 
   [ "$status" -eq 0 ]
-  [[ "$output" == "❌ Status code: 500 - Internal error for run 67890" ]]
+  [[ "$output" == "❌ Status code: 500 - Internal error for run 67890" ]] || false
 }
 
 #----------------------------
@@ -35,7 +35,7 @@ setup() {
   run log_status 404 99999
 
   [ "$status" -eq 0 ]
-  [[ "$output" == "❌ Status code: 404 for run 99999" ]]
+  [[ "$output" == "❌ Status code: 404 for run 99999" ]] || false
 }
 
 #----------------------------
@@ -45,7 +45,7 @@ setup() {
   run log_status "" 55555
 
   [ "$status" -eq 0 ]
-  [[ "$output" == "❌ No HTTP response (the gh API call failed) for run 55555" ]]
+  [[ "$output" == "❌ No HTTP response (the gh API call failed) for run 55555" ]] || false
 }
 
 #----------------------------
@@ -55,5 +55,5 @@ setup() {
   run log_status 202 ""
 
   [ "$status" -eq 0 ]
-  [[ "$output" == "✅ Status code: 202 - Cancellation request accepted for run " ]]
+  [[ "$output" == "✅ Status code: 202 - Cancellation request accepted for run " ]] || false
 }

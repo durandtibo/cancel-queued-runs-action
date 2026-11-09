@@ -18,13 +18,13 @@ setup() {
 @test "validate_dry_run rejects an empty value" {
   run validate_dry_run ""
   [ "$status" -eq 1 ]
-  [[ "$output" == "::error::DRY_RUN must be 'true' or 'false' (got '')" ]]
+  [[ "$output" == "::error::DRY_RUN must be 'true' or 'false' (got '')" ]] || false
 }
 
 @test "validate_dry_run rejects yes" {
   run validate_dry_run yes
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "(got 'yes')" ]]
+  [[ "$output" =~ "(got 'yes')" ]] || false
 }
 
 @test "validate_dry_run rejects 1" {

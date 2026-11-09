@@ -14,7 +14,7 @@ setup() {
   run warn_if_listing_truncated queued 1000
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "::warning::1000 runs were listed for the status 'queued'" ]]
+  [[ "$output" =~ "::warning::1000 runs were listed for the status 'queued'" ]] || false
 }
 
 @test "warn_if_listing_truncated warns when the limit is exceeded" {
@@ -22,7 +22,7 @@ setup() {
 
   run warn_if_listing_truncated waiting 1200
 
-  [[ "$output" =~ "::warning::1200 runs were listed for the status 'waiting'" ]]
+  [[ "$output" =~ "::warning::1200 runs were listed for the status 'waiting'" ]] || false
 }
 
 @test "warn_if_listing_truncated does not warn just below the limit" {
@@ -47,7 +47,7 @@ setup() {
 
   run warn_if_listing_truncated queued 5
 
-  [[ "$output" =~ "::warning::" ]]
+  [[ "$output" =~ "::warning::" ]] || false
 }
 
 @test "warn_if_listing_truncated writes the warning on stderr only" {
@@ -63,7 +63,7 @@ setup() {
 
   run warn_if_listing_truncated queued 3
 
-  [[ "$output" =~ "Run the action again" ]]
+  [[ "$output" =~ "Run the action again" ]] || false
 }
 
 @test "warn_if_listing_truncated is not truncated by default" {

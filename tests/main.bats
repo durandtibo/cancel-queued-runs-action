@@ -43,7 +43,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer (got 'abc')" ]]
+  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer (got 'abc')" ]] || false
 }
 
 @test "main fails when MAX_AGE_HOURS is zero" {
@@ -52,7 +52,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
+  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]] || false
 }
 
 @test "main fails when MAX_AGE_HOURS is negative" {
@@ -61,7 +61,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
+  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]] || false
 }
 
 @test "main fails when MAX_AGE_HOURS is not an integer" {
@@ -70,7 +70,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
+  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]] || false
 }
 
 @test "main fails when MAX_AGE_HOURS has a leading zero" {
@@ -79,7 +79,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]]
+  [[ "$output" =~ "MAX_AGE_HOURS must be a positive integer" ]] || false
 }
 
 @test "main fails when REPO is empty" {
@@ -88,7 +88,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "REPO is required" ]]
+  [[ "$output" =~ "REPO is required" ]] || false
 }
 
 @test "main fails when REPO is unset" {
@@ -97,7 +97,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "REPO is required" ]]
+  [[ "$output" =~ "REPO is required" ]] || false
 }
 
 @test "main fails when REPO is not in owner/name format" {
@@ -106,7 +106,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "REPO must be in owner/name format (got 'not-a-repo')" ]]
+  [[ "$output" =~ "REPO must be in owner/name format (got 'not-a-repo')" ]] || false
 }
 
 @test "main fails when REPO contains path traversal" {
@@ -115,7 +115,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "REPO must be in owner/name format" ]]
+  [[ "$output" =~ "REPO must be in owner/name format" ]] || false
 }
 
 @test "main fails when there are no credentials" {
@@ -125,7 +125,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "No GitHub credentials found" ]]
+  [[ "$output" =~ "No GitHub credentials found" ]] || false
 }
 
 @test "main fails when GH_TOKEN is empty and gh is not logged in" {
@@ -136,7 +136,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "No GitHub credentials found" ]]
+  [[ "$output" =~ "No GitHub credentials found" ]] || false
 }
 
 @test "main reports validation errors as ::error:: annotations" {
@@ -144,7 +144,7 @@ teardown() {
 
   run main
 
-  [[ "$output" =~ ^::error:: ]]
+  [[ "$output" =~ ^::error:: ]] || false
 }
 
 @test "main fails when an internal tuning variable is invalid" {
@@ -184,8 +184,8 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Configured max age: 24 hours" ]]
-  [[ "$output" =~ "stale workflow runs for myorg/myrepo" ]]
+  [[ "$output" =~ "Configured max age: 24 hours" ]] || false
+  [[ "$output" =~ "stale workflow runs for myorg/myrepo" ]] || false
 }
 
 @test "main succeeds without processing anything when there are no queued runs" {
@@ -194,8 +194,8 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Found 0 workflow run(s)." ]]
-  [[ "$output" =~ "No workflow runs found." ]]
+  [[ "$output" =~ "Found 0 workflow run(s)." ]] || false
+  [[ "$output" =~ "No workflow runs found." ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -203,7 +203,7 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Found 2 workflow run(s)." ]]
+  [[ "$output" =~ "Found 2 workflow run(s)." ]] || false
 }
 
 @test "main passes the fetched runs to process_all_runs" {
@@ -219,7 +219,7 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "All eligible runs processed successfully." ]]
+  [[ "$output" =~ "All eligible runs processed successfully." ]] || false
 }
 
 @test "main fails when process_all_runs reports a failure" {
@@ -228,7 +228,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ ! "$output" =~ "All eligible runs processed successfully." ]]
+  [[ ! "$output" =~ "All eligible runs processed successfully." ]] || false
 }
 
 @test "main accepts a MAX_AGE_HOURS value of 1" {
@@ -237,7 +237,7 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Configured max age: 1 hours" ]]
+  [[ "$output" =~ "Configured max age: 1 hours" ]] || false
 }
 
 # --------------------------------------------------------
@@ -250,7 +250,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "DRY_RUN must be 'true' or 'false' (got 'maybe')" ]]
+  [[ "$output" =~ "DRY_RUN must be 'true' or 'false' (got 'maybe')" ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -260,7 +260,7 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Dry run enabled: no run will be cancelled." ]]
+  [[ "$output" =~ "Dry run enabled: no run will be cancelled." ]] || false
 }
 
 @test "main still processes the runs in dry run" {
@@ -275,7 +275,7 @@ teardown() {
 @test "main does not announce a dry run by default" {
   run main
 
-  [[ ! "$output" =~ "Dry run" ]]
+  [[ ! "$output" =~ "Dry run" ]] || false
 }
 
 # --------------------------------------------------------
@@ -288,7 +288,7 @@ teardown() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "FORCE_BUFFER_HOURS must be a non-negative integer (got '-2')" ]]
+  [[ "$output" =~ "FORCE_BUFFER_HOURS must be a non-negative integer (got '-2')" ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -395,7 +395,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "WORKFLOW must be a workflow file name" ]]
+  [[ "$output" =~ "WORKFLOW must be a workflow file name" ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -405,13 +405,13 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]]
+  [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]] || false
 }
 
 @test "main does not mention a workflow without filter" {
   run main
 
-  [[ ! "$output" =~ "Only the runs of the workflow" ]]
+  [[ ! "$output" =~ "Only the runs of the workflow" ]] || false
 }
 
 # --------------------------------------------------------
@@ -424,7 +424,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "unsupported status 'in_progress'" ]]
+  [[ "$output" =~ "unsupported status 'in_progress'" ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -434,7 +434,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "STATUSES must not be empty" ]]
+  [[ "$output" =~ "STATUSES must not be empty" ]] || false
 }
 
 @test "main announces the statuses when they are not only queued" {
@@ -443,13 +443,13 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Run statuses considered: queued,waiting" ]]
+  [[ "$output" =~ "Run statuses considered: queued,waiting" ]] || false
 }
 
 @test "main does not mention the statuses by default" {
   run main
 
-  [[ ! "$output" =~ "Run statuses considered" ]]
+  [[ ! "$output" =~ "Run statuses considered" ]] || false
 }
 
 # --------------------------------------------------------
@@ -462,7 +462,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::Cannot list the workflow runs of myorg/myrepo" ]]
+  [[ "$output" =~ "::error::Cannot list the workflow runs of myorg/myrepo" ]] || false
 }
 
 @test "main does not process any run when the runs cannot be listed" {
@@ -472,7 +472,7 @@ setup_outputs() {
 
   [ "$status" -eq 1 ]
   [ ! -s "$LOG_FILE" ]
-  [[ ! "$output" =~ "Found" ]]
+  [[ ! "$output" =~ "Found" ]] || false
 }
 
 @test "main writes zero outputs when the runs cannot be listed" {
@@ -511,7 +511,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "Required command(s) not found: jq" ]]
+  [[ "$output" =~ "Required command(s) not found: jq" ]] || false
 }
 
 @test "main checks the required commands before anything else" {
@@ -690,13 +690,13 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Waiting 2s between two cancel requests." ]]
+  [[ "$output" =~ "Waiting 2s between two cancel requests." ]] || false
 }
 
 @test "main does not mention the delay by default" {
   run main
 
-  [[ ! "$output" =~ "Waiting" ]]
+  [[ ! "$output" =~ "Waiting" ]] || false
 }
 
 # --------------------------------------------------------
@@ -728,7 +728,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 1 ]
-  [[ ! "$output" =~ "fail_on_error is false" ]]
+  [[ ! "$output" =~ "fail_on_error is false" ]] || false
 }
 
 @test "main succeeds with a warning when a run could not be cancelled and FAIL_ON_ERROR is false" {
@@ -739,7 +739,7 @@ setup_outputs() {
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "::warning::" ]] || false
-  [[ "$output" =~ "fail_on_error is false" ]]
+  [[ "$output" =~ "fail_on_error is false" ]] || false
 }
 
 @test "main does not say that all the runs succeeded when FAIL_ON_ERROR is false and a run failed" {
@@ -748,7 +748,7 @@ setup_outputs() {
 
   run main
 
-  [[ ! "$output" =~ "All eligible runs processed successfully." ]]
+  [[ ! "$output" =~ "All eligible runs processed successfully." ]] || false
 }
 
 @test "main still writes the failed count when FAIL_ON_ERROR is false" {
@@ -803,7 +803,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "All eligible runs processed successfully." ]]
+  [[ "$output" =~ "All eligible runs processed successfully." ]] || false
 }
 
 @test "main writes the statuses considered in the summary" {
@@ -826,7 +826,7 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ ! "$output" =~ [Qq]ueued ]]
+  [[ ! "$output" =~ [Qq]ueued ]] || false
 }
 
 @test "main does not say queued when no run is found for other statuses" {
@@ -837,7 +837,7 @@ setup_outputs() {
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "No workflow runs found." ]] || false
-  [[ ! "$output" =~ [Qq]ueued ]]
+  [[ ! "$output" =~ [Qq]ueued ]] || false
 }
 
 # --------------------------------------------------------

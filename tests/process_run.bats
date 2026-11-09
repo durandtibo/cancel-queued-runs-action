@@ -42,8 +42,8 @@ record_calls() {
     run process_run "123" $((3 * 3600))
 
     # Check output contains cancellation info and log_status
-    [[ "$output" =~ "Cancelling run 123" ]]
-    [[ "$output" =~ "Status code: 202" ]]
+    [[ "$output" =~ "Cancelling run 123" ]] || false
+    [[ "$output" =~ "Status code: 202" ]] || false
 
     # Exit code should be 0 (success)
     [ "$status" -eq 0 ]
@@ -52,9 +52,9 @@ record_calls() {
 @test "process_run returns failure exit code for 500 response" {
     run process_run "456" $((4 * 3600))
 
-    [[ "$output" =~ "Cancelling run 456" ]]
-    [[ "$output" =~ "Status code: 500" ]]
-    [[ "$output" =~ "Cancellation failed for run 456" ]]
+    [[ "$output" =~ "Cancelling run 456" ]] || false
+    [[ "$output" =~ "Status code: 500" ]] || false
+    [[ "$output" =~ "Cancellation failed for run 456" ]] || false
 
     # Exit code should be 1 (failure)
     [ "$status" -eq 1 ]
@@ -64,8 +64,8 @@ record_calls() {
     run process_run "111" $((24 * 3600))
 
     # Check output contains cancellation info and log_status
-    [[ "$output" =~ "Force-cancelling run 111" ]]
-    [[ "$output" =~ "Status code: 202" ]]
+    [[ "$output" =~ "Force-cancelling run 111" ]] || false
+    [[ "$output" =~ "Status code: 202" ]] || false
 
     # Exit code should be 0 (success)
     [ "$status" -eq 0 ]
@@ -98,8 +98,8 @@ record_calls() {
     run process_run "999" $((1 * 3600))
 
     # Check output contains cancellation info
-    [[ "$output" =~ "Cancelling run 999" ]]
-    [[ "$output" =~ "Status code: 202" ]]
+    [[ "$output" =~ "Cancelling run 999" ]] || false
+    [[ "$output" =~ "Status code: 202" ]] || false
 
     # Exit code should be 0 (success)
     [ "$status" -eq 0 ]
@@ -111,8 +111,8 @@ record_calls() {
 
     run process_run "789" $((24 * 3600))
 
-    [[ "$output" =~ "Force-cancelling run 789" ]]
-    [[ "$output" =~ "Status code: 202" ]]
+    [[ "$output" =~ "Force-cancelling run 789" ]] || false
+    [[ "$output" =~ "Status code: 202" ]] || false
     [ "$status" -eq 0 ]
 }
 
@@ -130,23 +130,23 @@ record_calls() {
 @test "process_run uses standard cancel when the age is MAX_AGE_HOURS + 1 hour" {
   run process_run "123" $((3 * 3600))
 
-  [[ "$output" =~ "Cancelling run 123" ]]
-  [[ ! "$output" =~ "Force-cancelling" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
+  [[ ! "$output" =~ "Force-cancelling" ]] || false
   [ "$status" -eq 0 ]
 }
 
 @test "process_run uses standard cancel when the age equals MAX_AGE_HOURS + 3 hours" {
   run process_run "123" $((5 * 3600))
 
-  [[ "$output" =~ "Cancelling run 123" ]]
-  [[ ! "$output" =~ "Force-cancelling" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
+  [[ ! "$output" =~ "Force-cancelling" ]] || false
   [ "$status" -eq 0 ]
 }
 
 @test "process_run uses force cancel when the age is MAX_AGE_HOURS + 4 hours" {
   run process_run "123" $((6 * 3600))
 
-  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [[ "$output" =~ "Force-cancelling run 123" ]] || false
   [ "$status" -eq 0 ]
 }
 
@@ -155,17 +155,17 @@ record_calls() {
 
   run process_run "123" $((24 * 3600))
 
-  [[ "$output" =~ "Force-cancelling run 123" ]]
-  [[ ! "$output" =~ "force_cancel_run called" ]]
+  [[ "$output" =~ "Force-cancelling run 123" ]] || false
+  [[ ! "$output" =~ "force_cancel_run called" ]] || false
   [ "$status" -eq 0 ]
 }
 
 @test "process_run fails when both regular and force cancel fail for old run" {
   run process_run "456" $((24 * 3600))
 
-  [[ "$output" =~ "Force-cancelling run 456" ]]
-  [[ "$output" =~ "Status code: 500" ]]
-  [[ "$output" =~ "Cancellation failed for run 456" ]]
+  [[ "$output" =~ "Force-cancelling run 456" ]] || false
+  [[ "$output" =~ "Status code: 500" ]] || false
+  [[ "$output" =~ "Cancellation failed for run 456" ]] || false
   [ "$status" -eq 1 ]
 }
 
@@ -183,36 +183,36 @@ record_calls() {
 @test "process_run cancels a run that is one second older than MAX_AGE_HOURS" {
   run process_run "123" 7201
 
-  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
   [ "$status" -eq 0 ]
 }
 
 @test "process_run cancels a run that is 30 minutes older than MAX_AGE_HOURS" {
   run process_run "123" $((2 * 3600 + 1800))
 
-  [[ "$output" =~ "Cancelling run 123 (age=2h30m)" ]]
+  [[ "$output" =~ "Cancelling run 123 (age=2h30m)" ]] || false
   [ "$status" -eq 0 ]
 }
 
 @test "process_run uses standard cancel when the age is exactly MAX_AGE_HOURS + 3 hours in seconds" {
   run process_run "123" 18000
 
-  [[ "$output" =~ "Cancelling run 123" ]]
-  [[ ! "$output" =~ "Force-cancelling" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
+  [[ ! "$output" =~ "Force-cancelling" ]] || false
   [ "$status" -eq 0 ]
 }
 
 @test "process_run uses force cancel when the age is one second over MAX_AGE_HOURS + 3 hours" {
   run process_run "123" 18001
 
-  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [[ "$output" =~ "Force-cancelling run 123" ]] || false
   [ "$status" -eq 0 ]
 }
 
 @test "process_run shows the age in hours and minutes" {
   run process_run "123" $((24 * 3600 + 59 * 60))
 
-  [[ "$output" =~ "(age=24h59m)" ]]
+  [[ "$output" =~ "(age=24h59m)" ]] || false
 }
 
 # --------------------------------------------------------
@@ -224,8 +224,8 @@ record_calls() {
 
   run process_run "123" $((3 * 3600))
 
-  [[ "$output" =~ "No HTTP response (the gh API call failed) for run 123" ]]
-  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [[ "$output" =~ "No HTTP response (the gh API call failed) for run 123" ]] || false
+  [[ "$output" =~ "Cancellation failed for run 123" ]] || false
   [ "$status" -eq 1 ]
 }
 
@@ -238,8 +238,8 @@ record_calls() {
 
   run process_run "123" $((3 * 3600))
 
-  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]]
-  [[ ! "$output" =~ "Cancellation failed" ]]
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]] || false
+  [[ ! "$output" =~ "Cancellation failed" ]] || false
   [ "$status" -eq 0 ]
 }
 
@@ -248,8 +248,8 @@ record_calls() {
 
   run process_run "123" $((3 * 3600))
 
-  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]]
-  [[ ! "$output" =~ "Cancellation failed" ]]
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]] || false
+  [[ ! "$output" =~ "Cancellation failed" ]] || false
   [ "$status" -eq 0 ]
 }
 
@@ -259,8 +259,8 @@ record_calls() {
 
   run process_run "123" $((24 * 3600))
 
-  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]]
-  [[ ! "$output" =~ "Cancellation failed" ]]
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]] || false
+  [[ ! "$output" =~ "Cancellation failed" ]] || false
   [ "$status" -eq 0 ]
 }
 
@@ -270,7 +270,7 @@ record_calls() {
 
   run process_run "123" $((24 * 3600))
 
-  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]]
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]] || false
   [ "$status" -eq 0 ]
 }
 
@@ -316,7 +316,7 @@ record_calls() {
 
   run process_run "123" $((3 * 3600))
 
-  [[ ! "$output" =~ "Cancellation request accepted" ]]
+  [[ ! "$output" =~ "Cancellation request accepted" ]] || false
 }
 
 @test "process_run still fails when the cancel request returns 403" {
@@ -324,8 +324,8 @@ record_calls() {
 
   run process_run "123" $((3 * 3600))
 
-  [[ "$output" =~ "Status code: 403" ]]
-  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [[ "$output" =~ "Status code: 403" ]] || false
+  [[ "$output" =~ "Cancellation failed for run 123" ]] || false
   [ "$status" -eq 1 ]
 }
 
@@ -334,7 +334,7 @@ record_calls() {
 
   run process_run "123" $((3 * 3600))
 
-  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [[ "$output" =~ "Cancellation failed for run 123" ]] || false
   [ "$status" -eq 1 ]
 }
 
@@ -349,7 +349,7 @@ record_calls() {
   run process_run "123" $((3 * 3600))
 
   [ "$status" -eq 0 ]
-  [[ "$output" == "🧪 [dry-run] Would cancel run 123 (age=3h00m)" ]]
+  [[ "$output" == "🧪 [dry-run] Would cancel run 123 (age=3h00m)" ]] || false
   [ ! -s "$CALL_LOG" ]
 }
 
@@ -360,7 +360,7 @@ record_calls() {
   run process_run "123" $((24 * 3600))
 
   [ "$status" -eq 0 ]
-  [[ "$output" == "🧪 [dry-run] Would force-cancel run 123 (age=24h00m)" ]]
+  [[ "$output" == "🧪 [dry-run] Would force-cancel run 123 (age=24h00m)" ]] || false
   [ ! -s "$CALL_LOG" ]
 }
 
@@ -381,7 +381,7 @@ record_calls() {
   run process_run "456" $((3 * 3600))
 
   [ "$status" -eq 0 ]
-  [[ ! "$output" =~ "Cancellation failed" ]]
+  [[ ! "$output" =~ "Cancellation failed" ]] || false
 }
 
 @test "process_run cancels for real when DRY_RUN is false" {
@@ -391,7 +391,7 @@ record_calls() {
   run process_run "123" $((3 * 3600))
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
   [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
 }
 
@@ -402,7 +402,7 @@ record_calls() {
 
   run process_run "123" $((3 * 3600))
 
-  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
   [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
 }
 
@@ -416,10 +416,10 @@ record_calls() {
   cancel_run() { echo "HTTP/2.0 202 Accepted"; }
 
   run process_run "123" $((5 * 3600))
-  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
 
   run process_run "123" $((5 * 3600 + 1))
-  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [[ "$output" =~ "Force-cancelling run 123" ]] || false
 }
 
 @test "process_run force-cancels as soon as the age exceeds MAX_AGE_HOURS when the buffer is 0" {
@@ -427,7 +427,7 @@ record_calls() {
 
   run process_run "123" $((2 * 3600 + 1))
 
-  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [[ "$output" =~ "Force-cancelling run 123" ]] || false
   [ "$status" -eq 0 ]
 }
 
@@ -444,8 +444,8 @@ record_calls() {
 
   run process_run "123" $((12 * 3600))
 
-  [[ "$output" =~ "Cancelling run 123" ]]
-  [[ ! "$output" =~ "Force-cancelling" ]]
+  [[ "$output" =~ "Cancelling run 123" ]] || false
+  [[ ! "$output" =~ "Force-cancelling" ]] || false
 }
 
 @test "process_run force-cancels just after MAX_AGE_HOURS + buffer when the buffer is 10" {
@@ -453,7 +453,7 @@ record_calls() {
 
   run process_run "123" $((12 * 3600 + 1))
 
-  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [[ "$output" =~ "Force-cancelling run 123" ]] || false
 }
 
 @test "process_run dry run honours the force-cancel buffer" {
@@ -462,7 +462,7 @@ record_calls() {
 
   run process_run "123" $((3 * 3600 + 1))
 
-  [[ "$output" =~ "Would force-cancel run 123" ]]
+  [[ "$output" =~ "Would force-cancel run 123" ]] || false
 }
 
 # --------------------------------------------------------
@@ -631,7 +631,7 @@ record_sleeps() {
 
   [ "$status" -eq 0 ]
   [[ ! "$output" =~ "no longer queued" ]] || false
-  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409): it no longer exists or cannot be cancelled anymore" ]]
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409): it no longer exists or cannot be cancelled anymore" ]] || false
 }
 
 @test "process_run does not wait for a force-cancel request that is not sent after a 404" {

@@ -1,5 +1,6 @@
 # Formatting and linting workflow.
-# Checks the Markdown, shell and YAML files of the repository.
+# Checks the Markdown, shell and YAML files of the repository, and the assertions of
+# the bats tests.
 
 name: Format
 on:
@@ -33,3 +34,7 @@ jobs:
       - name: Lint YAML files
         run: |
           make lint-yaml
+
+      - name: Check the bats assertions
+        run: |
+          make lint-bats

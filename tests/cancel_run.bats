@@ -80,11 +80,11 @@ teardown() {
   # Check that the gh call was logged
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
 
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]]
-  [[ "$log_contents" =~ "-X" ]]
-  [[ "$log_contents" =~ "POST" ]]
-  [[ "$log_contents" =~ "-H" ]]
-  [[ "$log_contents" =~ "Accept: application/vnd.github+json" ]]
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]] || false
+  [[ "$log_contents" =~ "-X" ]] || false
+  [[ "$log_contents" =~ "POST" ]] || false
+  [[ "$log_contents" =~ "-H" ]] || false
+  [[ "$log_contents" =~ "Accept: application/vnd.github+json" ]] || false
 }
 
 @test "cancel_run calls gh API and returns 202 mock response" {
@@ -95,11 +95,11 @@ teardown() {
   [ "$status" -eq 0 ]
 
   # Flexible regex to match HTTP version + 202 Accepted
-  [[ "$output" =~ HTTP/[0-9.]+\ 202\ Accepted ]]
+  [[ "$output" =~ HTTP/[0-9.]+\ 202\ Accepted ]] || false
 
   # Check gh call was logged correctly
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]]
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]] || false
 }
 
 @test "cancel_run calls gh API and handles 500 mock response" {
@@ -110,10 +110,10 @@ teardown() {
   [ "$status" -eq 0 ]
 
   # Flexible regex to match HTTP version + 500 Internal Server Error
-  [[ "$output" =~ HTTP/[0-9.]+\ 500\ Internal\ Server\ Error ]]
+  [[ "$output" =~ HTTP/[0-9.]+\ 500\ Internal\ Server\ Error ]] || false
 
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/67890/cancel" ]]
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/67890/cancel" ]] || false
 }
 
 #----------------------------
@@ -122,7 +122,7 @@ teardown() {
 @test "cancel_run fails if run_id is empty" {
   run cancel_run ""
   [ "$status" -ne 0 ]
-  [[ "$output" == *"run_id is empty"* ]]
+  [[ "$output" == *"run_id is empty"* ]] || false
 }
 
 #----------------------------
@@ -133,10 +133,10 @@ teardown() {
 
   err=$(cancel_run 12345 2>&1 >/dev/null)
 
-  [[ "$err" == *"::warning::"* ]]
-  [[ "$err" == *"cancel"* ]]
-  [[ "$err" == *"run 12345"* ]]
-  [[ "$err" == *"Bad credentials (HTTP 401)"* ]]
+  [[ "$err" == *"::warning::"* ]] || false
+  [[ "$err" == *"cancel"* ]] || false
+  [[ "$err" == *"run 12345"* ]] || false
+  [[ "$err" == *"Bad credentials (HTTP 401)"* ]] || false
 }
 
 @test "cancel_run prints nothing on stdout and succeeds when gh fails without a response" {

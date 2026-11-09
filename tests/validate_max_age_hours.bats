@@ -23,7 +23,7 @@ setup() {
 @test "validate_max_age_hours rejects 0" {
   run validate_max_age_hours 0
   [ "$status" -eq 1 ]
-  [[ "$output" == "::error::MAX_AGE_HOURS must be a positive integer (got '0')" ]]
+  [[ "$output" == "::error::MAX_AGE_HOURS must be a positive integer (got '0')" ]] || false
 }
 
 @test "validate_max_age_hours rejects a negative number" {
@@ -44,7 +44,7 @@ setup() {
 @test "validate_max_age_hours rejects text" {
   run validate_max_age_hours "abc"
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "(got 'abc')" ]]
+  [[ "$output" =~ "(got 'abc')" ]] || false
 }
 
 @test "validate_max_age_hours rejects an empty value" {
@@ -60,7 +60,7 @@ setup() {
 @test "validate_max_age_hours rejects a shell injection attempt" {
   run validate_max_age_hours '1; echo pwned'
   [ "$status" -eq 1 ]
-  [[ ! "$output" =~ ^pwned ]]
+  [[ ! "$output" =~ ^pwned ]] || false
 }
 
 @test "validate_max_age_hours writes the error on stderr" {
