@@ -1,0 +1,54 @@
+# Shell unit tests with the system bash 3.2 (macOS).
+# The bash of macOS is 3.2, where a failing "[[ ]]" or "! cmd" that is not the
+# last command of a test does not fail it (see dev/check_bats_assertions.sh).
+# bats runs the tests with the first bash of the PATH, which may be a newer one
+# installed by Homebrew, so this workflow puts the system bash first in the PATH.
+
+name: Shell Unit Tests (system bash 3.2)
+on:
+  workflow_call:
+  workflow_dispatch: # to trigger manually
+
+permissions:
+  contents: read
+
+jobs:
+  # Load the list of macOS runners from the default config of
+  # durandtibo/workflow-config-action.
+  get-matrix:
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    outputs:
+      os_macos: ${{ steps.cfg.outputs.os_macos }}
+    steps:
+      - name: Load workflow config
+        id: cfg
+        uses: durandtibo/workflow-config-action@293a1c5eff18a9c485359d32d3035fdaaddcb955 # ratchet:durandtibo/workflow-config-action@v0.3.0
+
+  test:
+    needs: get-matrix
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      max-parallel: 8
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(needs.get-matrix.outputs.os_macos) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Install bats-core
+        shell: bash
+        run: make install-bats
+
+      - name: Run unit tests with the system bash 3.2 (macOS)
+        shell: bash
+        run: |
+          system_bash_dir="$(mktemp -d)"
+          ln -s /bin/bash "$system_bash_dir/bash"
+          PATH="$system_bash_dir:$PATH" bash --version | head -n 1
+          PATH="$system_bash_dir:$PATH" bats --version
+          PATH="$system_bash_dir:$PATH" bats --recursive tests
+          echo "✅ All tests passed with the system bash on ${{ matrix.os }}"

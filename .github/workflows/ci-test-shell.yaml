@@ -57,16 +57,3 @@ jobs:
           echo "🧪 Running tests on ${{ matrix.os }}..."
           bats --recursive tests
           echo "✅ All tests passed"
-
-      # The bash of macOS is 3.2, where a failing "[[ ]]" or "! cmd" that is not the
-      # last command of a test does not fail it (see dev/check_bats_assertions.sh).
-      # bats runs the tests with the first bash of the PATH, which may be a newer one
-      # installed by Homebrew: run them again with the system bash.
-      - name: Run unit tests with the system bash 3.2 (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          system_bash_dir="$(mktemp -d)"
-          ln -s /bin/bash "$system_bash_dir/bash"
-          PATH="$system_bash_dir:$PATH" bash --version | head -n 1
-          PATH="$system_bash_dir:$PATH" bats --recursive tests
-          echo "✅ All tests passed with the system bash"

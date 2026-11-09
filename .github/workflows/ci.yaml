@@ -41,6 +41,10 @@ jobs:
     with:
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
 
+  # Run the bats unit tests of the shell scripts with the system bash 3.2 of macOS
+  test-shell-bash32:
+    uses: ./.github/workflows/ci-test-shell-bash32.yaml
+
   # Break the script on purpose and check that the shell tests notice
   mutation-check:
     uses: ./.github/workflows/ci-mutation-check.yaml
