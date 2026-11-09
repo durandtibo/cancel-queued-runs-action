@@ -10,13 +10,13 @@ setup() {
   : > "$MOCK_GH_CALL_LOG"
 
   export MOCK_GH_RUNS="$MOCK_DIR/runs.json"
-  # 2020: far older than any threshold (force-cancel tier)
+  # updated_at: 2020 is far older than any threshold (force-cancel tier)
   # 2999: in the future, never old enough
   cat > "$MOCK_GH_RUNS" << 'JSON'
 {
   "workflow_runs": [
-    {"id": 111, "created_at": "2020-01-01T00:00:00Z", "run_started_at": "2020-01-01T00:00:00Z"},
-    {"id": 222, "created_at": "2999-01-01T00:00:00Z", "run_started_at": "2999-01-01T00:00:00Z"}
+    {"id": 111, "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z"},
+    {"id": 222, "created_at": "2999-01-01T00:00:00Z", "updated_at": "2999-01-01T00:00:00Z"}
   ]
 }
 JSON
