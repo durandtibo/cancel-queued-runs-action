@@ -166,7 +166,7 @@ teardown() {
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "Configured max age: 24 hours" ]]
-  [[ "$output" =~ "stale queued workflow runs for myorg/myrepo" ]]
+  [[ "$output" =~ "stale workflow runs for myorg/myrepo" ]]
 }
 
 @test "main succeeds without processing anything when there are no queued runs" {
@@ -175,8 +175,8 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Found 0 queued workflow run(s)." ]]
-  [[ "$output" =~ "No queued runs found." ]]
+  [[ "$output" =~ "Found 0 workflow run(s)." ]]
+  [[ "$output" =~ "No workflow runs found." ]]
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -184,7 +184,7 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Found 2 queued workflow run(s)." ]]
+  [[ "$output" =~ "Found 2 workflow run(s)." ]]
 }
 
 @test "main passes the fetched runs to process_all_runs" {
@@ -672,4 +672,28 @@ setup_outputs() {
 
   [ "$status" -eq 0 ]
   grep -qx 'Statuses considered: `queued,waiting`' "$GITHUB_STEP_SUMMARY"
+}
+
+# --------------------------------------------------------
+# Wording of the logs
+# --------------------------------------------------------
+
+@test "main does not say queued when only other statuses are considered" {
+  export STATUSES="waiting"
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ ! "$output" =~ [Qq]ueued ]]
+}
+
+@test "main does not say queued when no run is found for other statuses" {
+  export STATUSES="pending,requested"
+  fetch_runs() { :; }
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "No workflow runs found." ]] || false
+  [[ ! "$output" =~ [Qq]ueued ]]
 }

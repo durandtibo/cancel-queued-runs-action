@@ -164,8 +164,8 @@ warn_if_listing_truncated() {
 }
 
 # ----------------------------
-# Fetch queued runs from GitHub API
-# Uses pagination to handle repositories with many queued runs
+# Fetch the runs to consider from GitHub API
+# Uses pagination to handle repositories with many runs
 #
 # If WORKFLOW is set, only the runs of that workflow are listed, through the
 # per-workflow endpoint (the filtering is done by GitHub).
@@ -578,7 +578,7 @@ process_run() {
 	status_code=$(get_status_code "$response")
 
 	if is_skippable_status "$status_code"; then
-		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code): it is no longer queued or cannot be cancelled, skipping."
+		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code): it no longer exists or cannot be cancelled anymore, skipping."
 		PROCESS_RUN_OUTCOME="skipped"
 		return 0
 	fi
@@ -628,7 +628,7 @@ process_all_runs() {
 	# Extract the fields of all the runs with a single jq call instead of two
 	# jq processes per run
 	if ! parsed=$(printf '%s\n' "$runs_stream" | jq -r '[.id, .queued_at] | map(tostring) | join("\u001f")'); then
-		echo "::error::Cannot parse the list of queued runs" >&2
+		echo "::error::Cannot parse the list of runs" >&2
 		return 1
 	fi
 
@@ -647,7 +647,7 @@ process_all_runs() {
 			FAILED_COUNT=$((FAILED_COUNT + 1))
 			continue
 		fi
-		echo "Run $run_id has been queued for $(format_age "$age_seconds")."
+		echo "Run $run_id is $(format_age "$age_seconds") old."
 
 		# process the run and count what happened
 		PROCESS_RUN_OUTCOME=""
@@ -956,7 +956,7 @@ main() {
 	if [ "$CANCEL_DELAY_SECONDS" -gt 0 ]; then
 		echo "Waiting ${CANCEL_DELAY_SECONDS}s between two cancel requests."
 	fi
-	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
+	echo "🔎 Checking for stale workflow runs for ${REPO}..."
 	if [ "${STATUSES// /}" != "queued" ]; then
 		echo "Run statuses considered: ${STATUSES// /}"
 	fi
@@ -977,10 +977,10 @@ main() {
 	fi
 
 	run_count=$(echo "$runs" | jq -s 'length')
-	echo "Found $run_count queued workflow run(s)."
+	echo "Found $run_count workflow run(s)."
 
 	if [ "$run_count" -eq 0 ]; then
-		echo "✅ No queued runs found."
+		echo "✅ No workflow runs found."
 	elif process_all_runs "$runs"; then
 		echo "✅ All eligible runs processed successfully."
 	elif [ "$FAIL_ON_ERROR" = "true" ]; then

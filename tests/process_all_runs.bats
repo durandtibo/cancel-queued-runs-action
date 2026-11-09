@@ -111,7 +111,7 @@ teardown() {
 
   run process_all_runs "$runs_stream"
 
-  [[ "$output" =~ "Run 999 has been queued for 5h00m." ]]
+  [[ "$output" =~ "Run 999 is 5h00m old." ]]
 }
 
 @test "process_all_runs counts partial failures correctly" {
@@ -256,7 +256,7 @@ MOCK
   run process_all_runs "this is not json"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::Cannot parse the list of queued runs" ]]
+  [[ "$output" =~ "::error::Cannot parse the list of runs" ]]
   [ ! -s "$LOG_FILE" ]
 }
 

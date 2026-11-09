@@ -587,3 +587,12 @@ record_sleeps() {
   [ "$(cat "$SLEEP_LOG")" = "5" ]
 }
 
+@test "process_run does not say that a skipped run is no longer queued" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ ! "$output" =~ "no longer queued" ]] || false
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409): it no longer exists or cannot be cancelled anymore" ]]
+}
