@@ -432,3 +432,49 @@ setup_outputs() {
 
   [[ ! "$output" =~ "Run statuses considered" ]]
 }
+
+# --------------------------------------------------------
+# Failure to list the runs
+# --------------------------------------------------------
+
+@test "main fails with an ::error:: annotation when the runs cannot be listed" {
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::Cannot list the workflow runs of myorg/myrepo" ]]
+}
+
+@test "main does not process any run when the runs cannot be listed" {
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$LOG_FILE" ]
+  [[ ! "$output" =~ "Found" ]]
+}
+
+@test "main writes zero outputs when the runs cannot be listed" {
+  setup_outputs
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "found_count=0" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=0" "$GITHUB_OUTPUT"
+  grep -qx "skipped_count=0" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+  grep -qx "would_cancel_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "main does not write the summary when the runs cannot be listed" {
+  setup_outputs
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
