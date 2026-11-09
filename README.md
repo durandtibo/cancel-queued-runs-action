@@ -361,7 +361,7 @@ GitHub API, so its age cannot be computed.
 **Solution**: The run is skipped, counted as a failure, and the other runs are still processed.
 Please open an issue with the log line if this happens with the GitHub API.
 
-### Action fails immediately with `::error::REPO must be in owner/name format` or `No GitHub credentials found`
+### Action fails immediately with a `REPO` or a `No GitHub credentials found` error
 
 **Cause**: The inputs are validated before any API call. `repo` must look like `owner/name`
 (letters, digits, `.`, `_` and `-` only), `max_age_hours` must be a positive integer, and a token
@@ -464,7 +464,7 @@ processed, and the step exits with code `1` (unless `fail_on_error` is `false`).
 
 ---
 
-## ⚠️ Limitations
+## 🚧 Limitations
 
 - **Queue Status Only**: Only cancels runs in the `queued` state by default. The `statuses` input
   can add `waiting`, `pending` and `requested`; runs that are `in_progress` or completed are never
