@@ -68,7 +68,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR
+  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -269,3 +269,61 @@ JSON
   [[ "$output" =~ "FAIL_ON_ERROR must be 'true' or 'false'" ]] || false
   [ "$(posts)" -eq 0 ]
 }
+
+@test "end-to-end: the summary lists the cancelled run and not the recent one" {
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_STEP_SUMMARY"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -q '^| \[111\](https://github.com/myorg/myrepo/actions/runs/111) | .* | Cancelled |$' "$GITHUB_STEP_SUMMARY"
+  [ -z "$(grep 'runs/222' "$GITHUB_STEP_SUMMARY" || true)" ]
+}
+
+@test "end-to-end: the summary lists the runs that would be cancelled in a dry run" {
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_STEP_SUMMARY"
+  export DRY_RUN=true
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -q 'runs/111) | .* | Would be cancelled (dry run) |$' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "end-to-end: the summary lists a failed run" {
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_STEP_SUMMARY"
+  export MOCK_GH_POST_CODE=500
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  grep -q 'runs/111) | .* | Failed |$' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "end-to-end: the summary lists the runs of the link of GITHUB_SERVER_URL" {
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_STEP_SUMMARY"
+  export GITHUB_SERVER_URL="https://ghe.example.com"
+
+  run "$SCRIPT"
+
+  grep -qF '(https://ghe.example.com/myorg/myrepo/actions/runs/111)' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "end-to-end: the summary lists at most SUMMARY_MAX_RUNS runs" {
+  setup_two_old_runs
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_STEP_SUMMARY"
+  export SUMMARY_MAX_RUNS=1
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -q 'runs/111)' "$GITHUB_STEP_SUMMARY"
+  [ -z "$(grep 'runs/112)' "$GITHUB_STEP_SUMMARY" || true)" ]
+  grep -qx '1 more run(s) are not listed here, see the logs of the step.' "$GITHUB_STEP_SUMMARY"
+}
+

@@ -132,3 +132,27 @@ teardown() {
 
   grep -qx '### Cancel stale workflow runs (dry run, nothing was cancelled)' "$GITHUB_STEP_SUMMARY"
 }
+
+@test "write_summary lists the runs that were acted on" {
+  record_run 123 30h12m cancelled
+
+  run write_summary 10
+
+  grep -qF '| [123](https://github.com/myorg/myrepo/actions/runs/123) | 30h12m | Cancelled |' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary lists the runs after the counters table" {
+  record_run 123 30h12m cancelled
+
+  run write_summary 10
+
+  [ "$(grep -n '^| Failed |' "$GITHUB_STEP_SUMMARY" | cut -d: -f1)" -lt "$(grep -n '^#### Runs' "$GITHUB_STEP_SUMMARY" | cut -d: -f1)" ]
+}
+
+@test "write_summary has no list of runs when no run was acted on" {
+  run write_summary 10
+
+  [ -z "$(grep 'Runs$' "$GITHUB_STEP_SUMMARY" | grep '####' || true)" ]
+  [ -z "$(grep 'actions/runs' "$GITHUB_STEP_SUMMARY" || true)" ]
+}
+

@@ -37,3 +37,11 @@ setup() {
   [ "$REQUEST_SENT" = "false" ]
 }
 
+@test "reset_counters forgets the recorded runs" {
+  RUN_RECORDS="1|5h00m|cancelled"$'\n'
+
+  reset_counters
+
+  [ -z "$RUN_RECORDS" ]
+}
+

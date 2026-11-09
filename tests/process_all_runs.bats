@@ -373,3 +373,77 @@ outcome_process_run() {
   [ "$status" -eq 1 ]
   [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]]
 }
+
+# --------------------------------------------------------
+# Runs recorded for the summary
+# --------------------------------------------------------
+
+# process_run that sets the outcome according to the run id
+mock_outcomes() {
+  process_run() {
+    case "$1" in
+    1) PROCESS_RUN_OUTCOME="cancelled" ;;
+    2) PROCESS_RUN_OUTCOME="skipped" ;;
+    3) PROCESS_RUN_OUTCOME="would-cancel" ;;
+    4) PROCESS_RUN_OUTCOME="noop" ;;
+    5) PROCESS_RUN_OUTCOME="failed"; return 1 ;;
+    esac
+    return 0
+  }
+}
+
+@test "process_all_runs records the cancelled, skipped, would-cancel and failed runs" {
+  mock_outcomes
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 3, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 5, "queued_at": "2025-01-01T01:00:00Z"}'
+  )
+
+  process_all_runs "$runs_stream" >/dev/null || true
+
+  printf '%s' "$RUN_RECORDS" | grep -qx "1|5h00m|cancelled"
+  printf '%s' "$RUN_RECORDS" | grep -qx "2|5h00m|skipped"
+  printf '%s' "$RUN_RECORDS" | grep -qx "3|5h00m|would-cancel"
+  printf '%s' "$RUN_RECORDS" | grep -qx "5|5h00m|failed"
+}
+
+@test "process_all_runs does not record the runs that were left alone" {
+  mock_outcomes
+  runs_stream='{"id": 4, "queued_at": "2025-01-01T01:00:00Z"}'
+
+  process_all_runs "$runs_stream" >/dev/null
+
+  [ -z "$RUN_RECORDS" ]
+}
+
+@test "process_all_runs does not record a run when process_run sets no outcome" {
+  runs_stream='{"id": 101, "queued_at": "2025-01-01T01:00:00Z"}'
+
+  process_all_runs "$runs_stream" >/dev/null
+
+  [ -z "$RUN_RECORDS" ]
+}
+
+@test "process_all_runs records a run with an invalid timestamp as failed" {
+  compute_age_seconds() { return 1; }
+  runs_stream='{"id": 77, "queued_at": "garbage"}'
+
+  process_all_runs "$runs_stream" >/dev/null 2>&1 || true
+
+  printf '%s' "$RUN_RECORDS" | grep -qx "77|unknown|failed"
+}
+
+@test "process_all_runs forgets the records of a previous call" {
+  mock_outcomes
+  record_run 999 1h00m cancelled
+  runs_stream='{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}'
+
+  process_all_runs "$runs_stream" >/dev/null
+
+  [ -z "$(printf '%s' "$RUN_RECORDS" | grep '^999|' || true)" ]
+  printf '%s' "$RUN_RECORDS" | grep -qx "1|5h00m|cancelled"
+}
+
