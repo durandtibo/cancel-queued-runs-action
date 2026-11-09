@@ -17,7 +17,7 @@ If you discover a security vulnerability, please report it responsibly:
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to: **durand.tibo+gh@gmail.com**
+Instead, please report them via email to: **<durand.tibo+gh@gmail.com>**
 
 Include the following information:
 
@@ -65,6 +65,7 @@ When using this action:
    ```
 
 4. **Secrets Management**: Never hardcode tokens; always use GitHub secrets
+
    ```yaml
    github_token: ${{ secrets.GITHUB_TOKEN }} # Good
    ```

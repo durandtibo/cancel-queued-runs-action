@@ -8,7 +8,8 @@ Thank you for your interest in contributing to this project! We welcome contribu
 
 If you encounter a bug or have a feature request:
 
-1. Check the [existing issues](https://github.com/durandtibo/cancel-queued-runs-action/issues) to see if it has already been reported
+1. Check the [existing issues](https://github.com/durandtibo/cancel-queued-runs-action/issues)
+   to see if it has already been reported
 2. If not, create a new issue with a clear title and description
 3. Include any relevant information:
    - Steps to reproduce (for bugs)
@@ -108,7 +109,8 @@ When making changes, please update relevant documentation:
 
 ## Code of Conduct
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By
+participating, you are expected to uphold this code.
 
 ## Questions?
 

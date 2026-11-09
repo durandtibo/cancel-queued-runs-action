@@ -4,6 +4,9 @@
     "tables": false,
     "code_blocks": false
   },
+  "MD033": {
+    "allowed_elements": ["p", "a", "img"]
+  },
   "MD060": {
     "style": "consistent"
   }
