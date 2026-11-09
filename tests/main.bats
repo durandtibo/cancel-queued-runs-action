@@ -147,6 +147,25 @@ teardown() {
   [[ "$output" =~ ^::error:: ]]
 }
 
+@test "main fails when an internal tuning variable is invalid" {
+  export MAX_RETRIES="many"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::MAX_RETRIES must be a non-negative integer (got 'many')" ]] || false
+}
+
+@test "main does not fetch runs when an internal tuning variable is invalid" {
+  fetch_runs() { echo "fetch_runs called" >> "$LOG_FILE"; }
+  export RETRY_BASE_DELAY=0
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$LOG_FILE" ]
+}
+
 @test "main does not fetch runs when the inputs are invalid" {
   fetch_runs() { echo "fetch_runs called" >> "$LOG_FILE"; }
   export MAX_AGE_HOURS="abc"

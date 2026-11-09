@@ -28,7 +28,8 @@
 #                          runs are cancelled. Non-negative integer, 0 means no
 #                          delay (default: 0)
 #
-# Internal tuning (not action inputs, positive integers in seconds/counts):
+# Internal tuning (not action inputs, integers in seconds/counts, validated by
+# validate_tuning_variables):
 #   MAX_RETRIES - Retries of a rate-limited cancel request (default: 3)
 #   RETRY_BASE_DELAY - First backoff delay in seconds, doubled at each retry
 #                      when GitHub gives no delay (default: 5)
@@ -997,6 +998,46 @@ validate_cancel_delay_seconds() {
 }
 
 # ----------------------------
+# Validate the internal tuning variables
+# They are not action inputs but they can be set in the environment, and they
+# end up in arithmetic expressions, where a non-integer value would fail with a
+# cryptic bash error. All the invalid variables are reported, one error each.
+#   MAX_RETRIES and SUMMARY_MAX_RUNS: non-negative integers (0 is allowed)
+#   RETRY_BASE_DELAY, RETRY_MAX_DELAY and RUNS_LISTING_LIMIT: positive integers
+# Integers must not have a leading zero (bash would read them as octal).
+# Returns:
+#   0 if all of them are valid, 1 otherwise
+# ----------------------------
+validate_tuning_variables() {
+	local entry name value kind pattern
+	local invalid=0
+
+	for entry in \
+		MAX_RETRIES:non-negative \
+		RETRY_BASE_DELAY:positive \
+		RETRY_MAX_DELAY:positive \
+		RUNS_LISTING_LIMIT:positive \
+		SUMMARY_MAX_RUNS:non-negative; do
+		name="${entry%%:*}"
+		kind="${entry##*:}"
+		value="${!name:-}"
+
+		if [ "$kind" = "positive" ]; then
+			pattern='^[1-9][0-9]*$'
+		else
+			pattern='^(0|[1-9][0-9]*)$'
+		fi
+
+		if ! [[ "$value" =~ $pattern ]]; then
+			echo "::error::$name must be a $kind integer (got '$value')" >&2
+			invalid=1
+		fi
+	done
+
+	return "$invalid"
+}
+
+# ----------------------------
 # Validate the target repository
 # The value is used to build API paths, so only the characters allowed in
 # GitHub owner and repository names are accepted and "." / ".." are rejected.
@@ -1076,6 +1117,7 @@ main() {
 	validate_dry_run "$DRY_RUN" || return 1
 	validate_fail_on_error "$FAIL_ON_ERROR" || return 1
 	validate_cancel_delay_seconds "$CANCEL_DELAY_SECONDS" || return 1
+	validate_tuning_variables || return 1
 	validate_auth || return 1
 
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
