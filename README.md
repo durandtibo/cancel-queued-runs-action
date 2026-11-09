@@ -39,6 +39,7 @@ backlogs.
 
 - Cancels workflow runs stuck in the **queued** state
 - Configurable maximum queue age (in hours)
+- Dry-run mode to preview which runs would be cancelled
 - Lightweight composite action
 - Works with private and public repositories
 - Requires only the GitHub-provided `GITHUB_TOKEN`
@@ -82,6 +83,7 @@ jobs:
 | `github_token`  | ❌ No    | `${{ github.token }}`      | Token with `actions:write` permissions                  |
 | `repo`          | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                       |
 | `max_age_hours` | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued |
+| `dry_run`       | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled    |
 
 ---
 
@@ -95,6 +97,25 @@ jobs:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     repo: ${{ github.repository }}
     max_age_hours: 6
+```
+
+### Example: preview what would be cancelled (dry run)
+
+Set `dry_run: true` to list the runs that would be cancelled without cancelling anything. Use it
+the first time you add the action to a repository.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  with:
+    max_age_hours: 24
+    dry_run: true
+```
+
+The log then contains lines such as:
+
+```text
+Run 12947114653 has been queued for 30h12m.
+🧪 [dry-run] Would force-cancel run 12947114653 (age=30h12m)
 ```
 
 ### Example: scheduled cleanup every hour
@@ -141,7 +162,7 @@ For additional use cases and complete workflow examples, see the [examples/](exa
    started waiting (`run_started_at`, which is reset when a run is re-run, falling back to
    `created_at`)
 3. **Filter**: Identifies runs older than the configured `max_age_hours`
-4. **Cancel**: Sends cancellation requests for eligible runs
+4. **Cancel**: Sends cancellation requests for eligible runs (or only logs them with `dry_run: true`)
 5. **Report**: Logs the status of each operation
 
 The action uses the GitHub CLI (`gh`) internally to interact with GitHub's Actions API. It includes
