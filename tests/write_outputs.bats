@@ -69,3 +69,17 @@ teardown() {
 
   [ "$status" -eq 0 ]
 }
+
+@test "write_outputs writes listing_truncated=false by default" {
+  run write_outputs 10
+
+  grep -qx "listing_truncated=false" "$GITHUB_OUTPUT"
+}
+
+@test "write_outputs writes listing_truncated=true when the listing was truncated" {
+  LISTING_TRUNCATED=true
+
+  run write_outputs 10
+
+  grep -qx "listing_truncated=true" "$GITHUB_OUTPUT"
+}

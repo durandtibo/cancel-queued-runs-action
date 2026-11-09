@@ -105,13 +105,14 @@ jobs:
 
 ## 📤 Outputs
 
-| Name                 | Description                                                                                                                         |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `found_count`        | Number of workflow runs found with the considered `statuses` (`queued` by default)                                                  |
-| `cancelled_count`    | Number of runs for which a cancel request was accepted                                                                              |
-| `skipped_count`      | Number of runs skipped because they were no longer cancellable (404 or 409)                                                         |
-| `failed_count`       | Number of runs that could not be cancelled or processed (for example an invalid timestamp, or a list of runs that cannot be parsed) |
-| `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)                                                                |
+| Name                 | Description                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `found_count`        | Number of workflow runs found with the considered `statuses` (`queued` by default)                                                                                       |
+| `cancelled_count`    | Number of runs for which a cancel request was accepted                                                                                                                   |
+| `skipped_count`      | Number of runs skipped because they were no longer cancellable (404 or 409)                                                                                              |
+| `failed_count`       | Number of runs that could not be cancelled or processed (for example an invalid timestamp, or a list of runs that cannot be parsed)                                      |
+| `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)                                                                                                     |
+| `listing_truncated`  | `true` if the listing reached the 1000 runs that GitHub returns for a status, so older runs may be missing (see [Troubleshooting](#-troubleshooting)), otherwise `false` |
 
 The outputs are written even when some runs failed (the step then fails unless `fail_on_error` is
 `false`, so use `if: always()` on a following step to read them), and the action appends the same
@@ -376,6 +377,16 @@ truncated and some runs are not considered by this execution.
 **Solution**: Nothing to do in most cases: the action cancels the runs it has, and the next
 execution lists the following ones. For a very large backlog, run the action more often or several
 times in a row.
+
+The `listing_truncated` [output](#-outputs) is `true` (and the job summary shows a warning) when
+this happens, so that a following step can decide to run the action again:
+
+```yaml
+- id: cancel
+  uses: durandtibo/cancel-queued-runs-action@v1.9
+- if: steps.cancel.outputs.listing_truncated == 'true'
+  uses: durandtibo/cancel-queued-runs-action@v1.9
+```
 
 ### Log shows `::warning::Rate limited on run ... giving up`
 

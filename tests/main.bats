@@ -575,6 +575,76 @@ setup_outputs() {
   [ "$status" -eq 1 ]
 }
 
+@test "main reports listing_truncated=false by default" {
+  setup_outputs
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "listing_truncated=false" "$GITHUB_OUTPUT"
+}
+
+@test "main reports listing_truncated=true when fetch_runs reports a truncated listing" {
+  setup_outputs
+  fetch_runs() {
+    LISTING_TRUNCATED=true
+    echo '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}'
+  }
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "listing_truncated=true" "$GITHUB_OUTPUT"
+  grep -q 'maximum that GitHub returns' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "main does not keep a truncation from a previous call" {
+  setup_outputs
+  LISTING_TRUNCATED=true
+
+  run main
+
+  grep -qx "listing_truncated=false" "$GITHUB_OUTPUT"
+}
+
+@test "main reports listing_truncated=false when the runs cannot be listed" {
+  setup_outputs
+  fetch_runs() { LISTING_TRUNCATED=true; return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "listing_truncated=false" "$GITHUB_OUTPUT"
+}
+
+@test "main passes the listing to process_all_runs through a file without altering it" {
+  fetch_runs() { printf '%s\n' '{"id": 7, "queued_at": "2025-01-01T01:00:00Z"}' '{"id": 8, "queued_at": "2025-01-01T02:00:00Z"}'; }
+
+  run main
+
+  [ "$(sed -n 2p "$LOG_FILE")" = '{"id": 7, "queued_at": "2025-01-01T01:00:00Z"}' ]
+  [ "$(sed -n 3p "$LOG_FILE")" = '{"id": 8, "queued_at": "2025-01-01T02:00:00Z"}' ]
+}
+
+@test "main removes its temporary file" {
+  export TMPDIR="$MOCK_DIR/tmp"
+  mkdir -p "$TMPDIR"
+
+  run main
+
+  [ -z "$(ls -A "$TMPDIR")" ]
+}
+
+@test "main removes its temporary file when the runs cannot be listed" {
+  export TMPDIR="$MOCK_DIR/tmp"
+  mkdir -p "$TMPDIR"
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ -z "$(ls -A "$TMPDIR")" ]
+}
+
 @test "main does not leak its variables when the runs cannot be listed" {
   fetch_runs() { return 1; }
 

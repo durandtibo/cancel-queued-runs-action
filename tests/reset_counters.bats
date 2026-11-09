@@ -45,3 +45,10 @@ setup() {
   [ -z "$RUN_RECORDS" ]
 }
 
+@test "reset_counters does not reset LISTING_TRUNCATED, which is set before the runs are processed" {
+  LISTING_TRUNCATED=true
+
+  reset_counters
+
+  [ "$LISTING_TRUNCATED" = "true" ]
+}

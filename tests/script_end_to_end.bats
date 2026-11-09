@@ -68,7 +68,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS
+  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -327,3 +327,28 @@ JSON
   grep -qx '1 more run(s) are not listed here, see the logs of the step.' "$GITHUB_STEP_SUMMARY"
 }
 
+@test "end-to-end: reports listing_truncated=false when the listing is complete" {
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -qx "listing_truncated=false" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: reports listing_truncated=true when the listing reaches the limit" {
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_OUTPUT"
+  : > "$GITHUB_STEP_SUMMARY"
+  # the mock lists 2 runs: that is the limit here
+  export RUNS_LISTING_LIMIT=2
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "::warning::2 runs were listed for the status 'queued'" ]] || false
+  grep -qx "listing_truncated=true" "$GITHUB_OUTPUT"
+  grep -q 'maximum that GitHub returns' "$GITHUB_STEP_SUMMARY"
+}

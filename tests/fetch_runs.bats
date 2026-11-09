@@ -384,3 +384,38 @@ MOCK
 
   [ -z "$err" ]
 }
+
+@test "fetch_runs sets LISTING_TRUNCATED when the number of runs reaches the limit" {
+  RUNS_LISTING_LIMIT=2
+
+  fetch_runs >/dev/null 2>&1
+
+  [ "$LISTING_TRUNCATED" = "true" ]
+}
+
+@test "fetch_runs does not set LISTING_TRUNCATED below the limit" {
+  RUNS_LISTING_LIMIT=3
+
+  fetch_runs >/dev/null 2>&1
+
+  [ "$LISTING_TRUNCATED" = "false" ]
+}
+
+@test "fetch_runs resets LISTING_TRUNCATED from a previous call" {
+  LISTING_TRUNCATED=true
+
+  fetch_runs >/dev/null 2>&1
+
+  [ "$LISTING_TRUNCATED" = "false" ]
+}
+
+@test "fetch_runs sets LISTING_TRUNCATED when only one of the statuses reaches the limit" {
+  export STATUSES="queued,waiting"
+  export MOCK_GH_RESPONSE_FILE_WAITING="$MOCK_DIR/response_waiting.json"
+  echo '{"workflow_runs": [{"id": 333, "updated_at": "2025-01-01T14:00:00Z"}]}' > "$MOCK_GH_RESPONSE_FILE_WAITING"
+  RUNS_LISTING_LIMIT=2
+
+  fetch_runs >/dev/null 2>&1
+
+  [ "$LISTING_TRUNCATED" = "true" ]
+}
