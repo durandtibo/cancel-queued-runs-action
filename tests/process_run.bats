@@ -593,6 +593,6 @@ record_sleeps() {
   run process_run "123" $((3 * 3600))
 
   [ "$status" -eq 0 ]
-  [[ ! "$output" =~ "no longer queued" ]]
+  [[ ! "$output" =~ "no longer queued" ]] || false
   [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409): it no longer exists or cannot be cancelled anymore" ]]
 }

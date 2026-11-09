@@ -694,6 +694,6 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "No workflow runs found." ]]
+  [[ "$output" =~ "No workflow runs found." ]] || false
   [[ ! "$output" =~ [Qq]ueued ]]
 }
