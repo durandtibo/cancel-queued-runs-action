@@ -456,3 +456,85 @@ JSON
   [[ "$output" =~ "Rate limited on run 111 (cancel), retrying in 1s (retry 1/1)" ]] || false
   [[ "$output" =~ "Rate limited on run 111 (cancel), giving up" ]] || false
 }
+
+# --------------------------------------------------------
+# Order of the requests: GitHub rejects /force-cancel (HTTP 409) for a run that
+# never received a regular cancel request
+# --------------------------------------------------------
+
+# Prints the POST endpoints of the call log, one per line, like "111/cancel"
+post_endpoints() {
+  grep -- "-X POST" "$MOCK_GH_CALL_LOG" | sed -E 's#.*/runs/([0-9]+/[a-z-]+).*#\1#'
+}
+
+# Prints the runs for which a force-cancel was sent before any cancel
+force_cancel_without_cancel() {
+  post_endpoints | awk -F/ '
+    $2 == "cancel" { cancelled[$1] = 1 }
+    $2 == "force-cancel" && !($1 in cancelled) { print $1 }
+  '
+}
+
+@test "end-to-end: the regular cancel is sent before the force-cancel" {
+  export MOCK_GH_POST_FIXTURE=response_409.http
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(post_endpoints)" = "$(printf '111/cancel\n111/force-cancel')" ]
+}
+
+@test "end-to-end: no force-cancel is sent without a regular cancel for the same run" {
+  export MOCK_GH_POST_FIXTURE=response_500.http
+  cat > "$MOCK_GH_RUNS" << 'JSON'
+{"workflow_runs": [
+  {"id": 111, "updated_at": "2020-01-01T00:00:00Z"},
+  {"id": 222, "updated_at": "2020-01-02T00:00:00Z"},
+  {"id": 333, "updated_at": "2020-01-03T00:00:00Z"}
+]}
+JSON
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [ "$(post_endpoints | wc -l | tr -d ' ')" -eq 6 ]
+  [ -z "$(force_cancel_without_cancel)" ]
+}
+
+@test "end-to-end: the requests of a run are not interleaved with those of another run" {
+  export MOCK_GH_POST_FIXTURE=response_409.http
+  cat > "$MOCK_GH_RUNS" << 'JSON'
+{"workflow_runs": [
+  {"id": 111, "updated_at": "2020-01-01T00:00:00Z"},
+  {"id": 222, "updated_at": "2020-01-02T00:00:00Z"}
+]}
+JSON
+
+  run "$SCRIPT"
+
+  [ "$(post_endpoints)" = "$(printf '111/cancel\n111/force-cancel\n222/cancel\n222/force-cancel')" ]
+}
+
+@test "end-to-end: an accepted regular cancel is not followed by a force-cancel" {
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(post_endpoints)" = "111/cancel" ]
+}
+
+@test "end-to-end: a dry run sends neither a cancel nor a force-cancel" {
+  export DRY_RUN=true
+
+  run "$SCRIPT"
+
+  [ -z "$(post_endpoints)" ]
+}
+
+@test "end-to-end: the detection of a force-cancel without cancel works" {
+  # guards the helper itself: it must report a force-cancel that comes first
+  printf '%s\n' \
+    "api -X POST -H x /repos/o/r/actions/runs/5/force-cancel -i" \
+    "api -X POST -H x /repos/o/r/actions/runs/5/cancel -i" > "$MOCK_GH_CALL_LOG"
+
+  [ "$(force_cancel_without_cancel)" = "5" ]
+}

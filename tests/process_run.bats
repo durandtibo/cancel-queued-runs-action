@@ -792,3 +792,82 @@ fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
 
   [[ "$output" =~ "Would cancel run 123 (age=2h00m)" ]] || false
 }
+
+# --------------------------------------------------------
+# GitHub rejects /force-cancel (HTTP 409) for a run that never received a
+# regular cancel request: the standard cancel must always come first.
+# --------------------------------------------------------
+
+# Record the calls in order, answering with the given statuses
+record_ordered_calls() {
+  mkdir -p "$BATS_TEST_DIRNAME/mocks"
+  CALL_LOG="$BATS_TEST_DIRNAME/mocks/calls.log"
+  : > "$CALL_LOG"
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 ${CANCEL_CODE:-202} Status"; }
+  force_cancel_run() { echo "force_cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 ${FORCE_CODE:-202} Status"; }
+}
+
+@test "process_run sends the standard cancel before the force-cancel for an old run" {
+  record_ordered_calls
+  CANCEL_CODE=409
+
+  run process_run "123" $((24 * 3600))
+
+  [ "$(sed -n 1p "$CALL_LOG")" = "cancel_run 123" ]
+  [ "$(sed -n 2p "$CALL_LOG")" = "force_cancel_run 123" ]
+}
+
+@test "process_run sends exactly two requests for an old run whose cancel is not accepted" {
+  record_ordered_calls
+  CANCEL_CODE=500
+
+  run process_run "123" $((24 * 3600))
+
+  [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 2 ]
+}
+
+@test "process_run never sends a force-cancel first, even one second after the force-cancel boundary" {
+  record_ordered_calls
+  CANCEL_CODE=409
+
+  run process_run "123" $((5 * 3600 + 1))
+
+  [ "$(sed -n 1p "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run never sends a force-cancel first when the buffer is 0" {
+  record_ordered_calls
+  FORCE_BUFFER_HOURS=0
+  CANCEL_CODE=409
+
+  run process_run "123" $((2 * 3600 + 1))
+
+  [ "$(sed -n 1p "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run sends no force-cancel when the standard cancel is accepted" {
+  record_ordered_calls
+  CANCEL_CODE=202
+
+  run process_run "123" $((24 * 3600))
+
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run sends no force-cancel for a run in the standard tier" {
+  record_ordered_calls
+  CANCEL_CODE=409
+
+  run process_run "123" $((3 * 3600))
+
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run sends a force-cancel for the same run as the standard cancel" {
+  record_ordered_calls
+  CANCEL_CODE=409
+
+  run process_run "777" $((24 * 3600))
+
+  [ "$(cat "$CALL_LOG")" = "$(printf 'cancel_run 777\nforce_cancel_run 777')" ]
+}
