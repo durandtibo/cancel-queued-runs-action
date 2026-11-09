@@ -44,6 +44,7 @@ JSON
 
 # Log request arguments
 echo "\$@" >> "$MOCK_GH_CALL_LOG"
+all_args="\$*"
 
 # Fail like gh does for an HTTP error when the arguments match the pattern
 if [ -n "\${MOCK_GH_FAIL_PATTERN:-}" ] && [[ "\$*" == *"\$MOCK_GH_FAIL_PATTERN"* ]]; then
@@ -60,10 +61,16 @@ while [ \$# -gt 0 ]; do
   shift
 done
 
+# Another response can be given for the status waiting
+response_file="$MOCK_GH_RESPONSE_FILE"
+if [ -n "\${MOCK_GH_RESPONSE_FILE_WAITING:-}" ] && [[ "\$all_args" == *"status=waiting"* ]]; then
+  response_file="\$MOCK_GH_RESPONSE_FILE_WAITING"
+fi
+
 if [ -n "\$filter" ]; then
-  jq -c "\$filter" "$MOCK_GH_RESPONSE_FILE"
+  jq -c "\$filter" "\$response_file"
 else
-  cat "$MOCK_GH_RESPONSE_FILE"
+  cat "\$response_file"
 fi
 EOF
 
@@ -198,11 +205,49 @@ teardown() {
 
 @test "fetch_runs concatenates the runs of all the statuses" {
   export STATUSES="queued,waiting"
+  export MOCK_GH_RESPONSE_FILE_WAITING="$MOCK_DIR/response_waiting.json"
+  echo '{"workflow_runs": [{"id": 333, "updated_at": "2025-01-01T14:00:00Z"}]}' > "$MOCK_GH_RESPONSE_FILE_WAITING"
 
   run fetch_runs
 
-  # the mock returns two runs per call
-  [ "$(echo "$output" | wc -l | tr -d ' ')" -eq 4 ]
+  # two runs for queued, one for waiting
+  [ "$(echo "$output" | wc -l | tr -d ' ')" -eq 3 ]
+  echo "$output" | grep -q '"id":111'
+  echo "$output" | grep -q '"id":222'
+  echo "$output" | grep -q '"id":333'
+}
+
+@test "fetch_runs prints a run listed under two statuses only once" {
+  export STATUSES="queued,waiting"
+  export MOCK_GH_RESPONSE_FILE_WAITING="$MOCK_DIR/response_waiting.json"
+  # run 222 changed its status between the two calls and is listed again
+  echo '{"workflow_runs": [{"id": 222, "updated_at": "2025-01-01T13:00:00Z"}, {"id": 333, "updated_at": "2025-01-01T14:00:00Z"}]}' > "$MOCK_GH_RESPONSE_FILE_WAITING"
+
+  run fetch_runs
+
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | wc -l | tr -d ' ')" -eq 3 ]
+  [ "$(echo "$output" | grep -c '"id":222')" -eq 1 ]
+}
+
+@test "fetch_runs keeps the order of the listing when it removes duplicates" {
+  export STATUSES="queued,waiting"
+  export MOCK_GH_RESPONSE_FILE_WAITING="$MOCK_DIR/response_waiting.json"
+  echo '{"workflow_runs": [{"id": 333, "updated_at": "2025-01-01T14:00:00Z"}, {"id": 111, "updated_at": "2025-01-01T12:00:00Z"}]}' > "$MOCK_GH_RESPONSE_FILE_WAITING"
+
+  run fetch_runs
+
+  [ "$(echo "$output" | sed -n 1p | jq -r .id)" = "111" ]
+  [ "$(echo "$output" | sed -n 2p | jq -r .id)" = "222" ]
+  [ "$(echo "$output" | sed -n 3p | jq -r .id)" = "333" ]
+}
+
+@test "fetch_runs prints each run once when the same status is given twice" {
+  export STATUSES="queued,queued"
+
+  run fetch_runs
+
+  [ "$(echo "$output" | wc -l | tr -d ' ')" -eq 2 ]
 }
 
 @test "fetch_runs ignores spaces around the commas" {
