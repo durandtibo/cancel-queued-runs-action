@@ -260,7 +260,8 @@ For additional use cases and complete workflow examples, see the [examples/](exa
 ## 🧩 How It Works
 
 1. **Fetch Runs**: Uses the GitHub API to list all workflow runs with each of the `statuses`
-   (`queued` by default)
+   (`queued` by default). A run listed under two statuses, because its status changed between the
+   two calls, is only considered once
 2. **Calculate Age**: Determines how old each run is, measured from its last update
    (`updated_at`), which moves forward when a run is re-run, for example after a failure
 3. **Filter**: Identifies runs older than the configured `max_age_hours`

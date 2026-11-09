@@ -173,6 +173,24 @@ warn_if_listing_truncated() {
 }
 
 # ----------------------------
+# Remove the duplicated runs of a listing
+# A run can be listed twice when its status changes between the calls made for
+# two statuses (for example from waiting to queued). Without this, it would be
+# counted twice and cancelled twice (the second request failing with a 409).
+# The first occurrence of each run ID is kept and the order is preserved.
+# Reads one JSON object per line on stdin, with at least an "id" field.
+# Prints the remaining objects, one per line (compact JSON).
+# Returns:
+#   0 on success, jq's exit code if the input is not valid JSON
+# ----------------------------
+dedupe_runs() {
+	jq -c -s 'reduce .[] as $run ({seen: {}, runs: []};
+		if .seen[($run.id | tostring)] then .
+		else .seen[($run.id | tostring)] = true | .runs += [$run]
+		end) | .runs[]'
+}
+
+# ----------------------------
 # Fetch the runs to consider from GitHub API
 # Uses pagination to handle repositories with many runs
 #
@@ -188,6 +206,9 @@ warn_if_listing_truncated() {
 #               deliberately not created_at: updated_at moves forward when a
 #               run is re-run (for example after a failure), so a re-queued
 #               run is not cancelled because of its original creation date.
+#
+# A run listed under several statuses (its status changed between two calls)
+# is printed once (see dedupe_runs).
 #
 # A warning is written on stderr for a status when GitHub lists as many runs
 # as it is able to return (see warn_if_listing_truncated).
@@ -206,6 +227,7 @@ fetch_runs() {
 	fi
 
 	local run_status listed count
+	local all=""
 	local seen=","
 	local -a status_list=()
 	IFS=',' read -r -a status_list <<<"${STATUSES// /}"
@@ -227,11 +249,15 @@ fetch_runs() {
 		) || return 1
 
 		if [ -n "$listed" ]; then
-			printf '%s\n' "$listed"
+			all="${all}${listed}"$'\n'
 			count=$(printf '%s\n' "$listed" | grep -c '')
 			warn_if_listing_truncated "$run_status" "$count"
 		fi
 	done
+
+	if [ -n "$all" ]; then
+		printf '%s' "$all" | dedupe_runs || return 1
+	fi
 }
 
 # ----------------------------
