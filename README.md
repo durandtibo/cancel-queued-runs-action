@@ -92,11 +92,12 @@ jobs:
 | `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
 | `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
+| `cancel_delay_seconds`      | ❌ No    | `0`                        | Seconds to wait between two cancel requests (`0` means no delay)                        |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
-> **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `dry_run` and all the
-> [outputs](#-outputs) were added after `v1.9`. Use a later release (or a commit of `main`) to get
-> them; the examples below that use them need such a release.
+> **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `cancel_delay_seconds`, `dry_run`
+> and all the [outputs](#-outputs) were added after `v1.9`. Use a later release (or a commit of
+> `main`) to get them; the examples below that use them need such a release.
 
 ---
 
@@ -180,6 +181,19 @@ workflows can share it.
   with:
     max_age_hours: 12
     workflow: ci.yaml
+```
+
+### Example: cancel a large backlog without hitting the secondary rate limits
+
+GitHub asks for about one second between requests that modify data. When many runs are cancelled
+at once, set `cancel_delay_seconds` to wait between two cancel requests. The first request is not
+delayed, and nothing is waited for in a dry run.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  with:
+    max_age_hours: 24
+    cancel_delay_seconds: 1
 ```
 
 ### Example: scheduled cleanup every hour
@@ -400,7 +414,8 @@ processed, and the step exits with code `1`.
   cancelled
 - **Single Repository**: Each action invocation targets one repository (use multiple steps or matrix
   strategies for multiple repos)
-- **API Rate Limits**: Subject to GitHub API rate limits. A cancel request rejected because of a
+- **API Rate Limits**: Subject to GitHub API rate limits. Use `cancel_delay_seconds` to space the
+  cancel requests when many runs are cancelled at once. A cancel request rejected because of a
   rate limit (HTTP `429`, or `403` with a rate limit header or message) is retried up to 3 times,
   waiting for the delay requested by GitHub (`Retry-After` or `X-RateLimit-Reset`) or, if there is
   none, 5, 10 and 20 seconds. A limit that requires waiting more than 60 seconds is not waited for:

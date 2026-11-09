@@ -482,3 +482,108 @@ record_calls() {
 
   [ "$PROCESS_RUN_OUTCOME" = "noop" ]
 }
+
+# --------------------------------------------------------
+# Delay between the cancel requests
+# --------------------------------------------------------
+
+# Record the waits instead of sleeping
+record_sleeps() {
+  mkdir -p "$BATS_TEST_DIRNAME/mocks"
+  export SLEEP_LOG="$BATS_TEST_DIRNAME/mocks/sleep.log"
+  : > "$SLEEP_LOG"
+  sleep() { echo "$1" >> "$SLEEP_LOG"; }
+}
+
+@test "process_run does not wait before its first request" {
+  record_sleeps
+  record_calls
+  CANCEL_DELAY_SECONDS=5
+
+  process_run "123" $((3 * 3600)) >/dev/null
+
+  [ ! -s "$SLEEP_LOG" ]
+}
+
+@test "process_run waits CANCEL_DELAY_SECONDS between the requests of two runs" {
+  record_sleeps
+  record_calls
+  CANCEL_DELAY_SECONDS=5
+
+  process_run "123" $((3 * 3600)) >/dev/null
+  process_run "124" $((3 * 3600)) >/dev/null
+
+  [ "$(cat "$SLEEP_LOG")" = "5" ]
+  grep -q "cancel_run 124" "$CALL_LOG"
+}
+
+@test "process_run does not wait when CANCEL_DELAY_SECONDS is 0" {
+  record_sleeps
+  record_calls
+  CANCEL_DELAY_SECONDS=0
+
+  process_run "123" $((3 * 3600)) >/dev/null
+  process_run "124" $((3 * 3600)) >/dev/null
+
+  [ ! -s "$SLEEP_LOG" ]
+}
+
+@test "process_run waits between the cancel and the force-cancel requests of one run" {
+  record_sleeps
+  CANCEL_DELAY_SECONDS=4
+  cancel_run() { echo "HTTP/2.0 409 Conflict"; }
+  force_cancel_run() { echo "HTTP/2.0 202 Accepted"; }
+
+  process_run "123" $((10 * 3600)) >/dev/null
+
+  [ "$(cat "$SLEEP_LOG")" = "4" ]
+}
+
+@test "process_run does not wait when the run is too recent" {
+  record_sleeps
+  record_calls
+  CANCEL_DELAY_SECONDS=5
+
+  process_run "123" $((3 * 3600)) >/dev/null
+  process_run "124" $((1 * 3600)) >/dev/null
+  process_run "125" $((1 * 3600)) >/dev/null
+
+  [ ! -s "$SLEEP_LOG" ]
+}
+
+@test "process_run does not wait for a run that is too recent after a request" {
+  record_sleeps
+  record_calls
+  CANCEL_DELAY_SECONDS=5
+
+  process_run "123" $((3 * 3600)) >/dev/null
+  process_run "124" $((1 * 3600)) >/dev/null
+  process_run "125" $((3 * 3600)) >/dev/null
+
+  [ "$(wc -l < "$SLEEP_LOG" | tr -d ' ')" -eq 1 ]
+}
+
+@test "process_run does not wait in dry run" {
+  record_sleeps
+  record_calls
+  CANCEL_DELAY_SECONDS=5
+  DRY_RUN=true
+
+  process_run "123" $((3 * 3600)) >/dev/null
+  process_run "124" $((10 * 3600)) >/dev/null
+
+  [ ! -s "$SLEEP_LOG" ]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run waits after a failed request too" {
+  record_sleeps
+  CANCEL_DELAY_SECONDS=5
+  cancel_run() { echo "HTTP/2.0 500 Internal Server Error"; }
+
+  process_run "123" $((3 * 3600)) >/dev/null || true
+  process_run "124" $((3 * 3600)) >/dev/null || true
+
+  [ "$(cat "$SLEEP_LOG")" = "5" ]
+}
+

@@ -68,7 +68,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE
+  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -191,3 +191,51 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   [ "$status" -eq 1 ]
   [[ "$output" =~ "::warning::gh api (cancel) failed for run 111: gh: Error (HTTP 500)" ]]
 }
+
+# Two runs old enough to be cancelled, and a fake sleep that records its argument
+setup_two_old_runs() {
+  cat > "$MOCK_GH_RUNS" << 'JSON'
+{
+  "workflow_runs": [
+    {"id": 111, "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z"},
+    {"id": 112, "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z"}
+  ]
+}
+JSON
+  export MOCK_SLEEP_LOG="$MOCK_DIR/sleep.log"
+  : > "$MOCK_SLEEP_LOG"
+  printf '#!/usr/bin/env bash\necho "$@" >> "$MOCK_SLEEP_LOG"\n' > "$MOCK_DIR/sleep"
+  chmod +x "$MOCK_DIR/sleep"
+}
+
+@test "end-to-end: waits between the cancel requests when CANCEL_DELAY_SECONDS is set" {
+  setup_two_old_runs
+  export CANCEL_DELAY_SECONDS=7
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 2 ]
+  [ "$(cat "$MOCK_SLEEP_LOG")" = "7" ]
+}
+
+@test "end-to-end: does not wait between the cancel requests by default" {
+  setup_two_old_runs
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 2 ]
+  [ ! -s "$MOCK_SLEEP_LOG" ]
+}
+
+@test "end-to-end: an invalid CANCEL_DELAY_SECONDS fails before any API call" {
+  export CANCEL_DELAY_SECONDS=abc
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer" ]] || false
+  [ "$(posts)" -eq 0 ]
+}
+
