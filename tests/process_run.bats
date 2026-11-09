@@ -873,7 +873,8 @@ record_ordered_calls() {
 }
 
 @test "process_run cancels a young run that is over the MAX_RUNS limit" {
-  LOG_FILE="$BATS_TEST_TMPDIR/calls.log"
+  # mktemp in BATS_TMPDIR: BATS_TEST_TMPDIR is missing from old bats (1.2.x)
+  LOG_FILE="$(mktemp "${BATS_TMPDIR:-${TMPDIR:-/tmp}}/calls.XXXXXX")"
   cancel_run() { echo "cancel $1" >> "$LOG_FILE"; echo "HTTP 202"; }
   get_status_code() { echo 202; }
   throttle_requests() { :; }
@@ -885,6 +886,7 @@ record_ordered_calls() {
 
   [ "$PROCESS_RUN_OUTCOME" = "cancelled" ]
   grep -q "cancel 7" "$LOG_FILE"
+  rm -f "$LOG_FILE"
 }
 
 @test "process_run leaves a young run alone when it is not over the limit" {

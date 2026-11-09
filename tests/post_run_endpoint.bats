@@ -161,10 +161,13 @@ teardown() {
   for tool in mktemp rm tr sed head grep awk cat; do
     ln -s "$(command -v "$tool")" "$tool_dir/$tool"
   done
+  local saved_path="$PATH"
   PATH="$tool_dir"
   rm -f "$MOCK_DIR/gh"
 
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
+  # Restore PATH: bats itself needs rm and friends after the test body
+  PATH="$saved_path"
 
   [[ "$err" == *"::warning::"* ]] || false
 }
