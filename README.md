@@ -93,11 +93,13 @@ jobs:
 | `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
 | `cancel_delay_seconds`      | ❌ No    | `0`                        | Seconds to wait between two cancel requests (`0` means no delay)                        |
+| `fail_on_error`             | ❌ No    | `true`                     | If `false`, a run that could not be cancelled does not fail the step                    |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
-> **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `cancel_delay_seconds`, `dry_run`
-> and all the [outputs](#-outputs) were added after `v1.9`. Use a later release (or a commit of
-> `main`) to get them; the examples below that use them need such a release.
+> **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `cancel_delay_seconds`,
+> `fail_on_error`, `dry_run` and all the [outputs](#-outputs) were added after `v1.9`. Use a later
+> release (or a commit of `main`) to get them; the examples below that use them need such a
+> release.
 
 ---
 
@@ -111,8 +113,8 @@ jobs:
 | `failed_count`       | Number of runs that could not be cancelled                                  |
 | `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)        |
 
-The outputs are written even when some runs failed (the step then fails, so use `if: always()` on
-a following step to read them), and the action appends the same counts as a table to the
+The outputs are written even when some runs failed (the step then fails unless `fail_on_error` is
+`false`, so use `if: always()` on a following step to read them), and the action appends the same counts as a table to the
 [job summary](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary).
 
 ```yaml
@@ -194,6 +196,22 @@ delayed, and nothing is waited for in a dry run.
   with:
     max_age_hours: 24
     cancel_delay_seconds: 1
+```
+
+### Example: do not fail the job when a run cannot be cancelled
+
+By default the step fails when a run could not be cancelled, for example after a rate limit or a
+server error. For a cleanup that runs often and is retried by the next execution, set
+`fail_on_error: false` to only log a warning. The failures are still counted in the
+`failed_count` output. Invalid inputs and a failure to list the runs always fail the step.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  id: cancel
+  with:
+    max_age_hours: 24
+    fail_on_error: false
+- run: echo "Failed to cancel ${{ steps.cancel.outputs.failed_count }} run(s)"
 ```
 
 ### Example: scheduled cleanup every hour
@@ -403,7 +421,7 @@ If a run starts or completes between the moment it is listed and the moment the 
 sent, GitHub rejects the request with HTTP `409` (or `404` if the run is gone). The action logs a
 `::warning::` for that run, skips it, and does **not** fail. Any other error (for example `401`,
 `403`, `5xx`, or a network error) is a real failure: it is logged, the other runs are still
-processed, and the step exits with code `1`.
+processed, and the step exits with code `1` (unless `fail_on_error` is `false`).
 
 ---
 

@@ -19,6 +19,10 @@
 #              (default: empty, all the workflows)
 #   DRY_RUN - "true" to only log the runs that would be cancelled, without
 #             calling the cancel endpoints; "false" otherwise (default: false)
+#   FAIL_ON_ERROR - "true" to exit with 1 when a run could not be cancelled;
+#                   "false" to only log a warning and exit with 0, the failures
+#                   remaining in the failed_count output (default: true).
+#                   Invalid inputs and a failure to list the runs always fail
 #   CANCEL_DELAY_SECONDS - Seconds to wait between two cancel requests, to stay
 #                          under the secondary rate limits of GitHub when many
 #                          runs are cancelled. Non-negative integer, 0 means no
@@ -41,8 +45,10 @@
 #   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
 #
 # Exit Codes:
-#   0 - Success (all eligible runs cancelled, or no longer cancellable)
-#   1 - One or more cancellations failed
+#   0 - Success (all eligible runs cancelled, or no longer cancellable), or
+#       cancellations failed and FAIL_ON_ERROR is "false"
+#   1 - One or more cancellations failed (and FAIL_ON_ERROR is "true"), the
+#       runs could not be listed, or an input is invalid
 #
 
 set -euo pipefail
@@ -53,6 +59,7 @@ WORKFLOW="${WORKFLOW:-}"
 STATUSES="${STATUSES:-queued}"
 DRY_RUN="${DRY_RUN:-false}"
 CANCEL_DELAY_SECONDS="${CANCEL_DELAY_SECONDS:-0}"
+FAIL_ON_ERROR="${FAIL_ON_ERROR:-true}"
 
 # Counters filled by process_all_runs and reported by main
 CANCELLED_COUNT=0
@@ -825,6 +832,22 @@ validate_dry_run() {
 }
 
 # ----------------------------
+# Validate the fail on error flag
+# Args:
+#   $1 - "true" or "false"
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_fail_on_error() {
+	local fail_on_error="${1:-}"
+
+	if [ "$fail_on_error" != "true" ] && [ "$fail_on_error" != "false" ]; then
+		echo "::error::FAIL_ON_ERROR must be 'true' or 'false' (got '$fail_on_error')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
 # Validate the delay between cancel requests
 # Args:
 #   $1 - Delay in seconds
@@ -918,6 +941,7 @@ main() {
 	validate_statuses "$STATUSES" || return 1
 	validate_workflow "$WORKFLOW" || return 1
 	validate_dry_run "$DRY_RUN" || return 1
+	validate_fail_on_error "$FAIL_ON_ERROR" || return 1
 	validate_cancel_delay_seconds "$CANCEL_DELAY_SECONDS" || return 1
 	validate_auth || return 1
 
@@ -955,8 +979,10 @@ main() {
 		echo "✅ No queued runs found."
 	elif process_all_runs "$runs"; then
 		echo "✅ All eligible runs processed successfully."
-	else
+	elif [ "$FAIL_ON_ERROR" = "true" ]; then
 		exit_code=1
+	else
+		echo "::warning::$FAILED_COUNT run(s) could not be processed, but fail_on_error is false: the step does not fail (see the failed_count output)."
 	fi
 
 	# Report even when some runs failed
