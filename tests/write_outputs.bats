@@ -98,3 +98,30 @@ teardown() {
 
   grep -qx "deferred_count=0" "$GITHUB_OUTPUT"
 }
+
+@test "write_outputs writes cancelled_run_ids as a JSON array" {
+  record_run 101 "30h00m" cancelled
+  record_run 102 "30h00m" skipped
+  record_run 103 "30h00m" cancelled
+
+  write_outputs 10
+
+  grep -qx "cancelled_run_ids=\[101,103\]" "$GITHUB_OUTPUT"
+}
+
+@test "write_outputs writes an empty cancelled_run_ids when no run was cancelled" {
+  reset_counters
+
+  write_outputs 0
+
+  grep -qx "cancelled_run_ids=\[\]" "$GITHUB_OUTPUT"
+}
+
+@test "write_outputs writes cancelled_run_ids on a single line" {
+  record_run 101 "30h00m" cancelled
+  record_run 102 "30h00m" cancelled
+
+  write_outputs 10
+
+  [ "$(grep -c '^cancelled_run_ids=' "$GITHUB_OUTPUT")" -eq 1 ]
+}

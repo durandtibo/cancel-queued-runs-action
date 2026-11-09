@@ -10,14 +10,14 @@
 # Environment variables (the outputs of the action, passed through env: and
 # never interpolated in a script):
 #   FOUND_COUNT, CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT,
-#   WOULD_CANCEL_COUNT, DEFERRED_COUNT, LISTING_TRUNCATED
+#   WOULD_CANCEL_COUNT, DEFERRED_COUNT, CANCELLED_RUN_IDS, LISTING_TRUNCATED
 #   MAX_CANCELLATIONS (optional) - the max_cancellations input of the dry run,
 #   0 or unset when there is no limit
 #
 # A dry run must satisfy:
 #   - the six counts are non-negative integers (an empty value means that the
 #     output is not exposed by action.yaml)
-#   - nothing was cancelled, skipped or failed
+#   - nothing was cancelled, skipped or failed, so cancelled_run_ids is "[]"
 #   - would_cancel_count + deferred_count <= found_count
 #   - would_cancel_count <= MAX_CANCELLATIONS when there is a limit
 #   - deferred_count is 0 when there is no limit
@@ -72,6 +72,11 @@ main() {
 		fi
 	elif [ "$WOULD_CANCEL_COUNT" -gt "$max_cancellations" ]; then
 		echo "::error::would_cancel_count ($WOULD_CANCEL_COUNT) cannot exceed max_cancellations ($max_cancellations)" >&2
+		errors=1
+	fi
+
+	if [ "${CANCELLED_RUN_IDS:-}" != "[]" ]; then
+		echo "::error::The output CANCELLED_RUN_IDS must be '[]' in a dry run (got '${CANCELLED_RUN_IDS:-}')" >&2
 		errors=1
 	fi
 

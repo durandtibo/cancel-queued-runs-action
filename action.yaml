@@ -110,6 +110,12 @@ outputs:
   would_cancel_count:
     description: Number of runs that would be cancelled (only set in dry run, otherwise 0).
     value: ${{ steps.cancel.outputs.would_cancel_count }}
+  cancelled_run_ids:
+    description: >
+      JSON array with the IDs of the runs for which a cancel request was accepted, in the order
+      they were processed (for example "[101,102]"), "[]" if none. Read it with fromJSON().
+      Always "[]" in a dry run.
+    value: ${{ steps.cancel.outputs.cancelled_run_ids }}
   deferred_count:
     description: >
       Number of runs that were old enough to be cancelled but were left alone because the

@@ -11,6 +11,7 @@ setup() {
   export FAILED_COUNT=0
   export WOULD_CANCEL_COUNT=2
   export DEFERRED_COUNT=0
+  export CANCELLED_RUN_IDS="[]"
   export LISTING_TRUNCATED=false
   unset MAX_CANCELLATIONS
 }
@@ -240,4 +241,42 @@ setup() {
 
   [ "$status" -eq 1 ]
   [[ "$output" =~ "MAX_CANCELLATIONS must be a non-negative integer (got 'lots')" ]] || false
+}
+
+# --------------------------------------------------------
+# IDs of the cancelled runs
+# --------------------------------------------------------
+
+@test "check_dry_run_outputs rejects an unset cancelled_run_ids" {
+  unset CANCELLED_RUN_IDS
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "CANCELLED_RUN_IDS must be '[]' in a dry run (got '')" ]] || false
+}
+
+@test "check_dry_run_outputs rejects an empty cancelled_run_ids" {
+  export CANCELLED_RUN_IDS=""
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "check_dry_run_outputs rejects a cancelled run in a dry run" {
+  export CANCELLED_RUN_IDS="[101]"
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "got '[101]'" ]] || false
+}
+
+@test "check_dry_run_outputs rejects a cancelled_run_ids that is not an array" {
+  export CANCELLED_RUN_IDS="none"
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
 }

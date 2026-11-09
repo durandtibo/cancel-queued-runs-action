@@ -91,3 +91,10 @@ write_outputs: deferred_count reports the skipped runs@@write_outputs.bats@@s/ec
 write_summary: no limit warning@@write_summary.bats@@s/^\t\tif \[ "\$DEFERRED_COUNT" -gt 0 \]; then$/\t\tif false; then/
 validate_max_cancellations: leading zero accepted@@validate_max_cancellations.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[0-9]+$ ]]; then/
 validate_max_cancellations: zero rejected@@validate_max_cancellations.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[1-9][0-9]*$ ]]; then/
+cancelled_run_ids_json: runs that would be cancelled listed@@cancelled_run_ids_json.bats@@s/\$3 == "cancelled" &&/($3 == "cancelled" || $3 == "would-cancel") \&\&/
+cancelled_run_ids_json: failed runs listed@@cancelled_run_ids_json.bats@@s/\$3 == "cancelled" &&/$3 != "skipped" \&\&/
+cancelled_run_ids_json: outcome matched by prefix@@cancelled_run_ids_json.bats@@s/\$3 == "cancelled" &&/$3 ~ \/^cancelled\/ \&\&/
+cancelled_run_ids_json: IDs that are not numbers listed@@cancelled_run_ids_json.bats@@s/ && \$1 ~ \/\^\[0-9\]\+\$\///
+cancelled_run_ids_json: no separator@@cancelled_run_ids_json.bats@@s/sep = ","/sep = ""/
+cancelled_run_ids_json: no brackets@@cancelled_run_ids_json.bats@@s/printf '\[%s\]\\n'/printf '%s\\n'/
+write_outputs: cancelled_run_ids always empty@@write_outputs.bats@@s/echo "cancelled_run_ids=\$\(cancelled_run_ids_json\)"/echo "cancelled_run_ids=[]"/

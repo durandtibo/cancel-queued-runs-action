@@ -772,3 +772,63 @@ JSON
   [[ "$output" =~ "MAX_CANCELLATIONS must be a non-negative integer" ]] || false
   [ ! -s "$MOCK_GH_CALL_LOG" ]
 }
+
+# --------------------------------------------------------
+# IDs of the cancelled runs
+# --------------------------------------------------------
+
+@test "end-to-end: cancelled_run_ids lists the cancelled runs" {
+  three_old_runs
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -qx 'cancelled_run_ids=\[111,112,113\]' "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: cancelled_run_ids does not list the runs left alone by the limit" {
+  three_old_runs
+  export MAX_CANCELLATIONS=2
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  grep -qx 'cancelled_run_ids=\[111,112\]' "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: cancelled_run_ids does not list the runs that were not cancelled" {
+  three_old_runs
+  export MOCK_GH_POST_CODE=409
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  grep -qx 'cancelled_run_ids=\[\]' "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: cancelled_run_ids is empty in a dry run" {
+  three_old_runs
+  export DRY_RUN=true
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  grep -qx 'cancelled_run_ids=\[\]' "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: cancelled_run_ids is empty when the runs cannot be listed" {
+  export MOCK_GH_LIST_FAILS=99
+  export MAX_RETRIES=0
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  grep -qx 'cancelled_run_ids=\[\]' "$GITHUB_OUTPUT"
+}
