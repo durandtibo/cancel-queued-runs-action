@@ -839,3 +839,226 @@ setup_outputs() {
   [[ "$output" =~ "No workflow runs found." ]] || false
   [[ ! "$output" =~ [Qq]ueued ]]
 }
+
+# --------------------------------------------------------
+# Failure matrix: exit code and reporting for each kind of failure, with
+# FAIL_ON_ERROR=true and FAIL_ON_ERROR=false. The real process_all_runs is
+# used, with a fake listing and a fake process_run.
+# --------------------------------------------------------
+
+OLD_RUN='{"id": 11, "queued_at": "2020-01-01T00:00:00Z"}'
+
+# Use the real functions of the script and fake the listing
+use_real_flow() {
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  fetch_runs() { printf '%s\n' "$MOCK_RUNS"; }
+}
+
+# --- a cancel request fails ---
+
+@test "failure matrix: a failed cancellation fails main when FAIL_ON_ERROR is true" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS="$OLD_RUN"
+  export FAIL_ON_ERROR=true
+  process_run() { PROCESS_RUN_OUTCOME=failed; return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+}
+
+@test "failure matrix: a failed cancellation does not fail main when FAIL_ON_ERROR is false" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS="$OLD_RUN"
+  export FAIL_ON_ERROR=false
+  process_run() { PROCESS_RUN_OUTCOME=failed; return 1; }
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+}
+
+@test "failure matrix: a failed cancellation is listed in the summary" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS="$OLD_RUN"
+  export FAIL_ON_ERROR=false
+  process_run() { PROCESS_RUN_OUTCOME=failed; return 1; }
+
+  run main
+
+  grep -q "| Failed | 1 |" "$GITHUB_STEP_SUMMARY"
+  grep -q "actions/runs/11) | .* | Failed |$" "$GITHUB_STEP_SUMMARY"
+}
+
+# --- a run has an invalid timestamp ---
+
+@test "failure matrix: an invalid timestamp fails main when FAIL_ON_ERROR is true" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS='{"id": 12, "queued_at": "yesterday"}'
+  export FAIL_ON_ERROR=true
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+}
+
+@test "failure matrix: an invalid timestamp does not fail main when FAIL_ON_ERROR is false" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS='{"id": 12, "queued_at": "yesterday"}'
+  export FAIL_ON_ERROR=false
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+  [[ "$output" =~ "::error::Skipping run 12" ]] || false
+}
+
+@test "failure matrix: an invalid timestamp does not prevent the other runs from being processed" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS="$(printf '%s\n' '{"id": 12, "queued_at": "yesterday"}' "$OLD_RUN")"
+  export FAIL_ON_ERROR=false
+  process_run() { echo "process_run $1" >> "$LOG_FILE"; PROCESS_RUN_OUTCOME=cancelled; return 0; }
+
+  run main
+
+  grep -qx "process_run 11" "$LOG_FILE"
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=1" "$GITHUB_OUTPUT"
+}
+
+# --- the list of runs cannot be parsed ---
+
+@test "failure matrix: an unparsable list fails main when FAIL_ON_ERROR is true" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS='"not a run"'
+  export FAIL_ON_ERROR=true
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+}
+
+@test "failure matrix: an unparsable list does not fail main when FAIL_ON_ERROR is false" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS='"not a run"'
+  export FAIL_ON_ERROR=false
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+}
+
+# --- the runs cannot be listed: always a failure ---
+
+@test "failure matrix: a listing failure fails main when FAIL_ON_ERROR is true" {
+  setup_outputs
+  export FAIL_ON_ERROR=true
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+}
+
+@test "failure matrix: a listing failure fails main when FAIL_ON_ERROR is false" {
+  setup_outputs
+  export FAIL_ON_ERROR=false
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+}
+
+@test "failure matrix: a listing failure writes the outputs but no summary" {
+  setup_outputs
+  fetch_runs() { return 1; }
+
+  run main
+
+  grep -qx "found_count=0" "$GITHUB_OUTPUT"
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
+
+# --- an input is invalid: always a failure, before any API call ---
+
+@test "failure matrix: an invalid input fails main when FAIL_ON_ERROR is false" {
+  setup_outputs
+  export FAIL_ON_ERROR=false
+  export MAX_AGE_HOURS=abc
+  fetch_runs() { echo "fetch_runs called" >> "$LOG_FILE"; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "failure matrix: an invalid input writes neither outputs nor summary" {
+  setup_outputs
+  export MAX_AGE_HOURS=abc
+
+  run main
+
+  [ ! -s "$GITHUB_OUTPUT" ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
+
+# --- cases that are not failures ---
+
+@test "failure matrix: a skipped run is not a failure whatever FAIL_ON_ERROR is" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS="$OLD_RUN"
+  export FAIL_ON_ERROR=true
+  process_run() { PROCESS_RUN_OUTCOME=skipped; return 0; }
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "skipped_count=1" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "failure matrix: no run is not a failure" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS=""
+  export FAIL_ON_ERROR=true
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "found_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "failure matrix: some failures among successes still fail main when FAIL_ON_ERROR is true" {
+  setup_outputs
+  use_real_flow
+  export MOCK_RUNS="$(printf '%s\n' '{"id": 11, "queued_at": "2020-01-01T00:00:00Z"}' '{"id": 13, "queued_at": "2020-01-01T00:00:00Z"}')"
+  export FAIL_ON_ERROR=true
+  process_run() {
+    if [ "$1" = "13" ]; then PROCESS_RUN_OUTCOME=failed; return 1; fi
+    PROCESS_RUN_OUTCOME=cancelled
+  }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "cancelled_count=1" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+}
