@@ -274,6 +274,43 @@ record_calls() {
   [ "$status" -eq 0 ]
 }
 
+@test "process_run does not force-cancel an old run that the cancel request reports as not found" {
+  record_calls
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo -e "HTTP/2.0 404 Not Found\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  grep -q "cancel_run 123" "$CALL_LOG"
+  [ "$(grep -c "force_cancel_run" "$CALL_LOG" || true)" -eq 0 ]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run skips an old run that the cancel request reports as not found" {
+  cancel_run() { echo -e "HTTP/2.0 404 Not Found\n\n{}"; }
+
+  process_run "123" $((24 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+}
+
+@test "process_run still force-cancels an old run when the cancel request returns 409" {
+  record_calls
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  grep -q "force_cancel_run 123" "$CALL_LOG"
+}
+
+@test "process_run still force-cancels an old run when the cancel request returns 500" {
+  record_calls
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo -e "HTTP/2.0 500 Internal Server Error\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  grep -q "force_cancel_run 123" "$CALL_LOG"
+}
+
 @test "process_run does not print the success line for a skipped run" {
   cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
 
@@ -595,4 +632,16 @@ record_sleeps() {
   [ "$status" -eq 0 ]
   [[ ! "$output" =~ "no longer queued" ]] || false
   [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409): it no longer exists or cannot be cancelled anymore" ]]
+}
+
+@test "process_run does not wait for a force-cancel request that is not sent after a 404" {
+  record_sleeps
+  CANCEL_DELAY_SECONDS=7
+  REQUEST_SENT=true
+  cancel_run() { echo -e "HTTP/2.0 404 Not Found\n\n{}"; }
+
+  process_run "123" $((24 * 3600)) >/dev/null
+
+  # only the wait before the cancel request, none before the force-cancel
+  [ "$(cat "$SLEEP_LOG")" = "7" ]
 }

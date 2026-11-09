@@ -285,7 +285,8 @@ The action uses a two-tier cancellation approach:
   - Sends a standard `/cancel` request first: this is required because GitHub rejects
     `/force-cancel` (HTTP `409`) for a run that never received a regular cancel request
   - Falls back to the `/force-cancel` endpoint **only if** the standard request is not accepted
-    (anything other than HTTP `202`)
+    (anything other than HTTP `202`) and does not report that the run is gone (`HTTP 404`): a run
+    that no longer exists is skipped without a second request
   - More aggressive approach necessary for very old, stuck runs
 
 **Example**: If `max_age_hours: 24` and `force_cancel_buffer_hours: 3` (the default):
