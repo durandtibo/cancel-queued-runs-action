@@ -778,6 +778,30 @@ validate_repo() {
 }
 
 # ----------------------------
+# Validate that the required commands are installed
+# gh and jq are pre-installed on GitHub-hosted runners but not necessarily on
+# self-hosted ones. All the missing commands are reported in a single message,
+# before any API call, instead of failing later with "command not found".
+# Returns:
+#   0 if gh and jq are available, 1 otherwise
+# ----------------------------
+validate_dependencies() {
+	local cmd
+	local -a missing=()
+
+	for cmd in gh jq; do
+		if ! command -v "$cmd" >/dev/null 2>&1; then
+			missing+=("$cmd")
+		fi
+	done
+
+	if [ "${#missing[@]}" -gt 0 ]; then
+		echo "::error::Required command(s) not found: ${missing[*]} (install them on the runner; they are pre-installed on GitHub-hosted runners)" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
 # Validate that GitHub credentials are available
 # Credentials come from GH_TOKEN / GITHUB_TOKEN (the github_token input in the
 # action) or, for local runs, from a session created with "gh auth login".
@@ -801,6 +825,7 @@ validate_auth() {
 # Main workflow logic
 # ----------------------------
 main() {
+	validate_dependencies || return 1
 	validate_max_age_hours "$MAX_AGE_HOURS" || return 1
 	validate_repo "${REPO:-}" || return 1
 	validate_force_buffer_hours "$FORCE_BUFFER_HOURS" || return 1

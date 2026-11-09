@@ -265,11 +265,14 @@ This design helps handle edge cases where runs have been stuck in the queue for 
 
 ## 🔧 Troubleshooting
 
-### Action fails with "gh: command not found"
+### Action fails with "Required command(s) not found" or "gh: command not found"
 
 **Solution**: This should not happen on GitHub-hosted runners. If you're using a self-hosted runner,
 ensure the GitHub CLI is installed.
 See [GitHub CLI installation](https://cli.github.com/manual/installation).
+
+The action checks for `gh` and `jq` before doing anything else and fails with
+`::error::Required command(s) not found: ...`, listing every missing command at once.
 
 ### Cancellation returns status code 500
 
