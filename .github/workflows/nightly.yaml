@@ -1,0 +1,23 @@
+# Nightly workflow testing the published (stable) action.
+
+name: Nightly Tests
+on:
+  schedule:
+    - cron: "30 10 * * *" # run at 10:30 AM UTC
+  workflow_dispatch: # to trigger manually
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  # Load the shared OS matrix from the default config of
+  # durandtibo/workflow-config-action once.
+  get-matrix:
+    uses: ./.github/workflows/lib-get-test-matrix.yaml
+
+  stable:
+    needs: get-matrix
+    uses: ./.github/workflows/nightly-test-stable.yaml
+    with:
+      test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}

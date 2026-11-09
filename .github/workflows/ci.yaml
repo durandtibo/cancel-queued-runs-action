@@ -1,21 +1,52 @@
+# Main CI workflow that orchestrates all quality checks and tests.
+# Runs on pull requests, pushes to main, a nightly schedule, and manual dispatch.
+#
+# Deliberately NOT called from here, with its own trigger:
+#   - ci-verify-workflows.yaml: lints .github/workflows/* itself.
+#   - nightly.yaml: tests the published action, which is only meaningful
+#     on a schedule.
+#
+# The individual check jobs below call out to per-check reusable workflows
+# (ci-format.yaml, ...) instead of inlining their steps here, so each check
+# can still be run on its own (workflow_dispatch).
+
 name: CI
 on:
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
+  schedule:
+    - cron: "10 9 * * *" # Run nightly at 9:10 AM UTC to catch issues from external changes
   workflow_dispatch: # to trigger manually
 
 permissions:
-  actions: write
   contents: read
 
 jobs:
+  # Load the shared OS matrix from the default config of
+  # durandtibo/workflow-config-action once, and pass it down to every job
+  # below that needs it.
+  get-matrix:
+    uses: ./.github/workflows/lib-get-test-matrix.yaml
+
+  # Verify formatting and linting of the repository files
   format:
-    uses: ./.github/workflows/format.yaml
+    uses: ./.github/workflows/ci-format.yaml
+
+  # Run the bats unit tests of the shell scripts on multiple OS
   test-shell:
-    uses: ./.github/workflows/test-shell.yaml
+    needs: get-matrix
+    uses: ./.github/workflows/ci-test-shell.yaml
+    with:
+      test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
+
+  # Test the action from the current repository code on multiple OS
   test-local:
-    uses: ./.github/workflows/test-local.yaml
+    needs: get-matrix
+    uses: ./.github/workflows/ci-test-local.yaml
+    with:
+      test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
+    permissions:
+      actions: write
+      contents: read

@@ -11,7 +11,8 @@
 # Configuration:
 #   - Uses GitHub token for authentication
 #   - Operates on the current repository
-#   - No age threshold specified (uses action's default)
+#   - Age threshold `max_age_hours`: 24 by default (also for scheduled runs),
+#     can be overridden in the GitHub web UI when run manually
 #
 # Uses:
 #   - durandtibo/cancel-queued-runs-action@v1.9
@@ -26,24 +27,33 @@
 #   - actions: write - Required to cancel workflow runs
 #   - contents: read - Required for repository access
 
-name: Cancel stale queued runs
+name: Cancel Stale Queued Runs
 
 on:
   schedule:
     - cron: "0 * * * *" # runs every hour
-  workflow_dispatch: # optional, for manual triggering
+  workflow_dispatch:
+    inputs:
+      max_age_hours:
+        description: "Cancel queued runs older than this many hours"
+        required: false
+        default: "24"
+        type: string
 
-permissions:
-  actions: write
-  contents: read
+permissions: {}
 
 jobs:
   cancel-stale-runs:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
 
     steps:
-      - uses: durandtibo/cancel-queued-runs-action@v1.9
+      - uses: durandtibo/cancel-queued-runs-action@3f57ce49d16e0e14e7dd4aed984ff77470d8e357 # ratchet:durandtibo/cancel-queued-runs-action@v1.9
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
+          # Scheduled runs have no inputs, so fall back to 24 hours.
+          max_age_hours: ${{ inputs.max_age_hours || '24' }}

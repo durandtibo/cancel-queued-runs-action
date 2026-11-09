@@ -1,8 +1,14 @@
-name: Shell Unit Tests
+# Shell unit tests workflow.
+# Runs the bats tests of the shell scripts on multiple operating systems.
 
+name: Shell Unit Tests
 on:
   workflow_call:
-  workflow_dispatch: # to trigger manually
+    inputs:
+      test-matrix:
+        description: "JSON test matrix from lib-get-test-matrix.yaml, loaded once by the caller"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -10,28 +16,16 @@ permissions:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 2
+    timeout-minutes: 5
     strategy:
       max-parallel: 8
       fail-fast: false
       matrix:
-        os:
-          [
-            ubuntu-latest,
-            ubuntu-24.04,
-            ubuntu-22.04,
-            ubuntu-24.04-arm,
-            ubuntu-22.04-arm,
-            macos-latest,
-            macos-26,
-            macos-15,
-            macos-14,
-            macos-15-intel,
-          ]
+        os: ${{ fromJson(inputs.test-matrix).os_matrix }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
       - name: Install bats-core (Linux)
         if: runner.os == 'Linux'
@@ -51,9 +45,7 @@ jobs:
 
       - name: Verify bats installation
         run: |
-          echo "✓ Verifying bats installation..."
           bats --version
-          echo "✅ bats is installed and ready"
 
       - name: Run unit tests
         run: |
