@@ -1,0 +1,56 @@
+# Mutations applied to scripts/cancel.sh by dev/mutation_check.sh.
+#
+# One mutation per line:  name@@test file(s) in tests/@@sed -E expression
+#
+# The expression must change the script into valid bash, and the tests listed
+# must fail with the mutated script. Lines starting with # and empty lines are
+# ignored. Use only the portable subset of sed (-E, no \t): it runs with GNU and
+# BSD sed.
+
+process_run: force-cancel threshold >= instead of >@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$force_age_seconds" \]/[ "$age_seconds" -ge "$force_age_seconds" ]/
+process_run: cancel threshold >= instead of >@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$max_age_seconds" \]/[ "$age_seconds" -ge "$max_age_seconds" ]/
+process_run: force-cancel fallback also after a 404@@process_run.bats@@s/\[ "\$status_code" != "404" \]; then/[ "$status_code" != "999" ]; then/
+process_run: no force-cancel fallback@@process_run.bats@@s/\[ "\$status_code" != "202" \] && \[ "\$status_code" != "404" \]; then/false; then/
+process_run: failure when the status is 202@@process_run.bats@@s/^(\t+)if \[ "\$status_code" != "202" \]; then$/\1if [ "$status_code" = "202" ]; then/
+process_run: dry run ignored@@process_run.bats@@s/\[ "\$DRY_RUN" = "true" \]; then$/[ "$DRY_RUN" = "never" ]; then/
+is_skippable_status: 404 not skippable@@is_skippable_status.bats@@s/\[ "\$status_code" = "404" \] \|\|/[ "$status_code" = "405" ] ||/
+is_skippable_status: 409 not skippable@@is_skippable_status.bats@@s/\|\| \[ "\$status_code" = "409" \]/|| [ "$status_code" = "410" ]/
+get_status_code: reads the protocol instead of the code@@get_status_code.bats@@s/awk '\{print \$2\}'/awk '{print $1}'/
+get_status_code: keeps the carriage return@@get_status_code.bats@@s/ \| tr -d '\\r'//
+is_rate_limited: 429 not recognised@@is_rate_limited.bats@@s/"\$status_code" = "429"/"$status_code" = "428"/
+is_rate_limited: Retry-After ignored@@is_rate_limited.bats@@s/\^retry-after:\|//
+is_rate_limited: exhausted quota ignored@@is_rate_limited.bats@@s/\|\^x-ratelimit-remaining:\[\[:space:\]\]\*0\[\[:space:\]\]\*\$//
+is_rate_limited: any 403 is a rate limit@@is_rate_limited.bats@@s/grep -qiE .*; then$/true; then/
+get_retry_delay: backoff does not double@@get_retry_delay.bats@@s/\(1 << \(attempt - 1\)\)/(1 << 0)/
+get_retry_delay: reset time without the extra second@@get_retry_delay.bats@@s/delay=\$\(\(reset - now \+ 1\)\)/delay=$((reset - now))/
+get_retry_delay: no minimum of one second@@get_retry_delay.bats@@s/\[ "\$delay" -lt 1 \]/[ "$delay" -lt -1000 ]/
+post_run_endpoint_with_retry: one retry too many@@post_run_endpoint_with_retry.bats@@s/\[ "\$attempt" -gt "\$MAX_RETRIES" \]/[ "$attempt" -gt "$((MAX_RETRIES + 1))" ]/
+post_run_endpoint_with_retry: waits as long as RETRY_MAX_DELAY@@post_run_endpoint_with_retry.bats@@s/\[ "\$delay" -gt "\$RETRY_MAX_DELAY" \]/[ "$delay" -gt "$((RETRY_MAX_DELAY + 1000))" ]/
+fetch_runs: no pagination@@fetch_runs.bats@@s/--paginate/--silent/
+fetch_runs: smaller pages@@fetch_runs.bats@@s/per_page=100/per_page=30/
+dedupe_runs: duplicates kept@@dedupe_runs.bats@@s/if \.seen\[\(\$run\.id \| tostring\)\] then \./if false then ./
+warn_if_listing_truncated: limit not reached at the limit@@warn_if_listing_truncated.bats@@s/\[ "\$count" -ge "\$RUNS_LISTING_LIMIT" \]/[ "$count" -gt "$RUNS_LISTING_LIMIT" ]/
+warn_if_listing_truncated: flag not set@@warn_if_listing_truncated.bats@@s/LISTING_TRUNCATED=true$/LISTING_TRUNCATED=false/
+compute_age_seconds: reversed subtraction@@compute_age_seconds.bats@@s/echo \$\(\(now_ts - queued_ts\)\)/echo $((queued_ts - now_ts))/
+to_unix_ts: trailing characters accepted@@to_unix_ts.bats@@s/\[0-9\]\{2\}Z\$/[0-9]{2}Z/
+to_unix_ts: BSD date not in UTC@@to_unix_ts.bats@@s/date -j -u -f/date -j -f/
+format_age: minutes computed from 30 seconds@@format_age.bats@@s/\(\(seconds % 3600\) \/ 60\)/((seconds % 3600) \/ 30)/
+format_age: negative age not clamped@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/
+throttle_requests: waits even without a delay@@throttle_requests.bats@@s/\[ "\$REQUEST_SENT" = "true" \] && \[ "\$CANCEL_DELAY_SECONDS" -gt 0 \]/[ "$REQUEST_SENT" = "true" ]/
+throttle_requests: waits before the first request@@throttle_requests.bats@@s/\[ "\$REQUEST_SENT" = "true" \] && \[ "\$CANCEL_DELAY_SECONDS" -gt 0 \]/[ "$CANCEL_DELAY_SECONDS" -gt 0 ]/
+process_all_runs: cancelled runs counted twice@@process_all_runs.bats@@s/CANCELLED_COUNT=\$\(\(CANCELLED_COUNT \+ 1\)\)/CANCELLED_COUNT=$((CANCELLED_COUNT + 2))/
+process_all_runs: skipped runs not counted@@process_all_runs.bats@@s/skipped\) SKIPPED_COUNT=\$\(\(SKIPPED_COUNT \+ 1\)\) ;;/skipped) : ;;/
+write_outputs: failed_count reports the skipped runs@@write_outputs.bats@@s/echo "failed_count=\$FAILED_COUNT"/echo "failed_count=$SKIPPED_COUNT"/
+write_summary_runs: no limit on the runs listed@@write_summary_runs.bats@@s/\[ "\$shown" -ge "\$SUMMARY_MAX_RUNS" \]/[ "$shown" -ge 999999 ]/
+describe_outcome: failed described as cancelled@@describe_outcome.bats@@s/failed\) echo "Failed" ;;/failed) echo "Cancelled" ;;/
+validate_max_age_hours: zero accepted@@validate_max_age_hours.bats@@s/\^\[1-9\]\[0-9\]\*\$ \]\]; then$/^[0-9]+$ ]]; then/
+validate_force_buffer_hours: zero rejected@@validate_force_buffer_hours.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[1-9][0-9]*$ ]]; then/
+validate_statuses: pending not accepted@@validate_statuses.bats@@s/queued \| waiting \| pending \| requested\) ;;/queued | waiting | requested) ;;/
+validate_statuses: in progress accepted@@validate_statuses.bats@@s/queued \| waiting \| pending \| requested\) ;;/queued | waiting | pending | requested | in_progress) ;;/
+validate_workflow: '..' accepted@@validate_workflow.bats@@s/ \|\| \[ "\$workflow" = "\.\." \]//
+validate_repo: path traversal accepted@@validate_repo.bats@@s/ \|\| \[\[ "\$target_repo" =~ \/\\\.\{1,2\}\$ \]\]//
+validate_dry_run: any value accepted@@validate_dry_run.bats@@s/\[ "\$dry_run" != "true" \] && \[ "\$dry_run" != "false" \]/false/
+validate_fail_on_error: any value accepted@@validate_fail_on_error.bats@@s/\[ "\$fail_on_error" != "true" \] && \[ "\$fail_on_error" != "false" \]/false/
+validate_cancel_delay_seconds: leading zero accepted@@validate_cancel_delay_seconds.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[0-9]+$ ]]; then/
+validate_auth: credentials never found@@validate_auth.bats@@s/-n "\$\{GH_TOKEN:-\}" \] \|\| \[ -n "\$\{GITHUB_TOKEN:-\}" \]/-n "" ] || [ -n "" ]/
+validate_tuning_variables: zero accepted for positive integers@@validate_tuning_variables.bats@@s/pattern='\^\[1-9\]\[0-9\]\*\$'/pattern='^(0|[1-9][0-9]*)$'/

@@ -41,6 +41,10 @@ jobs:
     with:
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
 
+  # Break the script on purpose and check that the shell tests notice
+  mutation-check:
+    uses: ./.github/workflows/ci-mutation-check.yaml
+
   # Test the action from the current repository code on multiple OS
   test-local:
     needs: get-matrix

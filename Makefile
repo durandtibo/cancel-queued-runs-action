@@ -20,3 +20,7 @@ lint: lint-yaml lint-makefile lint-shell lint-markdown lint-bats ## Lint all fil
 .PHONY: lint-bats
 lint-bats: ## Check that the bats assertions do not pass vacuously on bash 3.2
 	./dev/check_bats_assertions.sh tests
+
+.PHONY: mutation-check
+mutation-check: ## Check that the bats tests detect deliberate breakages of the script
+	./dev/mutation_check.sh
