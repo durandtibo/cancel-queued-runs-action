@@ -7,7 +7,7 @@ name: Report Queued Runs
 
 on:
   schedule:
-    - cron: "0 8 * * 1" # Run every Monday at 8:00 AM UTC
+    - cron: "0 * * * *" # Run every hour
   workflow_dispatch: # to trigger manually
     inputs:
       username:
