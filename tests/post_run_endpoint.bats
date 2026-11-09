@@ -154,9 +154,15 @@ teardown() {
 }
 
 @test "post_run_endpoint reports a missing gh command" {
-  PATH="/usr/bin:/bin"
+  # A PATH holding only the tools the function needs, so that a gh installed
+  # in a system directory (e.g. /usr/bin on GitHub runners) is never found
+  local tool_dir="$MOCK_DIR/no_gh_bin"
+  mkdir -p "$tool_dir"
+  for tool in mktemp rm tr sed head grep awk cat; do
+    ln -s "$(command -v "$tool")" "$tool_dir/$tool"
+  done
+  PATH="$tool_dir"
   rm -f "$MOCK_DIR/gh"
-  command -v gh >/dev/null 2>&1 && skip "gh is installed in a system directory"
 
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
 
