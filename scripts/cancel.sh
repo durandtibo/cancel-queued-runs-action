@@ -123,9 +123,11 @@ to_unix_ts() {
 		return 1
 	fi
 
-	if date -d "$ts" +%s >/dev/null 2>&1; then
+	# The output of the successful call is kept: calling date a second time to
+	# print it would double the number of processes started for every run
+	if unix_ts=$(date -u -d "$ts" +%s 2>/dev/null); then
 		# Linux (GNU date)
-		date -d "$ts" -u +%s
+		echo "$unix_ts"
 	elif unix_ts=$(date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null); then
 		# macOS (BSD date)
 		echo "$unix_ts"
@@ -689,12 +691,19 @@ record_run() {
 # ----------------------------
 process_all_runs() {
 	local runs_stream="$1"
-	local parsed run_id queued_at age_seconds
+	local parsed run_id queued_at age_seconds now
 	# The unit separator is not whitespace, so read keeps empty fields
 	# (a tab would be collapsed and shift the fields)
 	local sep=$'\x1f'
 
 	reset_counters
+
+	# The current time is read once for all the runs, so that they are compared
+	# with the same instant (the cancel delay and the retries can make a long
+	# execution last minutes) and that no date process is started per run to
+	# read it. An age computed from it is never larger than the real one, so a
+	# run that is younger than the threshold is never cancelled.
+	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 	# Extract the fields of all the runs with a single jq call instead of two
 	# jq processes per run
@@ -719,7 +728,7 @@ process_all_runs() {
 		fi
 
 		# an invalid timestamp is a failure for this run only, not for the others
-		if ! age_seconds=$(compute_age_seconds "$queued_at"); then
+		if ! age_seconds=$(compute_age_seconds "$queued_at" "$now"); then
 			echo "::error::Skipping run $run_id: cannot compute its age from '$queued_at'"
 			FAILED_COUNT=$((FAILED_COUNT + 1))
 			record_run "$run_id" "unknown" "failed"
