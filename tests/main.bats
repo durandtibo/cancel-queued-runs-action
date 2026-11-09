@@ -9,6 +9,7 @@ setup() {
 
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
+  export GH_TOKEN="test-token"
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -96,6 +97,53 @@ teardown() {
 
   [ "$status" -eq 1 ]
   [[ "$output" =~ "REPO is required" ]]
+}
+
+@test "main fails when REPO is not in owner/name format" {
+  export REPO="not-a-repo"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "REPO must be in owner/name format (got 'not-a-repo')" ]]
+}
+
+@test "main fails when REPO contains path traversal" {
+  export REPO="octocat/.."
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "REPO must be in owner/name format" ]]
+}
+
+@test "main fails when there are no credentials" {
+  unset GH_TOKEN GITHUB_TOKEN
+  gh() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "No GitHub credentials found" ]]
+}
+
+@test "main fails when GH_TOKEN is empty and gh is not logged in" {
+  export GH_TOKEN=""
+  unset GITHUB_TOKEN
+  gh() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "No GitHub credentials found" ]]
+}
+
+@test "main reports validation errors as ::error:: annotations" {
+  export REPO="bad"
+
+  run main
+
+  [[ "$output" =~ ^::error:: ]]
 }
 
 @test "main does not fetch runs when the inputs are invalid" {

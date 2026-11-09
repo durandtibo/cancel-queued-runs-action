@@ -206,6 +206,14 @@ GitHub API, so its age cannot be computed.
 **Solution**: The run is skipped, counted as a failure, and the other runs are still processed.
 Please open an issue with the log line if this happens with the GitHub API.
 
+### Action fails immediately with `::error::REPO must be in owner/name format` or `No GitHub credentials found`
+
+**Cause**: The inputs are validated before any API call. `repo` must look like `owner/name`
+(letters, digits, `.`, `_` and `-` only), `max_age_hours` must be a positive integer, and a token
+must be available (the `github_token` input, which must not be empty).
+
+**Solution**: Fix the input named in the error message.
+
 ### Permission denied error
 
 **Cause**: Insufficient permissions for the GitHub token.
