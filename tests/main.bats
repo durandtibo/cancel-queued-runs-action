@@ -478,3 +478,30 @@ setup_outputs() {
 
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
 }
+
+# --------------------------------------------------------
+# Required commands
+# --------------------------------------------------------
+
+@test "main fails when a required command is missing" {
+  validate_dependencies() {
+    echo "::error::Required command(s) not found: jq" >&2
+    return 1
+  }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Required command(s) not found: jq" ]]
+}
+
+@test "main checks the required commands before anything else" {
+  validate_dependencies() { return 1; }
+  validate_max_age_hours() { echo "validate_max_age_hours called" >> "$LOG_FILE"; }
+  fetch_runs() { echo "fetch_runs called" >> "$LOG_FILE"; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$LOG_FILE" ]
+}
