@@ -82,25 +82,21 @@ teardown() {
   [ "$(echo "$output" | tail -n1 | jq -r '.id')" = "222" ]
 }
 
-@test "fetch_runs uses run_started_at as queued_at" {
+@test "fetch_runs uses updated_at as queued_at" {
   run fetch_runs
 
-  [ "$(echo "$output" | head -n1 | jq -r '.queued_at')" = "2025-01-01T10:00:00Z" ]
+  [ "$(echo "$output" | head -n1 | jq -r '.queued_at')" = "2025-01-01T12:00:00Z" ]
+  [ "$(echo "$output" | tail -n1 | jq -r '.queued_at')" = "2025-01-01T13:00:00Z" ]
 }
 
-@test "fetch_runs falls back to created_at when run_started_at is null" {
+@test "fetch_runs does not use created_at or run_started_at" {
   run fetch_runs
 
-  [ "$(echo "$output" | tail -n1 | jq -r '.queued_at')" = "2025-01-01T11:00:00Z" ]
-}
-
-@test "fetch_runs does not use updated_at" {
-  run fetch_runs
-
-  # updated_at differs from queued_at in the mock response
-  [[ ! "$output" =~ "2025-01-01T12:00:00Z" ]]
-  [[ ! "$output" =~ "2025-01-01T13:00:00Z" ]]
-  [[ ! "$output" =~ "updated_at" ]]
+  [[ ! "$output" =~ "2025-01-01T09:00:00Z" ]]
+  [[ ! "$output" =~ "2025-01-01T10:00:00Z" ]]
+  [[ ! "$output" =~ "2025-01-01T11:00:00Z" ]]
+  [[ ! "$output" =~ "created_at" ]]
+  [[ ! "$output" =~ "run_started_at" ]]
 }
 
 @test "fetch_runs returns nothing when there are no queued runs" {
