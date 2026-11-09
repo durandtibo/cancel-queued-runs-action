@@ -62,7 +62,7 @@ make_stub() {
 
   run validate_dependencies
 
-  [[ ! "$output" =~ "not found: gh" ]]
+  [[ ! "$output" =~ "not found: gh" ]] || false
   [[ ! "$output" =~ " gh jq" ]]
 }
 
