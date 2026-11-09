@@ -26,7 +26,7 @@ setup() {
 }
 
 @test "process_run cancels run older than MAX_AGE_HOURS with 202 response" {
-    run process_run "123" 3
+    run process_run "123" $((3 * 3600))
 
     # Check output contains cancellation info and log_status
     [[ "$output" =~ "Cancelling run 123" ]]
@@ -37,7 +37,7 @@ setup() {
 }
 
 @test "process_run returns failure exit code for 500 response" {
-    run process_run "456" 4
+    run process_run "456" $((4 * 3600))
 
     [[ "$output" =~ "Cancelling run 456" ]]
     [[ "$output" =~ "Status code: 500" ]]
@@ -48,7 +48,7 @@ setup() {
 }
 
 @test "process_run force cancels run older than MAX_AGE_HOURS + 3h with 202 response" {
-    run process_run "111" 24
+    run process_run "111" $((24 * 3600))
 
     # Check output contains cancellation info and log_status
     [[ "$output" =~ "Force-cancelling run 111" ]]
@@ -58,8 +58,8 @@ setup() {
     [ "$status" -eq 0 ]
 }
 
-@test "process_run does nothing if age_hours is below MAX_AGE_HOURS" {
-    run process_run "789" 1
+@test "process_run does nothing if the age is below MAX_AGE_HOURS" {
+    run process_run "789" $((1 * 3600))
 
     # Should have no output (nothing happens)
     [ -z "$output" ]
@@ -69,7 +69,7 @@ setup() {
 }
 
 @test "process_run does nothing if run_id is empty" {
-    run process_run "" 5
+    run process_run "" $((5 * 3600))
 
     # Should have no output (nothing happens)
     [ -z "$output" ]
@@ -82,7 +82,7 @@ setup() {
     export MAX_AGE_HOURS=0
 
     # Even runs with age 1 hour should be cancelled when MAX_AGE_HOURS=0
-    run process_run "999" 1
+    run process_run "999" $((1 * 3600))
 
     # Check output contains cancellation info
     [[ "$output" =~ "Cancelling run 999" ]]
@@ -96,7 +96,7 @@ setup() {
     cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
     force_cancel_run() { echo -e "HTTP/2.0 202 Accepted\n\n{}"; }
 
-    run process_run "789" 24
+    run process_run "789" $((24 * 3600))
 
     [[ "$output" =~ "Force-cancelling run 789" ]]
     [[ "$output" =~ "Status code: 202" ]]
@@ -107,31 +107,31 @@ setup() {
 # Boundary ages (MAX_AGE_HOURS=2, so the force threshold is 5)
 # --------------------------------------------------------
 
-@test "process_run does nothing when age_hours equals MAX_AGE_HOURS" {
-  run process_run "123" 2
+@test "process_run does nothing when the age equals MAX_AGE_HOURS" {
+  run process_run "123" $((2 * 3600))
 
   [ -z "$output" ]
   [ "$status" -eq 0 ]
 }
 
-@test "process_run uses standard cancel when age_hours is MAX_AGE_HOURS + 1" {
-  run process_run "123" 3
+@test "process_run uses standard cancel when the age is MAX_AGE_HOURS + 1 hour" {
+  run process_run "123" $((3 * 3600))
 
   [[ "$output" =~ "Cancelling run 123" ]]
   [[ ! "$output" =~ "Force-cancelling" ]]
   [ "$status" -eq 0 ]
 }
 
-@test "process_run uses standard cancel when age_hours equals MAX_AGE_HOURS + 3" {
-  run process_run "123" 5
+@test "process_run uses standard cancel when the age equals MAX_AGE_HOURS + 3 hours" {
+  run process_run "123" $((5 * 3600))
 
   [[ "$output" =~ "Cancelling run 123" ]]
   [[ ! "$output" =~ "Force-cancelling" ]]
   [ "$status" -eq 0 ]
 }
 
-@test "process_run uses force cancel when age_hours is MAX_AGE_HOURS + 4" {
-  run process_run "123" 6
+@test "process_run uses force cancel when the age is MAX_AGE_HOURS + 4 hours" {
+  run process_run "123" $((6 * 3600))
 
   [[ "$output" =~ "Force-cancelling run 123" ]]
   [ "$status" -eq 0 ]
@@ -140,7 +140,7 @@ setup() {
 @test "process_run does not call force cancel when regular cancel succeeds for old run" {
   force_cancel_run() { echo "force_cancel_run called" >&2; echo "HTTP/2.0 202 Accepted"; }
 
-  run process_run "123" 24
+  run process_run "123" $((24 * 3600))
 
   [[ "$output" =~ "Force-cancelling run 123" ]]
   [[ ! "$output" =~ "force_cancel_run called" ]]
@@ -148,10 +148,56 @@ setup() {
 }
 
 @test "process_run fails when both regular and force cancel fail for old run" {
-  run process_run "456" 24
+  run process_run "456" $((24 * 3600))
 
   [[ "$output" =~ "Force-cancelling run 456" ]]
   [[ "$output" =~ "Status code: 500" ]]
   [[ "$output" =~ "Cancellation failed for run 456" ]]
   [ "$status" -eq 1 ]
+}
+
+# --------------------------------------------------------
+# Sub-hour precision (regression: ages used to be truncated to whole hours)
+# --------------------------------------------------------
+
+@test "process_run does nothing when the age is exactly MAX_AGE_HOURS in seconds" {
+  run process_run "123" 7200
+
+  [ -z "$output" ]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run cancels a run that is one second older than MAX_AGE_HOURS" {
+  run process_run "123" 7201
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run cancels a run that is 30 minutes older than MAX_AGE_HOURS" {
+  run process_run "123" $((2 * 3600 + 1800))
+
+  [[ "$output" =~ "Cancelling run 123 (age=2h30m)" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run uses standard cancel when the age is exactly MAX_AGE_HOURS + 3 hours in seconds" {
+  run process_run "123" 18000
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ ! "$output" =~ "Force-cancelling" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run uses force cancel when the age is one second over MAX_AGE_HOURS + 3 hours" {
+  run process_run "123" 18001
+
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run shows the age in hours and minutes" {
+  run process_run "123" $((24 * 3600 + 59 * 60))
+
+  [[ "$output" =~ "(age=24h59m)" ]]
 }

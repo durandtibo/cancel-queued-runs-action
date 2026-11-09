@@ -129,14 +129,16 @@ get_status_code() {
 }
 
 # ----------------------------
-# Compute the age in hours between two ISO 8601 timestamps
+# Compute the age in seconds between two ISO 8601 timestamps
+# The age is kept in seconds (not truncated to whole hours) so that a run that
+# exceeds the threshold by a few minutes is not treated as if it were younger.
 # Args:
 #   $1 - ISO 8601 timestamp for "updated_at" (e.g., "2025-01-01T10:00:00Z")
 #   $2 - ISO 8601 timestamp for "now" (optional, defaults to current UTC time)
 # Returns:
-#   Age in hours (integer)
+#   Age in seconds (integer), or -1 if a timestamp is empty
 # ----------------------------
-compute_age_hours() {
+compute_age_seconds() {
 	local updated_at="$1"
 	local now="${2:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 
@@ -152,7 +154,25 @@ compute_age_hours() {
 	updated_ts=$(to_unix_ts "$updated_at")
 	now_ts=$(to_unix_ts "$now")
 
-	echo $(((now_ts - updated_ts) / 3600))
+	echo $((now_ts - updated_ts))
+}
+
+# ----------------------------
+# Format an age in seconds as a human readable "<hours>h<minutes>m" string
+# Negative ages (e.g., clock skew) are formatted as 0h00m.
+# Args:
+#   $1 - Age in seconds (integer)
+# Returns:
+#   String such as "24h59m"
+# ----------------------------
+format_age() {
+	local seconds="$1"
+
+	if [ "$seconds" -lt 0 ]; then
+		seconds=0
+	fi
+
+	printf '%dh%02dm' $((seconds / 3600)) $(((seconds % 3600) / 60))
 }
 
 # ----------------------------
@@ -160,15 +180,15 @@ compute_age_hours() {
 # Cancels the run if needed and logs the result
 #
 # Uses a two-tier cancellation strategy:
-# 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + 3
+# 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + 3 hours
 #    - Uses /cancel endpoint for recently queued runs
-# 2. Force cancel: age > MAX_AGE_HOURS + 3
+# 2. Force cancel: age > MAX_AGE_HOURS + 3 hours
 #    - Tries /cancel first, then falls back to /force-cancel (which returns
 #      409 if no regular cancel was attempted) for very old, stuck runs
 #
 # Args:
 #   $1 - Run ID
-#   $2 - Age in hours
+#   $2 - Age in seconds
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
 # Returns:
@@ -176,7 +196,11 @@ compute_age_hours() {
 # ----------------------------
 process_run() {
 	local run_id="$1"
-	local age_hours="$2"
+	local age_seconds="$2"
+	local max_age_seconds=$((MAX_AGE_HOURS * 3600))
+	local force_age_seconds=$(((MAX_AGE_HOURS + 3) * 3600))
+	local age
+	age=$(format_age "$age_seconds")
 
 	# Do nothing if run_id is empty
 	if [ -z "$run_id" ]; then
@@ -188,16 +212,16 @@ process_run() {
 
 	# Force-cancel runs older than MAX_AGE_HOURS + 3 hours
 	# The 3-hour buffer ensures standard cancellation is tried first
-	if [ "$age_hours" -gt $((MAX_AGE_HOURS + 3)) ]; then
-		echo "Force-cancelling run $run_id (age=$age_hours)..."
+	if [ "$age_seconds" -gt "$force_age_seconds" ]; then
+		echo "Force-cancelling run $run_id (age=$age)..."
 		# The force-cancel endpoint returns 409 unless a regular cancel was
 		# attempted first, so try the standard cancel and fall back to force.
 		response=$(cancel_run "$run_id")
 		if [ "$(get_status_code "$response")" != "202" ]; then
 			response=$(force_cancel_run "$run_id")
 		fi
-	elif [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
-		echo "Cancelling run $run_id (age=$age_hours)..."
+	elif [ "$age_seconds" -gt "$max_age_seconds" ]; then
+		echo "Cancelling run $run_id (age=$age)..."
 		response=$(cancel_run "$run_id")
 	else
 		# Age does not exceed thresholds, nothing to do
@@ -225,7 +249,7 @@ process_run() {
 process_all_runs() {
 	local runs_stream="$1"
 	local failed=0
-	local run run_id updated_at age_hours
+	local run run_id updated_at age_seconds
 
 	# Use stdin redirection instead of a pipeline to avoid subshell issues
 	while read -r run; do
@@ -237,11 +261,11 @@ process_all_runs() {
 			continue
 		fi
 
-		age_hours=$(compute_age_hours "$updated_at")
-		echo "Run $run_id has been queued for $age_hours hours."
+		age_seconds=$(compute_age_seconds "$updated_at")
+		echo "Run $run_id has been queued for $(format_age "$age_seconds")."
 
 		# process the run and track failures
-		if ! process_run "$run_id" "$age_hours"; then
+		if ! process_run "$run_id" "$age_seconds"; then
 			failed=$((failed + 1))
 		fi
 	done <<<"$runs_stream"

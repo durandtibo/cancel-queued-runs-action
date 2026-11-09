@@ -159,8 +159,11 @@ The action uses a two-tier cancellation approach:
 
 **Example**: If `max_age_hours: 24`:
 
-- Runs queued 25-27 hours: Standard cancel
-- Runs queued >27 hours: Force cancel
+- Runs queued more than 24 hours and up to 27 hours: Standard cancel
+- Runs queued more than 27 hours: Force cancel
+
+Ages are compared with a one-second precision, so a run queued for 24 hours and 30 minutes is
+already eligible for cancellation.
 
 This design helps handle edge cases where runs have been stuck in the queue for extended periods.
 
