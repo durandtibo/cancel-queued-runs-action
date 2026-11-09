@@ -26,19 +26,72 @@ inputs:
   max_age_hours:
     description: >
       Maximum number of hours a workflow run is allowed to stay queued before being
-      cancelled. Must be a positive integer. The action uses standard cancel for runs
-      between max_age_hours and max_age_hours+3, and force-cancel (after a
-      regular cancel attempt) for runs older than max_age_hours+3 hours.
+      cancelled. Must be a positive integer. Runs older than max_age_hours get a standard
+      cancel request. For runs older than max_age_hours+force_cancel_buffer_hours hours, the
+      action falls back to force-cancel when the standard cancel request is not accepted.
     default: "24"
     required: false
+
+  force_cancel_buffer_hours:
+    description: >
+      Number of hours after max_age_hours from which force-cancel is used as a fallback when
+      the standard cancel request is not accepted. Must be a non-negative integer; 0 means
+      force-cancel is allowed as soon as a run is older than max_age_hours.
+    default: "3"
+    required: false
+
+  statuses:
+    description: >
+      Comma-separated list of the run statuses to consider, among "queued", "waiting",
+      "pending" and "requested" (for example "queued,waiting" to also cancel runs that wait
+      for an approval or a concurrency slot). Runs that are in progress are never cancelled.
+    default: "queued"
+    required: false
+
+  workflow:
+    description: >
+      Only cancel the runs of this workflow, given as a workflow file name (for example
+      "ci.yaml") or a numeric workflow ID. By default, the runs of all the workflows are
+      considered.
+    default: ""
+    required: false
+
+  dry_run:
+    description: >
+      If "true", only log the runs that would be cancelled, without cancelling anything.
+      Must be "true" or "false".
+    default: "false"
+    required: false
+
+outputs:
+  found_count:
+    description: Number of queued workflow runs found in the repository.
+    value: ${{ steps.cancel.outputs.found_count }}
+  cancelled_count:
+    description: Number of runs for which a cancel request was accepted.
+    value: ${{ steps.cancel.outputs.cancelled_count }}
+  skipped_count:
+    description: Number of runs skipped because they were no longer cancellable (HTTP 404 or 409).
+    value: ${{ steps.cancel.outputs.skipped_count }}
+  failed_count:
+    description: Number of runs that could not be cancelled.
+    value: ${{ steps.cancel.outputs.failed_count }}
+  would_cancel_count:
+    description: Number of runs that would be cancelled (only set in dry run, otherwise 0).
+    value: ${{ steps.cancel.outputs.would_cancel_count }}
 
 runs:
   using: "composite"
   steps:
     - name: Run cancel script
+      id: cancel
       shell: bash
       run: ${{ github.action_path }}/scripts/cancel.sh
       env:
         GH_TOKEN: ${{ inputs.github_token }}
         REPO: ${{ inputs.repo }}
         MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
+        FORCE_BUFFER_HOURS: ${{ inputs.force_cancel_buffer_hours }}
+        STATUSES: ${{ inputs.statuses }}
+        WORKFLOW: ${{ inputs.workflow }}
+        DRY_RUN: ${{ inputs.dry_run }}

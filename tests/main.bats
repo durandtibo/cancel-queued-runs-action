@@ -9,6 +9,8 @@ setup() {
 
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
+  export GH_TOKEN="test-token"
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -98,6 +100,53 @@ teardown() {
   [[ "$output" =~ "REPO is required" ]]
 }
 
+@test "main fails when REPO is not in owner/name format" {
+  export REPO="not-a-repo"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "REPO must be in owner/name format (got 'not-a-repo')" ]]
+}
+
+@test "main fails when REPO contains path traversal" {
+  export REPO="octocat/.."
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "REPO must be in owner/name format" ]]
+}
+
+@test "main fails when there are no credentials" {
+  unset GH_TOKEN GITHUB_TOKEN
+  gh() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "No GitHub credentials found" ]]
+}
+
+@test "main fails when GH_TOKEN is empty and gh is not logged in" {
+  export GH_TOKEN=""
+  unset GITHUB_TOKEN
+  gh() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "No GitHub credentials found" ]]
+}
+
+@test "main reports validation errors as ::error:: annotations" {
+  export REPO="bad"
+
+  run main
+
+  [[ "$output" =~ ^::error:: ]]
+}
+
 @test "main does not fetch runs when the inputs are invalid" {
   fetch_runs() { echo "fetch_runs called" >> "$LOG_FILE"; }
   export MAX_AGE_HOURS="abc"
@@ -170,4 +219,216 @@ teardown() {
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "Configured max age: 1 hours" ]]
+}
+
+# --------------------------------------------------------
+# Dry run
+# --------------------------------------------------------
+
+@test "main fails when DRY_RUN is not true or false" {
+  export DRY_RUN="maybe"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "DRY_RUN must be 'true' or 'false' (got 'maybe')" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main announces the dry run" {
+  export DRY_RUN=true
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Dry run enabled: no run will be cancelled." ]]
+}
+
+@test "main still processes the runs in dry run" {
+  export DRY_RUN=true
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -q "process_all_runs called" "$LOG_FILE"
+}
+
+@test "main does not announce a dry run by default" {
+  run main
+
+  [[ ! "$output" =~ "Dry run" ]]
+}
+
+# --------------------------------------------------------
+# Force-cancel buffer
+# --------------------------------------------------------
+
+@test "main fails when FORCE_BUFFER_HOURS is invalid" {
+  export FORCE_BUFFER_HOURS="-2"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "FORCE_BUFFER_HOURS must be a non-negative integer (got '-2')" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main accepts a FORCE_BUFFER_HOURS value of 0" {
+  export FORCE_BUFFER_HOURS=0
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
+
+# --------------------------------------------------------
+# Outputs and summary
+# --------------------------------------------------------
+
+setup_outputs() {
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_OUTPUT"
+  : > "$GITHUB_STEP_SUMMARY"
+
+  # process_all_runs sets the counters like the real one
+  process_all_runs() {
+    CANCELLED_COUNT=2
+    SKIPPED_COUNT=1
+    FAILED_COUNT="${MOCK_FAILED:-0}"
+    WOULD_CANCEL_COUNT=0
+    return "${MOCK_PROCESS_STATUS:-0}"
+  }
+}
+
+@test "main writes the outputs" {
+  setup_outputs
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "found_count=2" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=2" "$GITHUB_OUTPUT"
+  grep -qx "skipped_count=1" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+  grep -qx "would_cancel_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "main writes the summary" {
+  setup_outputs
+
+  run main
+
+  grep -q "Queued runs found | 2 |" "$GITHUB_STEP_SUMMARY"
+  grep -q "Cancelled | 2 |" "$GITHUB_STEP_SUMMARY"
+}
+
+@test "main writes the outputs even when some runs failed" {
+  setup_outputs
+  export MOCK_PROCESS_STATUS=1
+  export MOCK_FAILED=3
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "failed_count=3" "$GITHUB_OUTPUT"
+  grep -q "Failed | 3 |" "$GITHUB_STEP_SUMMARY"
+}
+
+@test "main writes zeros when there are no queued runs" {
+  setup_outputs
+  fetch_runs() { :; }
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "found_count=0" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=0" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "main does not write outputs when the inputs are invalid" {
+  setup_outputs
+  export REPO="bad"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$GITHUB_OUTPUT" ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
+
+@test "main works without GITHUB_OUTPUT and GITHUB_STEP_SUMMARY" {
+  unset GITHUB_OUTPUT GITHUB_STEP_SUMMARY
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
+
+# --------------------------------------------------------
+# Workflow filter
+# --------------------------------------------------------
+
+@test "main fails when WORKFLOW is invalid" {
+  export WORKFLOW="../secrets"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "WORKFLOW must be a workflow file name" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main announces the workflow filter" {
+  export WORKFLOW="ci.yaml"
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]]
+}
+
+@test "main does not mention a workflow without filter" {
+  run main
+
+  [[ ! "$output" =~ "Only the runs of the workflow" ]]
+}
+
+# --------------------------------------------------------
+# Run statuses
+# --------------------------------------------------------
+
+@test "main fails when STATUSES contains in_progress" {
+  export STATUSES="queued,in_progress"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "unsupported status 'in_progress'" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main fails when STATUSES is empty" {
+  export STATUSES=""
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "STATUSES must not be empty" ]]
+}
+
+@test "main announces the statuses when they are not only queued" {
+  export STATUSES="queued, waiting"
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Run statuses considered: queued,waiting" ]]
+}
+
+@test "main does not mention the statuses by default" {
+  run main
+
+  [[ ! "$output" =~ "Run statuses considered" ]]
 }

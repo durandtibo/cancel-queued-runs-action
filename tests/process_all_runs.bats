@@ -141,3 +141,235 @@ teardown() {
   # Output should contain error message showing 1 failure
   [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]]
 }
+
+@test "process_all_runs counts a run with an invalid timestamp as a failure" {
+  compute_age_seconds() {
+    if [[ "$1" == "garbage" ]]; then
+      echo "::error::Invalid timestamp 'garbage'" >&2
+      return 1
+    fi
+    echo 18000
+  }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 111, "queued_at": "2025-02-01T03:00:00Z"}' \
+      '{"id": 222, "queued_at": "garbage"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::Skipping run 222: cannot compute its age from 'garbage'" ]]
+  [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]]
+}
+
+@test "process_all_runs keeps processing the other runs after an invalid timestamp" {
+  compute_age_seconds() {
+    if [[ "$1" == "garbage" ]]; then
+      return 1
+    fi
+    echo 18000
+  }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 111, "queued_at": "2025-02-01T03:00:00Z"}' \
+      '{"id": 222, "queued_at": "garbage"}' \
+      '{"id": 333, "queued_at": "2025-02-01T05:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 1 ]
+  grep -q "process_run 111 18000" "$LOG_FILE"
+  grep -q "process_run 333 18000" "$LOG_FILE"
+  if grep -q "process_run 222" "$LOG_FILE"; then false; fi
+}
+
+@test "process_all_runs calls jq once whatever the number of runs" {
+  real_jq=$(command -v jq)
+  export JQ_CALL_LOG="$MOCK_DIR/jq_calls.log"
+  : > "$JQ_CALL_LOG"
+  cat > "$MOCK_DIR/jq" << MOCK
+#!/usr/bin/env bash
+echo call >> "$JQ_CALL_LOG"
+exec "$real_jq" "\$@"
+MOCK
+  chmod +x "$MOCK_DIR/jq"
+  PATH="$MOCK_DIR:$PATH"
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}' \
+      '{"id": 3, "queued_at": "2025-01-01T03:00:00Z"}' \
+      '{"id": 4, "queued_at": "2025-01-01T04:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$JQ_CALL_LOG" | tr -d ' ')" -eq 1 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 4 ]
+}
+
+@test "process_all_runs skips runs whose fields are null or missing" {
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": null, "queued_at": "2025-03-01T05:00:00Z"}' \
+      '{"queued_at": "2025-03-01T05:00:00Z"}' \
+      '{"id": 666, "queued_at": null}' \
+      '{"id": 777}' \
+      '{"id": 888, "queued_at": "2025-03-01T07:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 1 ]
+  grep -q "process_run 888 18000" "$LOG_FILE"
+}
+
+@test "process_all_runs does not shift fields when the id is empty" {
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": "", "queued_at": "2025-03-01T06:00:00Z"}' \
+      '{"id": 555, "queued_at": "2025-03-01T07:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 1 ]
+  grep -q "process_run 555 18000" "$LOG_FILE"
+}
+
+@test "process_all_runs does nothing with an empty stream" {
+  run process_all_runs ""
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "process_all_runs fails with an error when the stream is not valid JSON" {
+  run process_all_runs "this is not json"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::Cannot parse the list of queued runs" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "process_all_runs processes every run even if process_run reads stdin" {
+  process_run() {
+    echo "process_run $1 $2" >> "$LOG_FILE"
+    cat > /dev/null
+    return 0
+  }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}' \
+      '{"id": 3, "queued_at": "2025-01-01T03:00:00Z"}'
+  )
+
+  # stdin is /dev/null: only the runs read from the stream must be seen
+  run process_all_runs "$runs_stream" < /dev/null
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 3 ]
+}
+
+# --------------------------------------------------------
+# Counters
+# --------------------------------------------------------
+
+# process_run mock that sets the outcome according to the run id:
+# 1xx cancelled, 2xx skipped, 3xx would-cancel, 4xx noop, 5xx failed
+outcome_process_run() {
+  echo "process_run $1 $2" >> "$LOG_FILE"
+  case "$1" in
+    1*) PROCESS_RUN_OUTCOME="cancelled" ;;
+    2*) PROCESS_RUN_OUTCOME="skipped" ;;
+    3*) PROCESS_RUN_OUTCOME="would-cancel" ;;
+    4*) PROCESS_RUN_OUTCOME="noop" ;;
+    5*) PROCESS_RUN_OUTCOME="failed"; return 1 ;;
+  esac
+  return 0
+}
+
+@test "process_all_runs counts each outcome" {
+  process_run() { outcome_process_run "$@"; }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 101, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 102, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 201, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 301, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 302, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 303, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 401, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 501, "queued_at": "2025-01-01T01:00:00Z"}'
+  )
+
+  process_all_runs "$runs_stream" > /dev/null || true
+
+  [ "$CANCELLED_COUNT" -eq 2 ]
+  [ "$SKIPPED_COUNT" -eq 1 ]
+  [ "$WOULD_CANCEL_COUNT" -eq 3 ]
+  [ "$FAILED_COUNT" -eq 1 ]
+}
+
+@test "process_all_runs does not count runs that need no action" {
+  process_run() { outcome_process_run "$@"; }
+
+  process_all_runs '{"id": 401, "queued_at": "2025-01-01T01:00:00Z"}' > /dev/null
+
+  [ "$CANCELLED_COUNT" -eq 0 ]
+  [ "$SKIPPED_COUNT" -eq 0 ]
+  [ "$WOULD_CANCEL_COUNT" -eq 0 ]
+  [ "$FAILED_COUNT" -eq 0 ]
+}
+
+@test "process_all_runs counts a run with an invalid timestamp as failed" {
+  process_run() { outcome_process_run "$@"; }
+  compute_age_seconds() { return 1; }
+
+  process_all_runs '{"id": 101, "queued_at": "garbage"}' > /dev/null 2>&1 || true
+
+  [ "$FAILED_COUNT" -eq 1 ]
+  [ "$CANCELLED_COUNT" -eq 0 ]
+}
+
+@test "process_all_runs does not count skipped invalid entries" {
+  process_run() { outcome_process_run "$@"; }
+
+  process_all_runs '{"id": "", "queued_at": "2025-01-01T01:00:00Z"}' > /dev/null
+
+  [ "$CANCELLED_COUNT" -eq 0 ]
+  [ "$FAILED_COUNT" -eq 0 ]
+}
+
+@test "process_all_runs resets the counters at each call" {
+  process_run() { outcome_process_run "$@"; }
+  CANCELLED_COUNT=7
+  FAILED_COUNT=7
+
+  process_all_runs '{"id": 101, "queued_at": "2025-01-01T01:00:00Z"}' > /dev/null
+
+  [ "$CANCELLED_COUNT" -eq 1 ]
+  [ "$FAILED_COUNT" -eq 0 ]
+}
+
+@test "process_all_runs reports the number of failures in the error message" {
+  process_run() { outcome_process_run "$@"; }
+
+  run process_all_runs "$(printf '%s\n' \
+    '{"id": 501, "queued_at": "2025-01-01T01:00:00Z"}' \
+    '{"id": 502, "queued_at": "2025-01-01T01:00:00Z"}')"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]]
+}

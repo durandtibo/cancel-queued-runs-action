@@ -72,3 +72,23 @@ setup() {
     result=$(compute_age_seconds "$queued_at" "$now")
     [ "$result" -eq -3600 ]
 }
+
+@test "compute_age_seconds fails when queued_at is invalid" {
+    run compute_age_seconds "not-a-date" "2025-01-01T10:00:00Z"
+
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "::error::Invalid timestamp 'not-a-date'" ]]
+}
+
+@test "compute_age_seconds fails when now is invalid" {
+    run compute_age_seconds "2025-01-01T10:00:00Z" "not-a-date"
+
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "::error::Invalid timestamp 'not-a-date'" ]]
+}
+
+@test "compute_age_seconds prints no age when a timestamp is invalid" {
+    out=$(compute_age_seconds "not-a-date" "2025-01-01T10:00:00Z" 2>/dev/null || true)
+
+    [ -z "$out" ]
+}

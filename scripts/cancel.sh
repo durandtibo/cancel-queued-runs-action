@@ -6,30 +6,75 @@
 # longer than a specified maximum age (in hours).
 #
 # Environment Variables:
-#   GH_TOKEN - GitHub token with actions:write permission (required)
+#   GH_TOKEN - GitHub token with actions:write permission (required, unless
+#              GITHUB_TOKEN is set or gh is logged in with "gh auth login")
 #   REPO - Repository in owner/name format (required)
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
+#   FORCE_BUFFER_HOURS - Hours after MAX_AGE_HOURS from which force-cancel is
+#                        used as a fallback (non-negative integer, default: 3)
+#   STATUSES - Comma-separated run statuses to consider, among queued, waiting,
+#              pending and requested (default: queued)
+#   WORKFLOW - Only consider the runs of this workflow, given as a workflow
+#              file name (e.g., ci.yaml) or a numeric workflow ID
+#              (default: empty, all the workflows)
+#   DRY_RUN - "true" to only log the runs that would be cancelled, without
+#             calling the cancel endpoints; "false" otherwise (default: false)
+#
+# Internal tuning (not action inputs, positive integers in seconds/counts):
+#   MAX_RETRIES - Retries of a rate-limited cancel request (default: 3)
+#   RETRY_BASE_DELAY - First backoff delay in seconds, doubled at each retry
+#                      when GitHub gives no delay (default: 5)
+#   RETRY_MAX_DELAY - Longest delay we are willing to wait, in seconds; a
+#                     rate limit that requires waiting longer is not retried
+#                     (default: 60)
+#
+# GitHub Actions integration (optional, ignored when the variables are unset):
+#   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
+#                   skipped_count, failed_count and would_cancel_count are written
+#   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
 #
 # Exit Codes:
-#   0 - Success (all eligible runs cancelled)
+#   0 - Success (all eligible runs cancelled, or no longer cancellable)
 #   1 - One or more cancellations failed
 #
 
 set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
+FORCE_BUFFER_HOURS="${FORCE_BUFFER_HOURS:-3}"
+WORKFLOW="${WORKFLOW:-}"
+STATUSES="${STATUSES:-queued}"
+DRY_RUN="${DRY_RUN:-false}"
+
+# Counters filled by process_all_runs and reported by main
+CANCELLED_COUNT=0
+SKIPPED_COUNT=0
+FAILED_COUNT=0
+WOULD_CANCEL_COUNT=0
+
+# Outcome of the last process_run call: one of
+#   noop, cancelled, skipped, would-cancel, failed
+PROCESS_RUN_OUTCOME=""
+MAX_RETRIES="${MAX_RETRIES:-3}"
+RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
+RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
 
 # ----------------------------
 # Cross-platform timestamp parser
 # Handles both GNU date (Linux) and BSD date (macOS)
 # ----------------------------
 # Converts ISO 8601 timestamp to Unix timestamp
+# The timestamp must use the format returned by the GitHub API
+# (YYYY-MM-DDTHH:MM:SSZ). Anything else is rejected with an ::error:: message
+# on stderr, because BSD date silently ignores trailing characters.
 # Args:
 #   $1 - ISO 8601 timestamp (e.g., "2025-01-15T10:30:00Z")
 # Returns:
-#   Unix timestamp (seconds since epoch)
+#   Unix timestamp (seconds since epoch) on stdout. An empty input returns 0.
+#   Exit code 1 if the timestamp is invalid.
 to_unix_ts() {
 	local ts="$1"
+	local unix_ts
 
 	# Empty input returns 0
 	if [ -z "$ts" ]; then
@@ -37,12 +82,20 @@ to_unix_ts() {
 		return
 	fi
 
+	if ! [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+		echo "::error::Invalid timestamp '$ts' (expected format: YYYY-MM-DDTHH:MM:SSZ)" >&2
+		return 1
+	fi
+
 	if date -d "$ts" +%s >/dev/null 2>&1; then
 		# Linux (GNU date)
 		date -d "$ts" -u +%s
-	else
+	elif unix_ts=$(date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null); then
 		# macOS (BSD date)
-		date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s
+		echo "$unix_ts"
+	else
+		echo "::error::Cannot parse timestamp '$ts'" >&2
+		return 1
 	fi
 }
 
@@ -74,6 +127,12 @@ log_status() {
 # Fetch queued runs from GitHub API
 # Uses pagination to handle repositories with many queued runs
 #
+# If WORKFLOW is set, only the runs of that workflow are listed, through the
+# per-workflow endpoint (the filtering is done by GitHub).
+#
+# The API accepts a single status per request, so each status of STATUSES
+# (comma-separated, duplicates ignored) is listed with its own paginated call.
+#
 # Prints one JSON object per line with the fields:
 #   id        - workflow run ID
 #   queued_at - the timestamp the age is measured from: updated_at. It is
@@ -82,11 +141,31 @@ log_status() {
 #               run is not cancelled because of its original creation date.
 # ----------------------------
 fetch_runs() {
-	gh api \
-		-H "Accept: application/vnd.github+json" \
-		"/repos/$REPO/actions/runs?status=queued&per_page=100" \
-		--paginate \
-		--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}'
+	local runs_path="/repos/$REPO/actions/runs"
+
+	if [ -n "$WORKFLOW" ]; then
+		runs_path="/repos/$REPO/actions/workflows/$WORKFLOW/runs"
+	fi
+
+	local run_status
+	local seen=","
+	local -a status_list=()
+	IFS=',' read -r -a status_list <<<"${STATUSES// /}"
+
+	# ${arr[@]+...} avoids an "unbound variable" error for an empty array with
+	# set -u on bash 3.2
+	for run_status in ${status_list[@]+"${status_list[@]}"}; do
+		if [[ "$seen" == *",$run_status,"* ]]; then
+			continue
+		fi
+		seen="$seen$run_status,"
+
+		gh api \
+			-H "Accept: application/vnd.github+json" \
+			"$runs_path?status=$run_status&per_page=100" \
+			--paginate \
+			--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}'
+	done
 }
 
 # ----------------------------
@@ -127,6 +206,110 @@ post_run_endpoint() {
 }
 
 # ----------------------------
+# Tell whether an HTTP response is a rate limit error
+# A plain 403 (missing permission) is NOT a rate limit and must not be retried.
+# Args:
+#   $1 - Full HTTP response (headers and body)
+# Returns:
+#   0 if rate limited (429, or 403 with a rate limit header/message), else 1
+# ----------------------------
+is_rate_limited() {
+	local response="${1:-}"
+	local status_code
+	status_code=$(get_status_code "$response")
+
+	if [ "$status_code" = "429" ]; then
+		return 0
+	fi
+
+	if [ "$status_code" = "403" ] &&
+		echo "$response" | grep -qiE '^retry-after:|^x-ratelimit-remaining:[[:space:]]*0[[:space:]]*$|rate limit'; then
+		return 0
+	fi
+
+	return 1
+}
+
+# ----------------------------
+# Compute how long to wait before retrying a rate-limited request
+# Uses, in order: the Retry-After header, the X-RateLimit-Reset header when
+# the quota is exhausted, then an exponential backoff
+# (RETRY_BASE_DELAY * 2^(attempt-1)). The result is at least 1 second and is
+# NOT capped: the caller compares it with RETRY_MAX_DELAY.
+# Args:
+#   $1 - Full HTTP response (headers and body)
+#   $2 - Attempt number, starting at 1
+# Returns:
+#   Delay in seconds (integer)
+# ----------------------------
+get_retry_delay() {
+	local response="$1"
+	local attempt="${2:-1}"
+	local delay=""
+	local remaining reset now
+
+	delay=$(echo "$response" | awk 'tolower($1)=="retry-after:" {print int($2+0); exit}')
+
+	if [ -z "$delay" ]; then
+		remaining=$(echo "$response" | awk 'tolower($1)=="x-ratelimit-remaining:" {print int($2+0); exit}')
+		reset=$(echo "$response" | awk 'tolower($1)=="x-ratelimit-reset:" {print int($2+0); exit}')
+		if [ "$remaining" = "0" ] && [ -n "$reset" ]; then
+			now=$(date -u +%s)
+			delay=$((reset - now + 1))
+		fi
+	fi
+
+	if [ -z "$delay" ]; then
+		delay=$((RETRY_BASE_DELAY * (1 << (attempt - 1))))
+	fi
+
+	if [ "$delay" -lt 1 ]; then
+		delay=1
+	fi
+
+	echo "$delay"
+}
+
+# ----------------------------
+# POST to a cancel endpoint, retrying when GitHub rate limits the request
+# Retries at most MAX_RETRIES times. It gives up immediately, without waiting,
+# when the required delay exceeds RETRY_MAX_DELAY. In both cases the last
+# response is returned, so the caller handles it like any other failure.
+# Args:
+#   $1 - Workflow run ID
+#   $2 - Endpoint action ("cancel" or "force-cancel")
+# ----------------------------
+post_run_endpoint_with_retry() {
+	local run_id="$1"
+	local action="$2"
+	local attempt=0
+	local response delay
+
+	while :; do
+		response=$(post_run_endpoint "$run_id" "$action")
+
+		if ! is_rate_limited "$response"; then
+			break
+		fi
+
+		attempt=$((attempt + 1))
+		delay=$(get_retry_delay "$response" "$attempt")
+
+		if [ "$attempt" -gt "$MAX_RETRIES" ] || [ "$delay" -gt "$RETRY_MAX_DELAY" ]; then
+			echo "::warning::Rate limited on run $run_id ($action), giving up (needs ${delay}s, attempt $attempt, max $MAX_RETRIES retries, max wait ${RETRY_MAX_DELAY}s)" >&2
+			break
+		fi
+
+		echo "::warning::Rate limited on run $run_id ($action), retrying in ${delay}s (retry $attempt/$MAX_RETRIES)" >&2
+		sleep "$delay"
+	done
+
+	if [ -n "$response" ]; then
+		printf '%s\n' "$response"
+	fi
+}
+
+# ----------------------------
 # Cancel a run normally
 # ----------------------------
 cancel_run() {
@@ -137,7 +320,7 @@ cancel_run() {
 		return 1
 	fi
 
-	post_run_endpoint "$run_id" "cancel"
+	post_run_endpoint_with_retry "$run_id" "cancel"
 }
 
 # ----------------------------
@@ -151,7 +334,7 @@ force_cancel_run() {
 		return 1
 	fi
 
-	post_run_endpoint "$run_id" "force-cancel"
+	post_run_endpoint_with_retry "$run_id" "force-cancel"
 }
 
 # ----------------------------
@@ -175,7 +358,8 @@ get_status_code() {
 #   $1 - ISO 8601 timestamp for "queued_at" (e.g., "2025-01-01T10:00:00Z")
 #   $2 - ISO 8601 timestamp for "now" (optional, defaults to current UTC time)
 # Returns:
-#   Age in seconds (integer), or -1 if a timestamp is empty
+#   Age in seconds (integer), or -1 if a timestamp is empty.
+#   Exit code 1 if a timestamp is invalid.
 # ----------------------------
 compute_age_seconds() {
 	local queued_at="$1"
@@ -190,8 +374,8 @@ compute_age_seconds() {
 	local queued_ts
 	local now_ts
 
-	queued_ts=$(to_unix_ts "$queued_at")
-	now_ts=$(to_unix_ts "$now")
+	queued_ts=$(to_unix_ts "$queued_at") || return 1
+	now_ts=$(to_unix_ts "$now") || return 1
 
 	echo $((now_ts - queued_ts))
 }
@@ -219,27 +403,42 @@ format_age() {
 # Cancels the run if needed and logs the result
 #
 # Uses a two-tier cancellation strategy:
-# 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + 3 hours
+# 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + FORCE_BUFFER_HOURS
 #    - Uses /cancel endpoint for recently queued runs
-# 2. Force cancel: age > MAX_AGE_HOURS + 3 hours
+# 2. Force cancel: age > MAX_AGE_HOURS + FORCE_BUFFER_HOURS
 #    - Tries /cancel first, then falls back to /force-cancel (which returns
 #      409 if no regular cancel was attempted) for very old, stuck runs
+#
+# A final HTTP 404 (run not found) or 409 (run cannot be cancelled) means that
+# the run is gone or already finished, typically because it started or
+# completed between the listing and the cancel request. It is reported as a
+# warning and is not a failure.
+#
+# When DRY_RUN is "true", the run that would be cancelled is only logged and
+# no request is sent.
+#
+# The outcome is stored in PROCESS_RUN_OUTCOME (noop, cancelled, skipped,
+# would-cancel or failed) so that the caller can count what happened.
 #
 # Args:
 #   $1 - Run ID
 #   $2 - Age in seconds
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
+#   FORCE_BUFFER_HOURS - Extra hours before force-cancel is used
+#   DRY_RUN - "true" to log without cancelling
 # Returns:
-#   0 on success, 1 on failure (via exit code)
+#   0 on success or if the run is no longer cancellable, 1 on failure
 # ----------------------------
 process_run() {
 	local run_id="$1"
 	local age_seconds="$2"
 	local max_age_seconds=$((MAX_AGE_HOURS * 3600))
-	local force_age_seconds=$(((MAX_AGE_HOURS + 3) * 3600))
+	local force_age_seconds=$(((MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600))
 	local age
 	age=$(format_age "$age_seconds")
+
+	PROCESS_RUN_OUTCOME="noop"
 
 	# Do nothing if run_id is empty
 	if [ -z "$run_id" ]; then
@@ -249,9 +448,14 @@ process_run() {
 	local response=""
 	local status_code=""
 
-	# Force-cancel runs older than MAX_AGE_HOURS + 3 hours
-	# The 3-hour buffer ensures standard cancellation is tried first
+	# Force-cancel runs older than MAX_AGE_HOURS + FORCE_BUFFER_HOURS hours
+	# The buffer gives the standard cancellation time to work for recent runs
 	if [ "$age_seconds" -gt "$force_age_seconds" ]; then
+		if [ "$DRY_RUN" = "true" ]; then
+			echo "🧪 [dry-run] Would force-cancel run $run_id (age=$age)"
+			PROCESS_RUN_OUTCOME="would-cancel"
+			return 0
+		fi
 		echo "Force-cancelling run $run_id (age=$age)..."
 		# The force-cancel endpoint returns 409 unless a regular cancel was
 		# attempted first, so try the standard cancel and fall back to force.
@@ -260,6 +464,11 @@ process_run() {
 			response=$(force_cancel_run "$run_id")
 		fi
 	elif [ "$age_seconds" -gt "$max_age_seconds" ]; then
+		if [ "$DRY_RUN" = "true" ]; then
+			echo "🧪 [dry-run] Would cancel run $run_id (age=$age)"
+			PROCESS_RUN_OUTCOME="would-cancel"
+			return 0
+		fi
 		echo "Cancelling run $run_id (age=$age)..."
 		response=$(cancel_run "$run_id")
 	else
@@ -268,10 +477,94 @@ process_run() {
 	fi
 
 	status_code=$(get_status_code "$response")
+
+	if [ "$status_code" = "404" ] || [ "$status_code" = "409" ]; then
+		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code): it is no longer queued or cannot be cancelled, skipping."
+		PROCESS_RUN_OUTCOME="skipped"
+		return 0
+	fi
+
 	log_status "$status_code" "$run_id"
 
 	if [ "$status_code" != "202" ]; then
 		echo "❌ Cancellation failed for run $run_id"
+		PROCESS_RUN_OUTCOME="failed"
+		return 1
+	fi
+
+	PROCESS_RUN_OUTCOME="cancelled"
+	return 0
+}
+
+# ----------------------------
+# Reset the counters reported by main
+# ----------------------------
+reset_counters() {
+	CANCELLED_COUNT=0
+	SKIPPED_COUNT=0
+	FAILED_COUNT=0
+	WOULD_CANCEL_COUNT=0
+}
+
+# ----------------------------
+# Process all workflow runs
+# Updates the counters CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT and
+# WOULD_CANCEL_COUNT (reset at the start of the call).
+# Args:
+#   $1 - JSON array stream from fetch_runs (line-delimited objects)
+# Returns:
+#   Exit code: 0 on success, 1 if any failures (failed cancellation, or a run
+#   whose age could not be computed because of an invalid timestamp)
+# ----------------------------
+process_all_runs() {
+	local runs_stream="$1"
+	local parsed run_id queued_at age_seconds
+	# The unit separator is not whitespace, so read keeps empty fields
+	# (a tab would be collapsed and shift the fields)
+	local sep=$'\x1f'
+
+	reset_counters
+
+	# Extract the fields of all the runs with a single jq call instead of two
+	# jq processes per run
+	if ! parsed=$(printf '%s\n' "$runs_stream" | jq -r '[.id, .queued_at] | map(tostring) | join("\u001f")'); then
+		echo "::error::Cannot parse the list of queued runs" >&2
+		return 1
+	fi
+
+	# Read from fd 3 and not from stdin, so that nothing running inside the
+	# loop can consume the remaining runs. No pipeline: it would run the loop
+	# in a subshell and lose the counters.
+	while IFS="$sep" read -r -u 3 run_id queued_at; do
+		# skip invalid entries
+		if [ -z "$run_id" ] || [ "$run_id" = "null" ] || [ -z "$queued_at" ] || [ "$queued_at" = "null" ]; then
+			continue
+		fi
+
+		# an invalid timestamp is a failure for this run only, not for the others
+		if ! age_seconds=$(compute_age_seconds "$queued_at"); then
+			echo "::error::Skipping run $run_id: cannot compute its age from '$queued_at'"
+			FAILED_COUNT=$((FAILED_COUNT + 1))
+			continue
+		fi
+		echo "Run $run_id has been queued for $(format_age "$age_seconds")."
+
+		# process the run and count what happened
+		PROCESS_RUN_OUTCOME=""
+		if process_run "$run_id" "$age_seconds"; then
+			case "$PROCESS_RUN_OUTCOME" in
+			cancelled) CANCELLED_COUNT=$((CANCELLED_COUNT + 1)) ;;
+			skipped) SKIPPED_COUNT=$((SKIPPED_COUNT + 1)) ;;
+			would-cancel) WOULD_CANCEL_COUNT=$((WOULD_CANCEL_COUNT + 1)) ;;
+			esac
+		else
+			FAILED_COUNT=$((FAILED_COUNT + 1))
+		fi
+	done 3<<<"$parsed"
+
+	# Return failure if any cancellations failed
+	if [ "$FAILED_COUNT" -gt 0 ]; then
+		echo "❌ Error: $FAILED_COUNT run(s) failed to cancel."
 		return 1
 	fi
 
@@ -279,60 +572,234 @@ process_run() {
 }
 
 # ----------------------------
-# Process all workflow runs
+# Write the action outputs to $GITHUB_OUTPUT (no-op when it is unset)
 # Args:
-#   $1 - JSON array stream from fetch_runs (line-delimited objects)
-# Returns:
-#   Exit code: 0 on success, 1 if any failures
+#   $1 - Number of queued runs found
 # ----------------------------
-process_all_runs() {
-	local runs_stream="$1"
-	local failed=0
-	local run run_id queued_at age_seconds
+write_outputs() {
+	local found_count="$1"
 
-	# Use stdin redirection instead of a pipeline to avoid subshell issues
-	while read -r run; do
-		run_id=$(echo "$run" | jq -r '.id')
-		queued_at=$(echo "$run" | jq -r '.queued_at')
+	if [ -z "${GITHUB_OUTPUT:-}" ]; then
+		return 0
+	fi
 
-		# skip invalid entries
-		if [ -z "$run_id" ] || [ "$run_id" = "null" ] || [ -z "$queued_at" ] || [ "$queued_at" = "null" ]; then
-			continue
+	{
+		echo "found_count=$found_count"
+		echo "cancelled_count=$CANCELLED_COUNT"
+		echo "skipped_count=$SKIPPED_COUNT"
+		echo "failed_count=$FAILED_COUNT"
+		echo "would_cancel_count=$WOULD_CANCEL_COUNT"
+	} >>"$GITHUB_OUTPUT"
+}
+
+# ----------------------------
+# Append a Markdown summary to $GITHUB_STEP_SUMMARY (no-op when it is unset)
+# Args:
+#   $1 - Number of queued runs found
+# ----------------------------
+write_summary() {
+	local found_count="$1"
+	local mode="Cancel stale queued runs"
+
+	if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+		return 0
+	fi
+
+	if [ "$DRY_RUN" = "true" ]; then
+		mode="Cancel stale queued runs (dry run, nothing was cancelled)"
+	fi
+
+	{
+		echo "### $mode"
+		echo
+		echo "Repository: \`${REPO}\`, maximum queue age: ${MAX_AGE_HOURS} hours"
+		if [ -n "$WORKFLOW" ]; then
+			echo
+			echo "Workflow: \`${WORKFLOW}\`"
 		fi
+		echo
+		echo "| Result | Runs |"
+		echo "| --- | ---: |"
+		echo "| Queued runs found | $found_count |"
+		echo "| Cancelled | $CANCELLED_COUNT |"
+		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
+		echo "| Skipped (no longer cancellable) | $SKIPPED_COUNT |"
+		echo "| Failed | $FAILED_COUNT |"
+	} >>"$GITHUB_STEP_SUMMARY"
+}
 
-		age_seconds=$(compute_age_seconds "$queued_at")
-		echo "Run $run_id has been queued for $(format_age "$age_seconds")."
+# ----------------------------
+# Validate the maximum queue age
+# Args:
+#   $1 - Maximum queue age in hours
+# Returns:
+#   0 if it is a positive integer without leading zero, 1 otherwise
+# ----------------------------
+validate_max_age_hours() {
+	local max_age_hours="${1:-}"
 
-		# process the run and track failures
-		if ! process_run "$run_id" "$age_seconds"; then
-			failed=$((failed + 1))
-		fi
-	done <<<"$runs_stream"
+	if ! [[ "$max_age_hours" =~ ^[1-9][0-9]*$ ]]; then
+		echo "::error::MAX_AGE_HOURS must be a positive integer (got '$max_age_hours')" >&2
+		return 1
+	fi
+}
 
-	# Return failure if any cancellations failed
-	if [ "$failed" -gt 0 ]; then
-		echo "❌ Error: $failed run(s) failed to cancel."
+# ----------------------------
+# Validate the force-cancel buffer
+# Args:
+#   $1 - Buffer in hours
+# Returns:
+#   0 if it is a non-negative integer without leading zero, 1 otherwise
+# ----------------------------
+validate_force_buffer_hours() {
+	local force_buffer_hours="${1:-}"
+
+	if ! [[ "$force_buffer_hours" =~ ^(0|[1-9][0-9]*)$ ]]; then
+		echo "::error::FORCE_BUFFER_HOURS must be a non-negative integer (got '$force_buffer_hours')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate the list of run statuses
+# Only the statuses of runs that have not started are accepted, so that a
+# typo can never make the action cancel a run that is already in progress.
+# Args:
+#   $1 - Comma-separated statuses (spaces around commas are ignored)
+# Returns:
+#   0 if every status is one of queued, waiting, pending, requested; 1 otherwise
+# ----------------------------
+validate_statuses() {
+	local statuses="${1:-}"
+	local run_status
+	local -a status_list=()
+
+	statuses="${statuses// /}"
+	if [ -z "$statuses" ]; then
+		echo "::error::STATUSES must not be empty (allowed: queued, waiting, pending, requested)" >&2
 		return 1
 	fi
 
-	return 0
+	IFS=',' read -r -a status_list <<<"$statuses"
+	for run_status in "${status_list[@]}"; do
+		case "$run_status" in
+		queued | waiting | pending | requested) ;;
+		*)
+			echo "::error::STATUSES contains an unsupported status '$run_status' (allowed: queued, waiting, pending, requested)" >&2
+			return 1
+			;;
+		esac
+	done
+}
+
+# ----------------------------
+# Validate the workflow filter
+# The value is used to build an API path, so only the characters of a workflow
+# file name or ID are accepted ("." and ".." are rejected). Empty means no
+# filter.
+# Args:
+#   $1 - Workflow file name or ID (may be empty)
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_workflow() {
+	local workflow="${1:-}"
+
+	if [ -z "$workflow" ]; then
+		return 0
+	fi
+
+	if ! [[ "$workflow" =~ ^[A-Za-z0-9_.-]+$ ]] || [ "$workflow" = "." ] || [ "$workflow" = ".." ]; then
+		echo "::error::WORKFLOW must be a workflow file name (e.g., ci.yaml) or a numeric ID (got '$workflow')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate the dry run flag
+# Args:
+#   $1 - "true" or "false"
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_dry_run() {
+	local dry_run="${1:-}"
+
+	if [ "$dry_run" != "true" ] && [ "$dry_run" != "false" ]; then
+		echo "::error::DRY_RUN must be 'true' or 'false' (got '$dry_run')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate the target repository
+# The value is used to build API paths, so only the characters allowed in
+# GitHub owner and repository names are accepted and "." / ".." are rejected.
+# Args:
+#   $1 - Repository in owner/name format
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_repo() {
+	local target_repo="${1:-}"
+
+	if [ -z "$target_repo" ]; then
+		echo "::error::REPO is required (owner/name)" >&2
+		return 1
+	fi
+
+	if ! [[ "$target_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || [[ "$target_repo" =~ ^\.{1,2}/ ]] || [[ "$target_repo" =~ /\.{1,2}$ ]]; then
+		echo "::error::REPO must be in owner/name format (got '$target_repo')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate that GitHub credentials are available
+# Credentials come from GH_TOKEN / GITHUB_TOKEN (the github_token input in the
+# action) or, for local runs, from a session created with "gh auth login".
+# Returns:
+#   0 if credentials are available, 1 otherwise
+# ----------------------------
+validate_auth() {
+	if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+		return 0
+	fi
+
+	if gh auth status >/dev/null 2>&1; then
+		return 0
+	fi
+
+	echo "::error::No GitHub credentials found: provide a token (github_token input / GH_TOKEN) or run 'gh auth login'" >&2
+	return 1
 }
 
 # ----------------------------
 # Main workflow logic
 # ----------------------------
 main() {
-	if ! [[ "$MAX_AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
-		echo "❌ MAX_AGE_HOURS must be a positive integer (got '$MAX_AGE_HOURS')" >&2
-		return 1
-	fi
-	if [ -z "${REPO:-}" ]; then
-		echo "❌ REPO is required (owner/name)" >&2
-		return 1
-	fi
+	validate_max_age_hours "$MAX_AGE_HOURS" || return 1
+	validate_repo "${REPO:-}" || return 1
+	validate_force_buffer_hours "$FORCE_BUFFER_HOURS" || return 1
+	validate_statuses "$STATUSES" || return 1
+	validate_workflow "$WORKFLOW" || return 1
+	validate_dry_run "$DRY_RUN" || return 1
+	validate_auth || return 1
 
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
+	if [ "$DRY_RUN" = "true" ]; then
+		echo "🧪 Dry run enabled: no run will be cancelled."
+	fi
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
+	if [ "${STATUSES// /}" != "queued" ]; then
+		echo "Run statuses considered: ${STATUSES// /}"
+	fi
+	if [ -n "$WORKFLOW" ]; then
+		echo "Only the runs of the workflow ${WORKFLOW} are considered."
+	fi
+
+	reset_counters
+	local exit_code=0
 
 	runs=$(fetch_runs)
 
@@ -341,16 +808,17 @@ main() {
 
 	if [ "$run_count" -eq 0 ]; then
 		echo "✅ No queued runs found."
-		return 0
+	elif process_all_runs "$runs"; then
+		echo "✅ All eligible runs processed successfully."
+	else
+		exit_code=1
 	fi
 
-	# Process runs
-	if process_all_runs "$runs"; then
-		echo "✅ All eligible runs processed successfully."
-		return 0
-	else
-		return 1
-	fi
+	# Report even when some runs failed
+	write_outputs "$run_count"
+	write_summary "$run_count"
+
+	return "$exit_code"
 }
 
 # ----------------------------

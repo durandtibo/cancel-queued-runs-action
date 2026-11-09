@@ -25,6 +25,19 @@ setup() {
     }
 }
 
+teardown() {
+  rm -rf "$BATS_TEST_DIRNAME/mocks"
+}
+
+# Record the calls to the cancel functions, to check that nothing is sent
+record_calls() {
+  mkdir -p "$BATS_TEST_DIRNAME/mocks"
+  export CALL_LOG="$BATS_TEST_DIRNAME/mocks/calls.log"
+  : > "$CALL_LOG"
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 202 Accepted"; }
+  force_cancel_run() { echo "force_cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 202 Accepted"; }
+}
+
 @test "process_run cancels run older than MAX_AGE_HOURS with 202 response" {
     run process_run "123" $((3 * 3600))
 
@@ -214,4 +227,258 @@ setup() {
   [[ "$output" =~ "No HTTP response (the gh API call failed) for run 123" ]]
   [[ "$output" =~ "Cancellation failed for run 123" ]]
   [ "$status" -eq 1 ]
+}
+
+# --------------------------------------------------------
+# Runs that are no longer cancellable (404 / 409) are skipped, not failed
+# --------------------------------------------------------
+
+@test "process_run skips a run when the cancel request returns 404" {
+  cancel_run() { echo -e "HTTP/2.0 404 Not Found\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run skips a run when the cancel request returns 409" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run skips an old run when the regular and the force cancel return 409" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+  force_cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run skips an old run when the force cancel returns 404" {
+  cancel_run() { echo -e "HTTP/2.0 500 Internal Server Error\n\n{}"; }
+  force_cancel_run() { echo -e "HTTP/2.0 404 Not Found\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run does not print the success line for a skipped run" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ ! "$output" =~ "Cancellation request accepted" ]]
+}
+
+@test "process_run still fails when the cancel request returns 403" {
+  cancel_run() { echo -e "HTTP/2.0 403 Forbidden\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "Status code: 403" ]]
+  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [ "$status" -eq 1 ]
+}
+
+@test "process_run still fails when the cancel request returns 401" {
+  cancel_run() { echo -e "HTTP/2.0 401 Unauthorized\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [ "$status" -eq 1 ]
+}
+
+# --------------------------------------------------------
+# Dry run
+# --------------------------------------------------------
+
+@test "process_run in dry run only logs the run that would be cancelled" {
+  record_calls
+  export DRY_RUN=true
+
+  run process_run "123" $((3 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == "🧪 [dry-run] Would cancel run 123 (age=3h00m)" ]]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run in dry run only logs the run that would be force-cancelled" {
+  record_calls
+  export DRY_RUN=true
+
+  run process_run "123" $((24 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == "🧪 [dry-run] Would force-cancel run 123 (age=24h00m)" ]]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run in dry run does nothing for a run below the threshold" {
+  record_calls
+  export DRY_RUN=true
+
+  run process_run "123" $((1 * 3600))
+
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run in dry run succeeds even if the API would fail" {
+  export DRY_RUN=true
+  # the default mocks return 500 for run 456
+  run process_run "456" $((3 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+}
+
+@test "process_run cancels for real when DRY_RUN is false" {
+  record_calls
+  export DRY_RUN=false
+
+  run process_run "123" $((3 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run cancels for real by default" {
+  unset DRY_RUN
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  record_calls
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+# --------------------------------------------------------
+# Configurable force-cancel buffer (MAX_AGE_HOURS=2)
+# --------------------------------------------------------
+
+@test "process_run uses a 3 hour force-cancel buffer by default" {
+  unset FORCE_BUFFER_HOURS
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  cancel_run() { echo "HTTP/2.0 202 Accepted"; }
+
+  run process_run "123" $((5 * 3600))
+  [[ "$output" =~ "Cancelling run 123" ]]
+
+  run process_run "123" $((5 * 3600 + 1))
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+}
+
+@test "process_run force-cancels as soon as the age exceeds MAX_AGE_HOURS when the buffer is 0" {
+  export FORCE_BUFFER_HOURS=0
+
+  run process_run "123" $((2 * 3600 + 1))
+
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run does nothing at exactly MAX_AGE_HOURS when the buffer is 0" {
+  export FORCE_BUFFER_HOURS=0
+
+  run process_run "123" $((2 * 3600))
+
+  [ -z "$output" ]
+}
+
+@test "process_run uses standard cancel up to MAX_AGE_HOURS + buffer when the buffer is 10" {
+  export FORCE_BUFFER_HOURS=10
+
+  run process_run "123" $((12 * 3600))
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ ! "$output" =~ "Force-cancelling" ]]
+}
+
+@test "process_run force-cancels just after MAX_AGE_HOURS + buffer when the buffer is 10" {
+  export FORCE_BUFFER_HOURS=10
+
+  run process_run "123" $((12 * 3600 + 1))
+
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+}
+
+@test "process_run dry run honours the force-cancel buffer" {
+  export FORCE_BUFFER_HOURS=1
+  export DRY_RUN=true
+
+  run process_run "123" $((3 * 3600 + 1))
+
+  [[ "$output" =~ "Would force-cancel run 123" ]]
+}
+
+# --------------------------------------------------------
+# Outcome reported to the caller (PROCESS_RUN_OUTCOME)
+# --------------------------------------------------------
+# These tests call process_run without `run` so that the global is visible.
+
+@test "process_run sets the outcome to cancelled after a 202" {
+  process_run "123" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "cancelled" ]
+}
+
+@test "process_run sets the outcome to cancelled after a force-cancel 202" {
+  process_run "111" $((24 * 3600)) > /dev/null || true
+
+  [ "$PROCESS_RUN_OUTCOME" = "cancelled" ]
+}
+
+@test "process_run sets the outcome to failed after a 500" {
+  process_run "456" $((3 * 3600)) > /dev/null || true
+
+  [ "$PROCESS_RUN_OUTCOME" = "failed" ]
+}
+
+@test "process_run sets the outcome to skipped after a 409" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  process_run "123" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+}
+
+@test "process_run sets the outcome to would-cancel in dry run" {
+  export DRY_RUN=true
+
+  process_run "123" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "would-cancel" ]
+}
+
+@test "process_run sets the outcome to noop for a recent run" {
+  PROCESS_RUN_OUTCOME="stale"
+
+  process_run "123" $((1 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "noop" ]
+}
+
+@test "process_run sets the outcome to noop for an empty run id" {
+  PROCESS_RUN_OUTCOME="stale"
+
+  process_run "" $((3 * 3600)) > /dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "noop" ]
 }

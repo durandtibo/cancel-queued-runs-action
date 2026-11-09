@@ -47,6 +47,58 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
+@test "to_unix_ts prints an ::error:: message with the invalid timestamp" {
+  run to_unix_ts "not-a-date"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == "::error::Invalid timestamp 'not-a-date' (expected format: YYYY-MM-DDTHH:MM:SSZ)" ]]
+}
+
+@test "to_unix_ts prints nothing on stdout for an invalid timestamp" {
+  out=$(to_unix_ts "not-a-date" 2>/dev/null || true)
+
+  [ -z "$out" ]
+}
+
+@test "to_unix_ts rejects trailing characters" {
+  run to_unix_ts "2025-01-15T10:30:00Zjunk"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Invalid timestamp" ]]
+}
+
+@test "to_unix_ts rejects a timestamp without the Z suffix" {
+  run to_unix_ts "2025-01-15T10:30:00"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "to_unix_ts rejects a timestamp with a UTC offset" {
+  run to_unix_ts "2025-01-15T10:30:00+01:00"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "to_unix_ts rejects a timestamp with a space instead of T" {
+  run to_unix_ts "2025-01-15 10:30:00Z"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "to_unix_ts rejects a date with an impossible month" {
+  run to_unix_ts "2025-13-45T00:00:00Z"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::" ]]
+}
+
+@test "to_unix_ts rejects an impossible time" {
+  run to_unix_ts "2025-01-01T25:61:61Z"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::" ]]
+}
+
 #----------------------------
 # Test boundary: Unix epoch
 #----------------------------
