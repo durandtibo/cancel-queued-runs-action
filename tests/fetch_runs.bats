@@ -275,3 +275,67 @@ teardown() {
 
   [ "$(wc -l < "$MOCK_GH_CALL_LOG" | tr -d ' ')" -eq 1 ]
 }
+
+@test "fetch_runs warns when the number of runs of a status reaches the limit" {
+  RUNS_LISTING_LIMIT=2
+
+  err=$(fetch_runs 2>&1 >/dev/null)
+
+  [[ "$err" == *"::warning::2 runs were listed for the status 'queued'"* ]]
+}
+
+@test "fetch_runs does not warn below the limit" {
+  RUNS_LISTING_LIMIT=3
+
+  err=$(fetch_runs 2>&1 >/dev/null)
+
+  [ -z "$err" ]
+}
+
+@test "fetch_runs does not warn with the default limit" {
+  err=$(fetch_runs 2>&1 >/dev/null)
+
+  [ -z "$err" ]
+}
+
+@test "fetch_runs warns for the status that reached the limit only" {
+  export STATUSES="queued,waiting"
+  RUNS_LISTING_LIMIT=2
+  # waiting returns a single run, so only queued reaches the limit
+  cat > "$MOCK_DIR/gh" << MOCK
+#!/usr/bin/env bash
+filter=""
+while [ \$# -gt 0 ]; do
+  if [ "\$1" = "--jq" ]; then filter="\$2"; fi
+  if [[ "\$1" == *"status=waiting"* ]]; then waiting=1; fi
+  shift
+done
+if [ -n "\${waiting:-}" ]; then
+  jq -c '.workflow_runs[:1][] | {id: .id, queued_at: .updated_at}' "$MOCK_GH_RESPONSE_FILE"
+else
+  jq -c "\$filter" "$MOCK_GH_RESPONSE_FILE"
+fi
+MOCK
+
+  err=$(fetch_runs 2>&1 >/dev/null)
+
+  echo "$err" | grep -q "status 'queued'"
+  ! echo "$err" | grep -q "status 'waiting'"
+}
+
+@test "fetch_runs still prints every run when the limit is reached" {
+  RUNS_LISTING_LIMIT=2
+
+  out=$(fetch_runs 2>/dev/null)
+
+  [ "$(echo "$out" | wc -l | tr -d ' ')" -eq 2 ]
+}
+
+@test "fetch_runs does not warn when nothing is listed" {
+  RUNS_LISTING_LIMIT=1
+  echo '{"workflow_runs": []}' > "$MOCK_GH_RESPONSE_FILE"
+
+  err=$(fetch_runs 2>&1 >/dev/null)
+
+  [ -z "$err" ]
+}

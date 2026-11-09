@@ -27,6 +27,9 @@
 #   RETRY_MAX_DELAY - Longest delay we are willing to wait, in seconds; a
 #                     rate limit that requires waiting longer is not retried
 #                     (default: 60)
+#   RUNS_LISTING_LIMIT - Number of runs after which GitHub stops listing the
+#                        runs of a status (default: 1000, the documented limit
+#                        of the API); reaching it gives a warning
 #
 # GitHub Actions integration (optional, ignored when the variables are unset):
 #   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
@@ -58,6 +61,7 @@ PROCESS_RUN_OUTCOME=""
 MAX_RETRIES="${MAX_RETRIES:-3}"
 RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
 RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
+RUNS_LISTING_LIMIT="${RUNS_LISTING_LIMIT:-1000}"
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -124,6 +128,26 @@ log_status() {
 }
 
 # ----------------------------
+# Warn when the listing of a status may be incomplete
+# GitHub returns at most RUNS_LISTING_LIMIT (1000) runs for a query that
+# filters on the status, however many exist. When that many runs are listed,
+# the list is probably truncated and the oldest runs may be missing.
+# Args:
+#   $1 - Run status that was listed
+#   $2 - Number of runs listed for this status
+# Returns:
+#   Always 0. The warning is written on stderr.
+# ----------------------------
+warn_if_listing_truncated() {
+	local run_status="$1"
+	local count="$2"
+
+	if [ "$count" -ge "$RUNS_LISTING_LIMIT" ]; then
+		echo "::warning::$count runs were listed for the status '$run_status', which is the maximum that GitHub returns for a query: older runs may be missing from the list and will not be considered until the runs listed now are cancelled. Run the action again to process them." >&2
+	fi
+}
+
+# ----------------------------
 # Fetch queued runs from GitHub API
 # Uses pagination to handle repositories with many queued runs
 #
@@ -140,6 +164,9 @@ log_status() {
 #               run is re-run (for example after a failure), so a re-queued
 #               run is not cancelled because of its original creation date.
 #
+# A warning is written on stderr for a status when GitHub lists as many runs
+# as it is able to return (see warn_if_listing_truncated).
+#
 # Returns:
 #   0 on success, 1 as soon as a listing call fails (the runs already printed
 #   are incomplete then, so the caller must not use them). The check is
@@ -153,7 +180,7 @@ fetch_runs() {
 		runs_path="/repos/$REPO/actions/workflows/$WORKFLOW/runs"
 	fi
 
-	local run_status
+	local run_status listed count
 	local seen=","
 	local -a status_list=()
 	IFS=',' read -r -a status_list <<<"${STATUSES// /}"
@@ -166,11 +193,19 @@ fetch_runs() {
 		fi
 		seen="$seen$run_status,"
 
-		gh api \
-			-H "Accept: application/vnd.github+json" \
-			"$runs_path?status=$run_status&per_page=100" \
-			--paginate \
-			--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}' || return 1
+		listed=$(
+			gh api \
+				-H "Accept: application/vnd.github+json" \
+				"$runs_path?status=$run_status&per_page=100" \
+				--paginate \
+				--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}'
+		) || return 1
+
+		if [ -n "$listed" ]; then
+			printf '%s\n' "$listed"
+			count=$(printf '%s\n' "$listed" | grep -c '')
+			warn_if_listing_truncated "$run_status" "$count"
+		fi
 	done
 }
 
