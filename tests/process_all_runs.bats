@@ -464,3 +464,73 @@ mock_outcomes() {
   printf '%s' "$RUN_RECORDS" | grep -qx "1|5h00m|cancelled"
 }
 
+
+# --------------------------------------------------------
+# Current time
+# --------------------------------------------------------
+
+# Replaces compute_age_seconds by a function that logs the timestamps it gets,
+# and date by one that answers a different time at every call
+mock_clock() {
+  mkdir -p "$MOCK_DIR"
+  AGE_LOG="$MOCK_DIR/age_calls.log"
+  : > "$AGE_LOG"
+  echo 0 > "$MOCK_DIR/clock"
+  compute_age_seconds() {
+    echo "$1 $2" >> "$AGE_LOG"
+    echo 18000
+  }
+  date() {
+    local n
+    n=$(cat "$MOCK_DIR/clock")
+    echo $((n + 1)) > "$MOCK_DIR/clock"
+    printf '2030-01-01T00:00:%02dZ\n' "$n"
+  }
+}
+
+@test "process_all_runs compares all the runs with the same current time" {
+  mock_clock
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}' \
+      '{"id": 3, "queued_at": "2025-01-01T03:00:00Z"}'
+  )
+
+  process_all_runs "$runs_stream" > /dev/null
+
+  [ "$(cut -d' ' -f2 "$AGE_LOG" | sort -u | wc -l | tr -d ' ')" -eq 1 ]
+  [ "$(wc -l < "$AGE_LOG" | tr -d ' ')" -eq 3 ]
+}
+
+@test "process_all_runs reads the current time once for all the runs" {
+  mock_clock
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}'
+  )
+
+  process_all_runs "$runs_stream" > /dev/null
+
+  [ "$(cat "$MOCK_DIR/clock")" -eq 1 ]
+}
+
+@test "process_all_runs gives the current time in the format of the GitHub API" {
+  mock_clock
+  runs_stream='{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}'
+
+  process_all_runs "$runs_stream" > /dev/null
+
+  [ "$(cut -d' ' -f2 "$AGE_LOG")" = "2030-01-01T00:00:00Z" ]
+}
+
+@test "process_all_runs reads the current time again at every call" {
+  mock_clock
+  runs_stream='{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}'
+
+  process_all_runs "$runs_stream" > /dev/null
+  process_all_runs "$runs_stream" > /dev/null
+
+  [ "$(cut -d' ' -f2 "$AGE_LOG" | sort -u | wc -l | tr -d ' ')" -eq 2 ]
+}

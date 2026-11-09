@@ -120,3 +120,65 @@ setup() {
   fi
   [ "$iso" = "2024-02-29T12:34:56Z" ]
 }
+
+#----------------------------
+# Number of date processes
+#----------------------------
+
+# Emulates GNU date, which accepts -d: it answers a fixed timestamp and logs
+# its arguments, one line per call
+mock_gnu_date() {
+  MOCK_DIR="$BATS_TEST_DIRNAME/mocks"
+  mkdir -p "$MOCK_DIR"
+  export DATE_CALLS="$MOCK_DIR/date_calls.log"
+  : > "$DATE_CALLS"
+  date() {
+    echo "$*" >> "$DATE_CALLS"
+    echo 1736937000
+  }
+}
+
+@test "to_unix_ts starts a single date process with GNU date" {
+  mock_gnu_date
+
+  to_unix_ts "2025-01-15T10:30:00Z" > /dev/null
+
+  [ "$(wc -l < "$DATE_CALLS" | tr -d ' ')" -eq 1 ]
+  rm -rf "$MOCK_DIR"
+}
+
+@test "to_unix_ts prints what GNU date answers" {
+  mock_gnu_date
+
+  result=$(to_unix_ts "2025-01-15T10:30:00Z")
+
+  [ "$result" = "1736937000" ]
+  rm -rf "$MOCK_DIR"
+}
+
+@test "to_unix_ts asks GNU date for UTC" {
+  mock_gnu_date
+
+  to_unix_ts "2025-01-15T10:30:00Z" > /dev/null
+
+  [[ "$(cat "$DATE_CALLS")" == "-u -d 2025-01-15T10:30:00Z +%s" ]] || false
+  rm -rf "$MOCK_DIR"
+}
+
+@test "to_unix_ts starts no date process for an empty timestamp" {
+  mock_gnu_date
+
+  to_unix_ts "" > /dev/null
+
+  [ ! -s "$DATE_CALLS" ]
+  rm -rf "$MOCK_DIR"
+}
+
+@test "to_unix_ts starts no date process for an invalid timestamp" {
+  mock_gnu_date
+
+  to_unix_ts "garbage" > /dev/null 2>&1 || true
+
+  [ ! -s "$DATE_CALLS" ]
+  rm -rf "$MOCK_DIR"
+}

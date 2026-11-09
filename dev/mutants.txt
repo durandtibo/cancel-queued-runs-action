@@ -54,3 +54,5 @@ validate_fail_on_error: any value accepted@@validate_fail_on_error.bats@@s/\[ "\
 validate_cancel_delay_seconds: leading zero accepted@@validate_cancel_delay_seconds.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[0-9]+$ ]]; then/
 validate_auth: credentials never found@@validate_auth.bats@@s/-n "\$\{GH_TOKEN:-\}" \] \|\| \[ -n "\$\{GITHUB_TOKEN:-\}" \]/-n "" ] || [ -n "" ]/
 validate_tuning_variables: zero accepted for positive integers@@validate_tuning_variables.bats@@s/pattern='\^\[1-9\]\[0-9\]\*\$'/pattern='^(0|[1-9][0-9]*)$'/
+process_all_runs: current time not shared by the runs@@process_all_runs.bats@@s/compute_age_seconds "\$queued_at" "\$now"/compute_age_seconds "$queued_at"/
+to_unix_ts: GNU date not in UTC@@to_unix_ts.bats@@s/date -u -d "\$ts" \+%s/date -d "$ts" +%s/

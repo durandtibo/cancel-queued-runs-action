@@ -301,6 +301,10 @@ Set `force_cancel_buffer_hours: 0` to allow the force-cancel fallback for every 
 Ages are compared with a one-second precision, so a run queued for 24 hours and 30 minutes is
 already eligible for cancellation.
 
+The current time is read once, when the runs are processed, and all the runs are compared with that
+same instant, even when `cancel_delay_seconds` makes the execution last several minutes. An age is
+therefore never larger than the real one: a run is never cancelled before it is old enough.
+
 This design helps handle edge cases where runs have been stuck in the queue for extended periods.
 
 ---
