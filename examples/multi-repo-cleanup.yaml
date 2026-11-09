@@ -1,0 +1,32 @@
+# Multi-repository cleanup.
+# Cleans up several repositories with a matrix. The default GITHUB_TOKEN only gives access to
+# the repository that runs the workflow, so a token with the "Actions: Read and write"
+# permission on every target repository is required (fine-grained personal access token or
+# GitHub App token), stored in the CANCEL_RUNS_TOKEN secret.
+
+name: Cancel stale queued runs in several repositories
+
+on:
+  schedule:
+    - cron: "0 * * * *" # every hour
+  workflow_dispatch: # to trigger manually
+
+permissions: {} # the GITHUB_TOKEN is not used
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false # keep cleaning the other repositories if one fails
+      matrix:
+        repo:
+          - my-org/repo-a
+          - my-org/repo-b
+          - my-org/repo-c
+    steps:
+      - uses: durandtibo/cancel-queued-runs-action@v1.9
+        with:
+          github_token: ${{ secrets.CANCEL_RUNS_TOKEN }}
+          repo: ${{ matrix.repo }}
+          max_age_hours: 24

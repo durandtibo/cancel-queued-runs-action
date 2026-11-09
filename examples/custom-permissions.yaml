@@ -1,0 +1,25 @@
+# Custom token and permissions.
+# Uses a token other than the default GITHUB_TOKEN, for example because the default token is
+# restricted by the organization settings, or to target another repository. The token needs the
+# "Actions: Read and write" permission on the target repository and is stored in the
+# CANCEL_RUNS_TOKEN secret. The workflow itself does not need any permission.
+
+name: Cancel stale queued runs with a custom token
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch: # to trigger manually
+
+permissions: {} # the GITHUB_TOKEN is not used
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: durandtibo/cancel-queued-runs-action@v1.9
+        with:
+          github_token: ${{ secrets.CANCEL_RUNS_TOKEN }}
+          repo: my-org/my-repo
+          max_age_hours: 48

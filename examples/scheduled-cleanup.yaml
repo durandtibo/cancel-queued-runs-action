@@ -1,0 +1,22 @@
+# Scheduled cleanup.
+# Every hour, cancels the runs that have been queued for more than 12 hours.
+
+name: Cancel stale queued runs
+
+on:
+  schedule:
+    - cron: "0 * * * *" # every hour
+  workflow_dispatch: # to trigger manually
+
+permissions:
+  actions: write # required to cancel the runs
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: durandtibo/cancel-queued-runs-action@v1.9
+        with:
+          max_age_hours: 12

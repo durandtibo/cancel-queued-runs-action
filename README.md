@@ -55,7 +55,8 @@ This action requires:
 
 - **GitHub Token**: The action needs `actions:write` permission to cancel workflow runs. The default
   `GITHUB_TOKEN` provided by GitHub Actions has this permission.
-- **GitHub CLI**: Pre-installed on all GitHub-hosted runners (ubuntu-latest, macos-latest, etc.)
+- **GitHub CLI** (`gh`) and **jq**: Pre-installed on all GitHub-hosted runners (ubuntu-latest,
+  macos-latest, etc.). On a self-hosted runner, install both.
 - **Shell Environment**: Works on both Linux (GNU) and macOS (BSD) runners
 
 ---
@@ -63,7 +64,9 @@ This action requires:
 ## 📦 Usage
 
 Add the following job to any workflow where you want stale queued runs to be automatically
-cancelled.
+cancelled. Releases are published as exact version tags (`v1.9`, ...); there is no floating `v1`
+tag. For the best supply-chain safety, pin the action to the commit SHA of a release
+(`uses: durandtibo/cancel-queued-runs-action@<sha> # v1.9`).
 
 ```yaml
 jobs:
@@ -90,6 +93,10 @@ jobs:
 | `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
+
+> **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `dry_run` and all the
+> [outputs](#-outputs) were added after `v1.9`. Use a later release (or a commit of `main`) to get
+> them; the examples below that use them need such a release.
 
 ---
 
@@ -375,9 +382,7 @@ processed, and the step exits with code `1`.
   none, 5, 10 and 20 seconds. A limit that requires waiting more than 60 seconds is not waited for:
   the run is reported as failed and is retried by the next execution of the action
 - **Very Old Runs**: Runs that are extremely old (several months) may fail to cancel via the API
-- **Permissions Required**: Needs `actions:write` permission, which may not be available in some
-  restricted environments
-- **Pagination**: Fetches up to 100 queued runs per page (uses automatic pagination)
+  (see [Troubleshooting](#-troubleshooting))
 
 ---
 
@@ -388,6 +393,13 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 For questions or suggestions, you can
 submit [GitHub Issues](https://github.com/durandtibo/cancel-queued-runs-action/issues).
 We will reply to you as soon as possible. Thank you very much.
+
+---
+
+## 📝 Changelog
+
+The release notes are published on the
+[GitHub releases page](https://github.com/durandtibo/cancel-queued-runs-action/releases).
 
 ---
 
