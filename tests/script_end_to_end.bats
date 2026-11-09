@@ -47,7 +47,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN
+  unset DRY_RUN WORKFLOW
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -117,4 +117,15 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   [ "$status" -eq 0 ]
   grep -qx "cancelled_count=0" "$GITHUB_OUTPUT"
   grep -qx "would_cancel_count=1" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: the workflow filter is used to list the runs" {
+  export WORKFLOW="ci.yaml"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]]
+  grep -q "/repos/myorg/myrepo/actions/workflows/ci.yaml/runs" "$MOCK_GH_CALL_LOG"
+  grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
 }

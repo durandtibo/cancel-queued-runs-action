@@ -12,6 +12,9 @@
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
 #   FORCE_BUFFER_HOURS - Hours after MAX_AGE_HOURS from which force-cancel is
 #                        used as a fallback (non-negative integer, default: 3)
+#   WORKFLOW - Only consider the runs of this workflow, given as a workflow
+#              file name (e.g., ci.yaml) or a numeric workflow ID
+#              (default: empty, all the workflows)
 #   DRY_RUN - "true" to only log the runs that would be cancelled, without
 #             calling the cancel endpoints; "false" otherwise (default: false)
 #
@@ -37,6 +40,7 @@ set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 FORCE_BUFFER_HOURS="${FORCE_BUFFER_HOURS:-3}"
+WORKFLOW="${WORKFLOW:-}"
 DRY_RUN="${DRY_RUN:-false}"
 
 # Counters filled by process_all_runs and reported by main
@@ -120,6 +124,9 @@ log_status() {
 # Fetch queued runs from GitHub API
 # Uses pagination to handle repositories with many queued runs
 #
+# If WORKFLOW is set, only the runs of that workflow are listed, through the
+# per-workflow endpoint (the filtering is done by GitHub).
+#
 # Prints one JSON object per line with the fields:
 #   id        - workflow run ID
 #   queued_at - when the run started waiting: run_started_at (which is reset
@@ -127,9 +134,15 @@ log_status() {
 #               not used because it changes whenever the run is touched.
 # ----------------------------
 fetch_runs() {
+	local runs_path="/repos/$REPO/actions/runs"
+
+	if [ -n "$WORKFLOW" ]; then
+		runs_path="/repos/$REPO/actions/workflows/$WORKFLOW/runs"
+	fi
+
 	gh api \
 		-H "Accept: application/vnd.github+json" \
-		"/repos/$REPO/actions/runs?status=queued&per_page=100" \
+		"$runs_path?status=queued&per_page=100" \
 		--paginate \
 		--jq '.workflow_runs[] | {id: .id, queued_at: (.run_started_at // .created_at)}'
 }
@@ -579,6 +592,10 @@ write_summary() {
 		echo "### $mode"
 		echo
 		echo "Repository: \`${REPO}\`, maximum queue age: ${MAX_AGE_HOURS} hours"
+		if [ -n "$WORKFLOW" ]; then
+			echo
+			echo "Workflow: \`${WORKFLOW}\`"
+		fi
 		echo
 		echo "| Result | Runs |"
 		echo "| --- | ---: |"
@@ -618,6 +635,29 @@ validate_force_buffer_hours() {
 
 	if ! [[ "$force_buffer_hours" =~ ^(0|[1-9][0-9]*)$ ]]; then
 		echo "::error::FORCE_BUFFER_HOURS must be a non-negative integer (got '$force_buffer_hours')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate the workflow filter
+# The value is used to build an API path, so only the characters of a workflow
+# file name or ID are accepted ("." and ".." are rejected). Empty means no
+# filter.
+# Args:
+#   $1 - Workflow file name or ID (may be empty)
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_workflow() {
+	local workflow="${1:-}"
+
+	if [ -z "$workflow" ]; then
+		return 0
+	fi
+
+	if ! [[ "$workflow" =~ ^[A-Za-z0-9_.-]+$ ]] || [ "$workflow" = "." ] || [ "$workflow" = ".." ]; then
+		echo "::error::WORKFLOW must be a workflow file name (e.g., ci.yaml) or a numeric ID (got '$workflow')" >&2
 		return 1
 	fi
 }
@@ -688,6 +728,7 @@ main() {
 	validate_max_age_hours "$MAX_AGE_HOURS" || return 1
 	validate_repo "${REPO:-}" || return 1
 	validate_force_buffer_hours "$FORCE_BUFFER_HOURS" || return 1
+	validate_workflow "$WORKFLOW" || return 1
 	validate_dry_run "$DRY_RUN" || return 1
 	validate_auth || return 1
 
@@ -696,6 +737,9 @@ main() {
 		echo "🧪 Dry run enabled: no run will be cancelled."
 	fi
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
+	if [ -n "$WORKFLOW" ]; then
+		echo "Only the runs of the workflow ${WORKFLOW} are considered."
+	fi
 
 	reset_counters
 	local exit_code=0
