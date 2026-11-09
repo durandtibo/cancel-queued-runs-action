@@ -138,11 +138,12 @@ gh() {
 
 The action uses a two-tier cancellation strategy:
 
-1. **Standard Cancel** (`MAX_AGE_HOURS` < age ≤ `MAX_AGE_HOURS + 3`)
+1. **Standard Cancel** (`MAX_AGE_HOURS` < age ≤ `MAX_AGE_HOURS + FORCE_BUFFER_HOURS`)
    - Uses the standard `/cancel` endpoint
    - Graceful cancellation for recently queued runs
 
-2. **Force Cancel** (age > `MAX_AGE_HOURS + 3`)
+2. **Force Cancel** (age > `MAX_AGE_HOURS + FORCE_BUFFER_HOURS`, `FORCE_BUFFER_HOURS`
+   defaults to `3`)
    - Sends a standard `/cancel` request first (GitHub rejects `/force-cancel` with HTTP `409` for
      a run that never received a regular cancel request)
    - Falls back to the `/force-cancel` endpoint only if the standard request is not accepted

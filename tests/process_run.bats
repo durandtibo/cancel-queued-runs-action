@@ -368,3 +368,62 @@ record_calls() {
   [[ "$output" =~ "Cancelling run 123" ]]
   [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
 }
+
+# --------------------------------------------------------
+# Configurable force-cancel buffer (MAX_AGE_HOURS=2)
+# --------------------------------------------------------
+
+@test "process_run uses a 3 hour force-cancel buffer by default" {
+  unset FORCE_BUFFER_HOURS
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  cancel_run() { echo "HTTP/2.0 202 Accepted"; }
+
+  run process_run "123" $((5 * 3600))
+  [[ "$output" =~ "Cancelling run 123" ]]
+
+  run process_run "123" $((5 * 3600 + 1))
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+}
+
+@test "process_run force-cancels as soon as the age exceeds MAX_AGE_HOURS when the buffer is 0" {
+  export FORCE_BUFFER_HOURS=0
+
+  run process_run "123" $((2 * 3600 + 1))
+
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run does nothing at exactly MAX_AGE_HOURS when the buffer is 0" {
+  export FORCE_BUFFER_HOURS=0
+
+  run process_run "123" $((2 * 3600))
+
+  [ -z "$output" ]
+}
+
+@test "process_run uses standard cancel up to MAX_AGE_HOURS + buffer when the buffer is 10" {
+  export FORCE_BUFFER_HOURS=10
+
+  run process_run "123" $((12 * 3600))
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ ! "$output" =~ "Force-cancelling" ]]
+}
+
+@test "process_run force-cancels just after MAX_AGE_HOURS + buffer when the buffer is 10" {
+  export FORCE_BUFFER_HOURS=10
+
+  run process_run "123" $((12 * 3600 + 1))
+
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+}
+
+@test "process_run dry run honours the force-cancel buffer" {
+  export FORCE_BUFFER_HOURS=1
+  export DRY_RUN=true
+
+  run process_run "123" $((3 * 3600 + 1))
+
+  [[ "$output" =~ "Would force-cancel run 123" ]]
+}

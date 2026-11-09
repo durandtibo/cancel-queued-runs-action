@@ -78,12 +78,13 @@ jobs:
 
 ## 🛠 Inputs
 
-| Name            | Required | Default                    | Description                                             |
-| --------------- | -------- | -------------------------- | ------------------------------------------------------- |
-| `github_token`  | ❌ No    | `${{ github.token }}`      | Token with `actions:write` permissions                  |
-| `repo`          | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                       |
-| `max_age_hours` | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued |
-| `dry_run`       | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled    |
+| Name                        | Required | Default                    | Description                                                                             |
+| --------------------------- | -------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| `github_token`              | ❌ No    | `${{ github.token }}`      | Token with `actions:write` permissions                                                  |
+| `repo`                      | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                                                       |
+| `max_age_hours`             | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued                                 |
+| `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
+| `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
 ---
 
@@ -171,21 +172,26 @@ cross-platform timestamp parsing to work correctly on both Linux (GNU date) and 
 
 The action uses a two-tier cancellation approach:
 
-- **Standard Cancel**: For runs between `max_age_hours` and `max_age_hours + 3` hours old
+- **Standard Cancel**: For runs between `max_age_hours` and
+  `max_age_hours + force_cancel_buffer_hours` hours old
   - Uses the standard `/cancel` endpoint
   - Graceful cancellation for recently queued runs
 
-- **Force Cancel**: For runs older than `max_age_hours + 3` hours
+- **Force Cancel**: For runs older than `max_age_hours + force_cancel_buffer_hours` hours
+  (`force_cancel_buffer_hours` defaults to `3`)
   - Sends a standard `/cancel` request first: this is required because GitHub rejects
     `/force-cancel` (HTTP `409`) for a run that never received a regular cancel request
   - Falls back to the `/force-cancel` endpoint **only if** the standard request is not accepted
     (anything other than HTTP `202`)
   - More aggressive approach necessary for very old, stuck runs
 
-**Example**: If `max_age_hours: 24`:
+**Example**: If `max_age_hours: 24` and `force_cancel_buffer_hours: 3` (the default):
 
 - Runs queued more than 24 hours and up to 27 hours: Standard cancel
 - Runs queued more than 27 hours: Standard cancel first, then force cancel if it was not accepted
+
+Set `force_cancel_buffer_hours: 0` to allow the force-cancel fallback for every run older than
+`max_age_hours`.
 
 Ages are compared with a one-second precision, so a run queued for 24 hours and 30 minutes is
 already eligible for cancellation.
