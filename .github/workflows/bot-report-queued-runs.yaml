@@ -7,7 +7,7 @@ name: Report Queued Runs
 
 on:
   schedule:
-    - cron: "0 * * * *" # Run every hour
+    - cron: "17 * * * *" # Run every hour, offset from the top of the hour to avoid peak-load delays
   workflow_dispatch: # to trigger manually
     inputs:
       username:
