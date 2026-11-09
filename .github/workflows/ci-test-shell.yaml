@@ -27,21 +27,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
-      - name: Install bats-core (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          echo "📦 Installing bats-core..."
-          sudo apt-get update -qq
-          sudo apt-get install -y bats
-          echo "✅ Installation complete"
-
-      - name: Install bats-core (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "🍺 Installing bats-core..."
-          brew update
-          brew install bats-core
-          echo "✅ Installation complete"
+      - name: Install bats-core
+        shell: bash
+        run: make install-bats
 
       - name: Verify bats installation
         run: |
