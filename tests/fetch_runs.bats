@@ -105,11 +105,11 @@ teardown() {
 @test "fetch_runs does not use created_at or run_started_at" {
   run fetch_runs
 
-  [[ ! "$output" =~ "2025-01-01T09:00:00Z" ]]
-  [[ ! "$output" =~ "2025-01-01T10:00:00Z" ]]
-  [[ ! "$output" =~ "2025-01-01T11:00:00Z" ]]
-  [[ ! "$output" =~ "created_at" ]]
-  [[ ! "$output" =~ "run_started_at" ]]
+  [[ ! "$output" =~ "2025-01-01T09:00:00Z" ]] || false
+  [[ ! "$output" =~ "2025-01-01T10:00:00Z" ]] || false
+  [[ ! "$output" =~ "2025-01-01T11:00:00Z" ]] || false
+  [[ ! "$output" =~ "created_at" ]] || false
+  [[ ! "$output" =~ "run_started_at" ]] || false
 }
 
 @test "fetch_runs returns nothing when there are no queued runs" {
@@ -127,13 +127,13 @@ teardown() {
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
 
   # REGEX matching is OK because BATS forces bash
-  [[ "$log_contents" =~ api ]]
-  [[ "$log_contents" =~ "-H" ]]
-  [[ "$log_contents" =~ "Accept: application/vnd.github+json" ]]
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs?status=queued&per_page=100" ]]
-  [[ "$log_contents" =~ "--paginate" ]]
-  [[ "$log_contents" =~ "--jq" ]]
-  [[ "$log_contents" =~ ".workflow_runs" ]]
+  [[ "$log_contents" =~ api ]] || false
+  [[ "$log_contents" =~ "-H" ]] || false
+  [[ "$log_contents" =~ "Accept: application/vnd.github+json" ]] || false
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs?status=queued&per_page=100" ]] || false
+  [[ "$log_contents" =~ "--paginate" ]] || false
+  [[ "$log_contents" =~ "--jq" ]] || false
+  [[ "$log_contents" =~ ".workflow_runs" ]] || false
 }
 
 @test "fetch_runs obeys REPO environment variable" {
@@ -146,15 +146,15 @@ teardown() {
 
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
 
-  [[ "$log_contents" =~ "/repos/otherorg/coolrepo/actions/runs" ]]
+  [[ "$log_contents" =~ "/repos/otherorg/coolrepo/actions/runs" ]] || false
 }
 
 @test "fetch_runs lists the runs of all the workflows by default" {
   run fetch_runs
 
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs?status=queued&per_page=100" ]]
-  [[ ! "$log_contents" =~ "/workflows/" ]]
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs?status=queued&per_page=100" ]] || false
+  [[ ! "$log_contents" =~ "/workflows/" ]] || false
 }
 
 @test "fetch_runs lists only the runs of a workflow file name when WORKFLOW is set" {
@@ -164,7 +164,7 @@ teardown() {
 
   [ "$status" -eq 0 ]
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/workflows/ci.yaml/runs?status=queued&per_page=100" ]]
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/workflows/ci.yaml/runs?status=queued&per_page=100" ]] || false
 }
 
 @test "fetch_runs lists only the runs of a workflow ID when WORKFLOW is set" {
@@ -173,7 +173,7 @@ teardown() {
   run fetch_runs
 
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/workflows/161335/runs?status=queued&per_page=100" ]]
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/workflows/161335/runs?status=queued&per_page=100" ]] || false
 }
 
 @test "fetch_runs returns the same fields with a workflow filter" {
@@ -189,7 +189,7 @@ teardown() {
   run fetch_runs
 
   [ "$(wc -l < "$MOCK_GH_CALL_LOG" | tr -d ' ')" -eq 1 ]
-  [[ "$(cat "$MOCK_GH_CALL_LOG")" =~ "status=queued&per_page=100" ]]
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" =~ "status=queued&per_page=100" ]] || false
 }
 
 @test "fetch_runs makes one call per status" {
@@ -326,7 +326,7 @@ teardown() {
 
   err=$(fetch_runs 2>&1 >/dev/null)
 
-  [[ "$err" == *"::warning::2 runs were listed for the status 'queued'"* ]]
+  [[ "$err" == *"::warning::2 runs were listed for the status 'queued'"* ]] || false
 }
 
 @test "fetch_runs does not warn below the limit" {
@@ -365,7 +365,7 @@ MOCK
   err=$(fetch_runs 2>&1 >/dev/null)
 
   echo "$err" | grep -q "status 'queued'"
-  ! echo "$err" | grep -q "status 'waiting'"
+  [ "$(echo "$err" | grep -c "status 'waiting'" || true)" -eq 0 ]
 }
 
 @test "fetch_runs still prints every run when the limit is reached" {

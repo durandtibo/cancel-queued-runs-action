@@ -33,8 +33,8 @@ setup() {
 @test "validate_workflow rejects a path separator" {
   run validate_workflow ".github/workflows/ci.yaml"
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::WORKFLOW must be a workflow file name" ]]
-  [[ "$output" =~ "(got '.github/workflows/ci.yaml')" ]]
+  [[ "$output" =~ "::error::WORKFLOW must be a workflow file name" ]] || false
+  [[ "$output" =~ "(got '.github/workflows/ci.yaml')" ]] || false
 }
 
 @test "validate_workflow rejects path traversal" {

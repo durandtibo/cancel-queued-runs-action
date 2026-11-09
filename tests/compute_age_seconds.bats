@@ -77,14 +77,14 @@ setup() {
     run compute_age_seconds "not-a-date" "2025-01-01T10:00:00Z"
 
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "::error::Invalid timestamp 'not-a-date'" ]]
+    [[ "$output" =~ "::error::Invalid timestamp 'not-a-date'" ]] || false
 }
 
 @test "compute_age_seconds fails when now is invalid" {
     run compute_age_seconds "2025-01-01T10:00:00Z" "not-a-date"
 
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "::error::Invalid timestamp 'not-a-date'" ]]
+    [[ "$output" =~ "::error::Invalid timestamp 'not-a-date'" ]] || false
 }
 
 @test "compute_age_seconds prints no age when a timestamp is invalid" {

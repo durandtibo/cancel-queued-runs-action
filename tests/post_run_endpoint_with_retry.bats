@@ -52,7 +52,7 @@ sleeps() { wc -l < "$SLEEP_LOG" | tr -d ' '; }
   run post_run_endpoint_with_retry 123 cancel
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "202 Accepted" ]]
+  [[ "$output" =~ "202 Accepted" ]] || false
   [ "$(calls)" -eq 1 ]
   [ "$(sleeps)" -eq 0 ]
 }
@@ -71,7 +71,7 @@ sleeps() { wc -l < "$SLEEP_LOG" | tr -d ' '; }
   run post_run_endpoint_with_retry 123 cancel
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "202 Accepted" ]]
+  [[ "$output" =~ "202 Accepted" ]] || false
   [ "$(calls)" -eq 3 ]
   # Exponential backoff: 5s then 10s
   [ "$(cat "$SLEEP_LOG" | tr '\n' ' ')" = "5 10 " ]
@@ -90,7 +90,7 @@ sleeps() { wc -l < "$SLEEP_LOG" | tr -d ' '; }
 
   run post_run_endpoint_with_retry 123 cancel
 
-  [[ "$output" =~ "::warning::Rate limited on run 123 (cancel), retrying in 10s (retry 1/3)" ]]
+  [[ "$output" =~ "::warning::Rate limited on run 123 (cancel), retrying in 10s (retry 1/3)" ]] || false
 }
 
 @test "post_run_endpoint_with_retry gives up after MAX_RETRIES retries" {
@@ -102,9 +102,9 @@ sleeps() { wc -l < "$SLEEP_LOG" | tr -d ' '; }
   # 1 initial attempt + 3 retries
   [ "$(calls)" -eq 4 ]
   [ "$(sleeps)" -eq 3 ]
-  [[ "$output" =~ "giving up" ]]
+  [[ "$output" =~ "giving up" ]] || false
   # the last (rate limited) response is returned to the caller
-  [[ "$output" =~ "429 Too Many Requests" ]]
+  [[ "$output" =~ "429 Too Many Requests" ]] || false
 }
 
 @test "post_run_endpoint_with_retry does not retry when MAX_RETRIES is 0" {
@@ -115,7 +115,7 @@ sleeps() { wc -l < "$SLEEP_LOG" | tr -d ' '; }
 
   [ "$(calls)" -eq 1 ]
   [ "$(sleeps)" -eq 0 ]
-  [[ "$output" =~ "429 Too Many Requests" ]]
+  [[ "$output" =~ "429 Too Many Requests" ]] || false
 }
 
 @test "post_run_endpoint_with_retry does not wait longer than RETRY_MAX_DELAY" {
@@ -125,7 +125,7 @@ sleeps() { wc -l < "$SLEEP_LOG" | tr -d ' '; }
 
   [ "$(calls)" -eq 1 ]
   [ "$(sleeps)" -eq 0 ]
-  [[ "$output" =~ "giving up" ]]
+  [[ "$output" =~ "giving up" ]] || false
 }
 
 @test "post_run_endpoint_with_retry waits exactly RETRY_MAX_DELAY if required" {
@@ -144,7 +144,7 @@ sleeps() { wc -l < "$SLEEP_LOG" | tr -d ' '; }
 
   [ "$(calls)" -eq 1 ]
   [ "$(sleeps)" -eq 0 ]
-  [[ "$output" =~ "403 Forbidden" ]]
+  [[ "$output" =~ "403 Forbidden" ]] || false
 }
 
 @test "post_run_endpoint_with_retry does not retry a 500" {

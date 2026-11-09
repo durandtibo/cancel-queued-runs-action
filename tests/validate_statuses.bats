@@ -40,7 +40,7 @@ setup() {
 @test "validate_statuses rejects in_progress" {
   run validate_statuses "in_progress"
   [ "$status" -eq 1 ]
-  [[ "$output" == "::error::STATUSES contains an unsupported status 'in_progress' (allowed: queued, waiting, pending, requested)" ]]
+  [[ "$output" == "::error::STATUSES contains an unsupported status 'in_progress' (allowed: queued, waiting, pending, requested)" ]] || false
 }
 
 @test "validate_statuses rejects completed" {
@@ -51,19 +51,19 @@ setup() {
 @test "validate_statuses rejects an unsupported status in a list" {
   run validate_statuses "queued,in_progress"
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "'in_progress'" ]]
+  [[ "$output" =~ "'in_progress'" ]] || false
 }
 
 @test "validate_statuses rejects a typo" {
   run validate_statuses "queud"
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "'queud'" ]]
+  [[ "$output" =~ "'queud'" ]] || false
 }
 
 @test "validate_statuses rejects an empty value" {
   run validate_statuses ""
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "STATUSES must not be empty" ]]
+  [[ "$output" =~ "STATUSES must not be empty" ]] || false
 }
 
 @test "validate_statuses rejects a value with only spaces and commas" {

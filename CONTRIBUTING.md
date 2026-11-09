@@ -25,6 +25,8 @@ If you encounter a bug or have a feature request:
    - Update documentation as needed
 3. **Test your changes**:
    - Run shellcheck on modified scripts: `shellcheck scripts/*.sh`
+   - Run the unit tests: `bats tests/` (end `[[ ... ]]` and `! cmd` assertions with `|| false`, see
+     [dev/README.md](dev/README.md#writing-bats-tests), and check them with `make lint-bats`)
    - Test the action locally if possible
 4. **Commit your changes**:
    - Use clear and descriptive commit messages

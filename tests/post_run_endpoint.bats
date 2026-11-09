@@ -44,22 +44,22 @@ teardown() {
 
   [ "$status" -eq 0 ]
   log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "-X POST" ]]
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]]
-  [[ "$log_contents" =~ "-i" ]]
+  [[ "$log_contents" =~ "-X POST" ]] || false
+  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]] || false
+  [[ "$log_contents" =~ "-i" ]] || false
 }
 
 @test "post_run_endpoint supports the force-cancel endpoint" {
   run post_run_endpoint 12345 force-cancel
 
   [ "$status" -eq 0 ]
-  [[ "$(cat "$MOCK_GH_CALL_LOG")" =~ "/repos/myorg/myrepo/actions/runs/12345/force-cancel" ]]
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" =~ "/repos/myorg/myrepo/actions/runs/12345/force-cancel" ]] || false
 }
 
 @test "post_run_endpoint prints the HTTP response on stdout" {
   run post_run_endpoint 12345 cancel
 
-  [[ "${lines[0]}" == "HTTP/2.0 202 Accepted" ]]
+  [[ "${lines[0]}" == "HTTP/2.0 202 Accepted" ]] || false
 }
 
 @test "post_run_endpoint keeps the response of an HTTP error and succeeds" {
@@ -69,7 +69,7 @@ teardown() {
   run post_run_endpoint 12345 cancel
 
   [ "$status" -eq 0 ]
-  [[ "${lines[0]}" == "HTTP/2.0 409 Conflict" ]]
+  [[ "${lines[0]}" == "HTTP/2.0 409 Conflict" ]] || false
 }
 
 @test "post_run_endpoint warns on stderr with the gh error message" {
@@ -79,7 +79,7 @@ teardown() {
 
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
 
-  [[ "$err" == "::warning::gh api (cancel) failed for run 12345: gh: Server Error (HTTP 500) " ]]
+  [[ "$err" == "::warning::gh api (cancel) failed for run 12345: gh: Server Error (HTTP 500) " ]] || false
 }
 
 @test "post_run_endpoint does not warn about a 404 response" {
@@ -109,7 +109,7 @@ teardown() {
 
   out=$(post_run_endpoint 12345 cancel 2>/dev/null)
 
-  [[ "$out" == "HTTP/2.0 409 Conflict" ]]
+  [[ "$out" == "HTTP/2.0 409 Conflict" ]] || false
 }
 
 @test "post_run_endpoint warns about a 403 response" {
@@ -120,7 +120,7 @@ teardown() {
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
 
   [[ "$err" == *"::warning::gh api (cancel) failed for run 12345"* ]] || false
-  [[ "$err" == *"HTTP 403"* ]]
+  [[ "$err" == *"HTTP 403"* ]] || false
 }
 
 @test "post_run_endpoint warns when gh fails without any response" {
@@ -130,7 +130,7 @@ teardown() {
 
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
 
-  [[ "$err" == *"::warning::gh api (cancel) failed for run 12345: gh: network unreachable"* ]]
+  [[ "$err" == *"::warning::gh api (cancel) failed for run 12345: gh: network unreachable"* ]] || false
 }
 
 @test "post_run_endpoint does not mix the warning with the response on stdout" {
@@ -140,7 +140,7 @@ teardown() {
 
   out=$(post_run_endpoint 12345 cancel 2>/dev/null)
 
-  [[ "$out" == "HTTP/2.0 404 Not Found" ]]
+  [[ "$out" == "HTTP/2.0 404 Not Found" ]] || false
 }
 
 @test "post_run_endpoint prints nothing on stdout when gh fails without a response" {
@@ -160,7 +160,7 @@ teardown() {
 
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
 
-  [[ "$err" == *"::warning::"* ]]
+  [[ "$err" == *"::warning::"* ]] || false
 }
 
 @test "post_run_endpoint is silent when gh succeeds" {

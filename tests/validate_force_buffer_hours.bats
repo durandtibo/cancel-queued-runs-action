@@ -23,7 +23,7 @@ setup() {
 @test "validate_force_buffer_hours rejects a negative number" {
   run validate_force_buffer_hours -1
   [ "$status" -eq 1 ]
-  [[ "$output" == "::error::FORCE_BUFFER_HOURS must be a non-negative integer (got '-1')" ]]
+  [[ "$output" == "::error::FORCE_BUFFER_HOURS must be a non-negative integer (got '-1')" ]] || false
 }
 
 @test "validate_force_buffer_hours rejects a decimal number" {

@@ -15,4 +15,8 @@ include .make/yaml.mk
 format: format-yaml format-makefile format-shell format-toml format-markdown ## Format all files
 
 .PHONY: lint
-lint: lint-yaml lint-makefile lint-shell lint-markdown ## Lint all files
+lint: lint-yaml lint-makefile lint-shell lint-markdown lint-bats ## Lint all files
+
+.PHONY: lint-bats
+lint-bats: ## Check that the bats assertions do not pass vacuously on bash 3.2
+	./dev/check_bats_assertions.sh tests

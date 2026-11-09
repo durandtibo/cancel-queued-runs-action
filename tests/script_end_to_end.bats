@@ -94,10 +94,10 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Found 2 workflow run(s)." ]]
-  [[ "$output" =~ "Force-cancelling run 111" ]]
-  [[ ! "$output" =~ "Cancelling run 222" ]]
-  [[ ! "$output" =~ "Force-cancelling run 222" ]]
+  [[ "$output" =~ "Found 2 workflow run(s)." ]] || false
+  [[ "$output" =~ "Force-cancelling run 111" ]] || false
+  [[ ! "$output" =~ "Cancelling run 222" ]] || false
+  [[ ! "$output" =~ "Force-cancelling run 222" ]] || false
   grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
   run grep -q "runs/222/" "$MOCK_GH_CALL_LOG"
   [ "$status" -ne 0 ]
@@ -109,8 +109,8 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Dry run enabled" ]]
-  [[ "$output" =~ "[dry-run] Would force-cancel run 111" ]]
+  [[ "$output" =~ "Dry run enabled" ]] || false
+  [[ "$output" =~ "[dry-run] Would force-cancel run 111" ]] || false
   [ "$(posts)" -eq 0 ]
 }
 
@@ -120,7 +120,7 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "REPO must be in owner/name format" ]]
+  [[ "$output" =~ "REPO must be in owner/name format" ]] || false
   [ ! -s "$MOCK_GH_CALL_LOG" ]
 }
 
@@ -158,7 +158,7 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]]
+  [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]] || false
   grep -q "/repos/myorg/myrepo/actions/workflows/ci.yaml/runs" "$MOCK_GH_CALL_LOG"
   grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
 }
@@ -179,8 +179,8 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Run statuses considered: queued,waiting" ]]
-  [[ "$output" =~ "Found 3 workflow run(s)." ]]
+  [[ "$output" =~ "Run statuses considered: queued,waiting" ]] || false
+  [[ "$output" =~ "Found 3 workflow run(s)." ]] || false
   grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
   grep -q "/repos/myorg/myrepo/actions/runs/333/cancel" "$MOCK_GH_CALL_LOG"
 }
@@ -192,7 +192,7 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
 
   [ "$status" -eq 0 ]
   [ "$(echo "$output" | grep -c '::warning::')" -eq 1 ]
-  [[ "$output" =~ "::warning::Run 111 could not be cancelled (HTTP 409)" ]]
+  [[ "$output" =~ "::warning::Run 111 could not be cancelled (HTTP 409)" ]] || false
 }
 
 @test "end-to-end: a real API error (500) still shows the gh message" {
@@ -201,7 +201,7 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::warning::gh api (cancel) failed for run 111: gh: Error (HTTP 500)" ]]
+  [[ "$output" =~ "::warning::gh api (cancel) failed for run 111: gh: Error (HTTP 500)" ]] || false
 }
 
 # Two runs old enough to be cancelled, and a fake sleep that records its argument

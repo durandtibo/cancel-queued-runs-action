@@ -40,14 +40,14 @@ setup() {
   run validate_cancel_delay_seconds -1
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "(got '-1')" ]]
+  [[ "$output" =~ "(got '-1')" ]] || false
 }
 
 @test "validate_cancel_delay_seconds rejects a decimal value" {
   run validate_cancel_delay_seconds 1.5
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "(got '1.5')" ]]
+  [[ "$output" =~ "(got '1.5')" ]] || false
 }
 
 @test "validate_cancel_delay_seconds rejects a leading zero" {
@@ -60,7 +60,7 @@ setup() {
   run validate_cancel_delay_seconds "abc"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "(got 'abc')" ]]
+  [[ "$output" =~ "(got 'abc')" ]] || false
 }
 
 @test "validate_cancel_delay_seconds rejects a command injection attempt" {

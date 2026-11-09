@@ -34,7 +34,7 @@ setup() {
   run validate_fail_on_error yes
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "(got 'yes')" ]]
+  [[ "$output" =~ "(got 'yes')" ]] || false
 }
 
 @test "validate_fail_on_error rejects 0" {
@@ -47,7 +47,7 @@ setup() {
   run validate_fail_on_error True
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "(got 'True')" ]]
+  [[ "$output" =~ "(got 'True')" ]] || false
 }
 
 @test "validate_fail_on_error writes the error on stderr" {

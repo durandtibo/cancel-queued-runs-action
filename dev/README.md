@@ -7,6 +7,7 @@ This document contains notes, known issues, and development guidance for contrib
 - [Stale Runs](#stale-runs)
 - [Testing Multiple Repositories](#testing-multiple-repositories)
 - [Debugging Tips](#debugging-tips)
+- [Writing Bats Tests](#writing-bats-tests)
 - [Architecture Notes](#architecture-notes)
 
 ---
@@ -129,6 +130,27 @@ gh() {
   echo "Status: 202 Accepted"
 }
 ```
+
+---
+
+## Writing Bats Tests
+
+The tests are run with `bats tests/` on Linux and on macOS, where the system bash is 3.2.
+On bash 3.2, a failing `[[ ... ]]` or `! command` that is **not the last command of a test** does
+not fail the test: the assertion looks like a check but never fails. End these assertions with
+`|| false`:
+
+```bash
+@test "example" {
+  run my_function
+
+  [[ "$output" =~ "expected" ]] || false   # fails on every bash version
+  [ "$status" -eq 0 ]                      # single brackets are fine
+}
+```
+
+`make lint-bats` (also part of `make lint` and of the CI) runs `dev/check_bats_assertions.sh`,
+which lists the assertions that need `|| false`.
 
 ---
 

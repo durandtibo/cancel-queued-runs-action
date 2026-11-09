@@ -38,7 +38,7 @@ make_stub() {
   run validate_dependencies
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::Required command(s) not found: gh " ]]
+  [[ "$output" =~ "::error::Required command(s) not found: gh " ]] || false
 }
 
 @test "validate_dependencies fails when jq is missing" {
@@ -47,14 +47,14 @@ make_stub() {
   run validate_dependencies
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::Required command(s) not found: jq " ]]
+  [[ "$output" =~ "::error::Required command(s) not found: jq " ]] || false
 }
 
 @test "validate_dependencies reports every missing command at once" {
   run validate_dependencies
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "not found: gh jq " ]]
+  [[ "$output" =~ "not found: gh jq " ]] || false
 }
 
 @test "validate_dependencies does not mention an installed command" {
@@ -63,7 +63,7 @@ make_stub() {
   run validate_dependencies
 
   [[ ! "$output" =~ "not found: gh" ]] || false
-  [[ ! "$output" =~ " gh jq" ]]
+  [[ ! "$output" =~ " gh jq" ]] || false
 }
 
 @test "validate_dependencies writes the error on stderr only" {

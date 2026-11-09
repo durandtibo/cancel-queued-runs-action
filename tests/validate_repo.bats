@@ -23,19 +23,19 @@ setup() {
 @test "validate_repo rejects an empty value" {
   run validate_repo ""
   [ "$status" -eq 1 ]
-  [[ "$output" == "::error::REPO is required (owner/name)" ]]
+  [[ "$output" == "::error::REPO is required (owner/name)" ]] || false
 }
 
 @test "validate_repo rejects a missing argument" {
   run validate_repo
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "REPO is required" ]]
+  [[ "$output" =~ "REPO is required" ]] || false
 }
 
 @test "validate_repo rejects a name without owner" {
   run validate_repo "hello-world"
   [ "$status" -eq 1 ]
-  [[ "$output" == "::error::REPO must be in owner/name format (got 'hello-world')" ]]
+  [[ "$output" == "::error::REPO must be in owner/name format (got 'hello-world')" ]] || false
 }
 
 @test "validate_repo rejects a trailing slash" {

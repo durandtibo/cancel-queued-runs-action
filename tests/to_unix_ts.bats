@@ -15,7 +15,7 @@ setup() {
   result=$(to_unix_ts "2025-01-15T10:30:00Z")
 
   # Ensure it is numeric
-  [[ "$result" =~ ^[0-9]+$ ]]
+  [[ "$result" =~ ^[0-9]+$ ]] || false
 
   # For portability, test approximate value
   # Convert back to ISO string via date
@@ -51,7 +51,7 @@ setup() {
   run to_unix_ts "not-a-date"
 
   [ "$status" -eq 1 ]
-  [[ "$output" == "::error::Invalid timestamp 'not-a-date' (expected format: YYYY-MM-DDTHH:MM:SSZ)" ]]
+  [[ "$output" == "::error::Invalid timestamp 'not-a-date' (expected format: YYYY-MM-DDTHH:MM:SSZ)" ]] || false
 }
 
 @test "to_unix_ts prints nothing on stdout for an invalid timestamp" {
@@ -64,7 +64,7 @@ setup() {
   run to_unix_ts "2025-01-15T10:30:00Zjunk"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "Invalid timestamp" ]]
+  [[ "$output" =~ "Invalid timestamp" ]] || false
 }
 
 @test "to_unix_ts rejects a timestamp without the Z suffix" {
@@ -89,14 +89,14 @@ setup() {
   run to_unix_ts "2025-13-45T00:00:00Z"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::" ]]
+  [[ "$output" =~ "::error::" ]] || false
 }
 
 @test "to_unix_ts rejects an impossible time" {
   run to_unix_ts "2025-01-01T25:61:61Z"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::" ]]
+  [[ "$output" =~ "::error::" ]] || false
 }
 
 #----------------------------

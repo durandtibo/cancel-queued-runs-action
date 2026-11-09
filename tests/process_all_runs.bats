@@ -57,7 +57,7 @@ teardown() {
   [ "$status" -eq 0 ]
 
   # Output should NOT contain error message
-  [[ ! "$output" =~ "Error:" ]]
+  [[ ! "$output" =~ "Error:" ]] || false
 
   grep -q "process_run 101 18000" "$LOG_FILE"
   grep -q "process_run 202 18000" "$LOG_FILE"
@@ -78,7 +78,7 @@ teardown() {
   [ "$status" -eq 1 ]
 
   # Output should contain error message with count
-  [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]]
+  [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]] || false
 
   grep -q "process_run 111 18000" "$LOG_FILE"
   grep -q "process_run 222 18000" "$LOG_FILE"
@@ -111,7 +111,7 @@ teardown() {
 
   run process_all_runs "$runs_stream"
 
-  [[ "$output" =~ "Run 999 is 5h00m old." ]]
+  [[ "$output" =~ "Run 999 is 5h00m old." ]] || false
 }
 
 @test "process_all_runs counts partial failures correctly" {
@@ -139,7 +139,7 @@ teardown() {
   [ "$status" -eq 1 ]
 
   # Output should contain error message showing 1 failure
-  [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]]
+  [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]] || false
 }
 
 @test "process_all_runs counts a run with an invalid timestamp as a failure" {
@@ -160,8 +160,8 @@ teardown() {
   run process_all_runs "$runs_stream"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::Skipping run 222: cannot compute its age from 'garbage'" ]]
-  [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]]
+  [[ "$output" =~ "::error::Skipping run 222: cannot compute its age from 'garbage'" ]] || false
+  [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]] || false
 }
 
 @test "process_all_runs keeps processing the other runs after an invalid timestamp" {
@@ -256,7 +256,7 @@ MOCK
   run process_all_runs "this is not json"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::Cannot parse the list of runs" ]]
+  [[ "$output" =~ "::error::Cannot parse the list of runs" ]] || false
   [ ! -s "$LOG_FILE" ]
 }
 
@@ -388,7 +388,7 @@ outcome_process_run() {
     '{"id": 502, "queued_at": "2025-01-01T01:00:00Z"}')"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]]
+  [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]] || false
 }
 
 # --------------------------------------------------------
