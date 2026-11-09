@@ -469,8 +469,10 @@ force_cancel_run() {
 # ----------------------------
 get_status_code() {
 	local response="$1"
-	# Extract the status code from the first line
-	echo "$response" | head -n1 | awk '{print $2}'
+	# Extract the status code from the first line. gh prints CRLF line endings:
+	# without removing the carriage return, a status line without reason phrase
+	# would give "202\r".
+	echo "$response" | head -n1 | tr -d '\r' | awk '{print $2}'
 }
 
 # ----------------------------

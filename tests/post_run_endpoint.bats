@@ -179,3 +179,39 @@ teardown() {
 
   [ -z "$(ls -A "$TMPDIR")" ]
 }
+
+# Recorded-style responses of gh api -i (CRLF line endings), see tests/fixtures
+fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
+
+@test "post_run_endpoint returns a recorded 202 response with its CRLF line endings" {
+  export MOCK_STDOUT="$(fixture response_202.http)"
+
+  run post_run_endpoint 123 cancel
+
+  [ "$status" -eq 0 ]
+  [ "$(get_status_code "$output")" = "202" ]
+  [[ "$output" == *$'\r'* ]] || false
+}
+
+@test "post_run_endpoint returns a recorded 409 response without warning" {
+  export MOCK_STDOUT="$(fixture response_409.http)"
+  export MOCK_STDERR="gh: Cannot cancel a workflow run that is completed. (HTTP 409)"
+  export MOCK_EXIT=1
+
+  run post_run_endpoint 123 cancel
+
+  [ "$(get_status_code "$output")" = "409" ]
+  [[ ! "$output" =~ "::warning::" ]] || false
+}
+
+@test "post_run_endpoint warns about a recorded 403 for a missing permission" {
+  export MOCK_STDOUT="$(fixture response_403_forbidden.http)"
+  export MOCK_STDERR="gh: Resource not accessible by integration (HTTP 403)"
+  export MOCK_EXIT=1
+
+  run post_run_endpoint 123 cancel
+
+  [[ "$output" =~ "::warning::gh api (cancel) failed for run 123: gh: Resource not accessible by integration" ]] || false
+  # the warning (stderr) comes first in $output, then the response
+  echo "$output" | grep -q "HTTP/2.0 403 Forbidden"
+}

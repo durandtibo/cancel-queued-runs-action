@@ -1,0 +1,3 @@
+# The HTTP responses are stored with the CRLF line endings that gh api -i prints
+# (RFC 9112): git must not normalize them.
+tests/fixtures/*.http -text
