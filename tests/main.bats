@@ -10,7 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
-  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR MAX_CANCELLATIONS
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR MAX_CANCELLATIONS BRANCH EVENT
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -1144,4 +1144,60 @@ use_real_flow() {
   main > /dev/null
 
   grep -qx "deferred_count=4" "$GITHUB_OUTPUT"
+}
+
+# --------------------------------------------------------
+# Filters on the branch and the event
+# --------------------------------------------------------
+
+@test "main fails when BRANCH is a ref" {
+  export BRANCH="refs/heads/main"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "BRANCH must be a branch name, not a ref" ]] || false
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main fails when EVENT is invalid" {
+  export EVENT="Pull Request"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "EVENT must be an event name" ]] || false
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main accepts a branch and an event" {
+  export BRANCH="feat/my-feature"
+  export EVENT="pull_request"
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
+
+@test "main announces the branch" {
+  export BRANCH="main"
+
+  run main
+
+  [[ "$output" =~ "Only the runs of the branch main are considered." ]] || false
+}
+
+@test "main announces the event" {
+  export EVENT="schedule"
+
+  run main
+
+  [[ "$output" =~ "Only the runs triggered by the event schedule are considered." ]] || false
+}
+
+@test "main does not mention the branch and the event by default" {
+  run main
+
+  [[ ! "$output" =~ "Only the runs of the branch" ]] || false
+  [[ ! "$output" =~ "triggered by the event" ]] || false
 }

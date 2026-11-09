@@ -56,6 +56,22 @@ inputs:
     default: ""
     required: false
 
+  branch:
+    description: >
+      Only cancel the runs of this branch, given as a branch name (for example "main"), not as a
+      ref. It is the head branch of the run: for a run triggered by a pull request, the branch of
+      the pull request. The match is case sensitive. By default, the runs of all the branches are
+      considered.
+    default: ""
+    required: false
+
+  event:
+    description: >
+      Only cancel the runs triggered by this event (for example "push", "pull_request",
+      "schedule" or "workflow_dispatch"). By default, the runs of all the events are considered.
+    default: ""
+    required: false
+
   cancel_delay_seconds:
     description: >
       Number of seconds to wait between two cancel requests, to stay under the secondary rate
@@ -142,6 +158,8 @@ runs:
         FORCE_BUFFER_HOURS: ${{ inputs.force_cancel_buffer_hours }}
         STATUSES: ${{ inputs.statuses }}
         WORKFLOW: ${{ inputs.workflow }}
+        BRANCH: ${{ inputs.branch }}
+        EVENT: ${{ inputs.event }}
         CANCEL_DELAY_SECONDS: ${{ inputs.cancel_delay_seconds }}
         MAX_CANCELLATIONS: ${{ inputs.max_cancellations }}
         FAIL_ON_ERROR: ${{ inputs.fail_on_error }}

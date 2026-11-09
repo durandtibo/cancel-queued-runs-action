@@ -42,7 +42,7 @@ backlogs.
   `requested`)
 - Configurable maximum queue age (in hours)
 - Dry-run mode to preview which runs would be cancelled
-- Optional filter to only cancel the runs of one workflow
+- Optional filters to only cancel the runs of one workflow, one branch or one event
 - Optional safety limit on the number of runs cancelled by one execution
 - Lightweight composite action
 - Works with private and public repositories
@@ -93,14 +93,16 @@ jobs:
 | `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
 | `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
+| `branch`                    | ❌ No    | `""` (all branches)        | Only cancel the runs of this branch (a branch name such as `main`, not a ref)           |
+| `event`                     | ❌ No    | `""` (all events)          | Only cancel the runs triggered by this event (`push`, `pull_request`, `schedule`, ...)  |
 | `cancel_delay_seconds`      | ❌ No    | `0`                        | Seconds to wait between two cancel requests (`0` means no delay)                        |
 | `max_cancellations`         | ❌ No    | `0`                        | Maximum number of runs cancelled by one execution (`0` means no limit)                  |
 | `fail_on_error`             | ❌ No    | `true`                     | If `false`, a run that could not be cancelled does not fail the step                    |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
-> **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `cancel_delay_seconds`,
-> `max_cancellations`, `fail_on_error`, `dry_run` and all the [outputs](#-outputs) were added after
-> `v1.9`. Use a later
+> **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `branch`, `event`,
+> `cancel_delay_seconds`, `max_cancellations`, `fail_on_error`, `dry_run` and all the
+> [outputs](#-outputs) were added after `v1.9`. Use a later
 > release (or a commit of `main`) to get them; the examples below that use them need such a
 > release.
 
@@ -210,6 +212,25 @@ workflows can share it.
     workflow: ci.yaml
 ```
 
+### Example: only cancel the runs of one branch or one event
+
+`branch` and `event` are filters applied by GitHub, on top of the others (`workflow`, `statuses`).
+They only take one value each. `branch` is a branch name such as `main` or `feat/my-feature`, not a
+ref (`refs/heads/main` is rejected), and the match is case sensitive. It is the head branch of the
+run: for a run triggered by a pull request, the branch of the pull request, not the branch it
+targets. `event` is the name of the event that triggered the run, for example `push`,
+`pull_request`, `schedule` or `workflow_dispatch`.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  with:
+    max_age_hours: 6
+    event: pull_request
+```
+
+To keep the runs of the default branch and clean up the others, run the action once per case
+(a step cannot exclude a branch).
+
 ### Example: cancel a large backlog without hitting the secondary rate limits
 
 GitHub asks for about one second between requests that modify data. When many runs are cancelled
@@ -299,8 +320,9 @@ For additional use cases and complete workflow examples, see the [examples/](exa
 ## 🧩 How It Works
 
 1. **Fetch Runs**: Uses the GitHub API to list all workflow runs with each of the `statuses`
-   (`queued` by default). A run listed under two statuses, because its status changed between the
-   two calls, is only considered once
+   (`queued` by default), restricted to the `workflow`, `branch` and `event` when they are set. A
+   run listed under two statuses, because its status changed between the two calls, is only
+   considered once
 2. **Calculate Age**: Determines how old each run is, measured from its last update
    (`updated_at`), which moves forward when a run is re-run, for example after a failure
 3. **Filter**: Identifies runs older than the configured `max_age_hours`

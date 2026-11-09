@@ -17,6 +17,13 @@
 #   WORKFLOW - Only consider the runs of this workflow, given as a workflow
 #              file name (e.g., ci.yaml) or a numeric workflow ID
 #              (default: empty, all the workflows)
+#   BRANCH - Only consider the runs of this branch (the head branch of the run,
+#            which is the branch of the pull request for the runs triggered by
+#            a pull request), given as a branch name, not as a ref. Case
+#            sensitive (default: empty, all the branches)
+#   EVENT - Only consider the runs triggered by this event (e.g., push,
+#           pull_request, schedule, workflow_dispatch) (default: empty, all the
+#           events)
 #   DRY_RUN - "true" to only log the runs that would be cancelled, without
 #             calling the cancel endpoints; "false" otherwise (default: false)
 #   FAIL_ON_ERROR - "true" to exit with 1 when a run could not be cancelled;
@@ -73,6 +80,8 @@ set -euo pipefail
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 FORCE_BUFFER_HOURS="${FORCE_BUFFER_HOURS:-3}"
 WORKFLOW="${WORKFLOW:-}"
+BRANCH="${BRANCH:-}"
+EVENT="${EVENT:-}"
 STATUSES="${STATUSES:-queued}"
 DRY_RUN="${DRY_RUN:-false}"
 CANCEL_DELAY_SECONDS="${CANCEL_DELAY_SECONDS:-0}"
@@ -306,9 +315,14 @@ is_transient_error() {
 # does not print the first pages twice. The error of gh is forwarded on stderr:
 # a failure that is not transient is reported at once, the others once the
 # retries are used up.
+# Only the runs of BRANCH and of EVENT are listed when they are set: GitHub does
+# the filtering. They are sent as fields of a GET request, which gh encodes in
+# the query string, so that no value can add another parameter.
 # Args:
 #   $1 - API path of the runs (with or without a workflow)
 #   $2 - Run status to list
+# Globals:
+#   BRANCH, EVENT - Optional filters
 # Returns:
 #   0 on success, 1 when the call failed
 # ----------------------------
@@ -317,14 +331,24 @@ list_runs_of_status() {
 	local run_status="$2"
 	local attempt=0
 	local stderr_file output message delay
+	local -a filters=()
+
+	if [ -n "$BRANCH" ]; then
+		filters+=(-f "branch=$BRANCH")
+	fi
+	if [ -n "$EVENT" ]; then
+		filters+=(-f "event=$EVENT")
+	fi
 
 	stderr_file=$(make_temp_file) || return 1
 
 	while :; do
 		if output=$(
 			gh api \
+				--method GET \
 				-H "Accept: application/vnd.github+json" \
 				"$runs_path?status=$run_status&per_page=100" \
+				${filters[@]+"${filters[@]}"} \
 				--paginate \
 				--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}' \
 				2>"$stderr_file"
@@ -369,7 +393,8 @@ list_runs_of_status() {
 # Uses pagination to handle repositories with many runs
 #
 # If WORKFLOW is set, only the runs of that workflow are listed, through the
-# per-workflow endpoint (the filtering is done by GitHub).
+# per-workflow endpoint (the filtering is done by GitHub). The runs can also be
+# filtered by BRANCH and EVENT (see list_runs_of_status).
 #
 # The API accepts a single status per request, so each status of STATUSES
 # (comma-separated, duplicates ignored) is listed with its own paginated call
@@ -1102,6 +1127,14 @@ write_summary() {
 			echo
 			echo "Workflow: \`${WORKFLOW}\`"
 		fi
+		if [ -n "$BRANCH" ]; then
+			echo
+			echo "Branch: \`${BRANCH}\`"
+		fi
+		if [ -n "$EVENT" ]; then
+			echo
+			echo "Event: \`${EVENT}\`"
+		fi
 		echo
 		echo "| Result | Runs |"
 		echo "| --- | ---: |"
@@ -1208,6 +1241,58 @@ validate_workflow() {
 
 	if ! [[ "$workflow" =~ ^[A-Za-z0-9_.-]+$ ]] || [ "$workflow" = "." ] || [ "$workflow" = ".." ]; then
 		echo "::error::WORKFLOW must be a workflow file name (e.g., ci.yaml) or a numeric ID (got '$workflow')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate the branch filter
+# The value is compared by GitHub with the head branch of the runs, so it must
+# be a branch name: the full ref (refs/heads/main) would never match and is
+# rejected with a clear message instead of silently cancelling nothing. Spaces
+# and control characters are not valid in a branch name. Empty means no filter.
+# Args:
+#   $1 - Branch name (may be empty)
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_branch() {
+	local branch="${1:-}"
+
+	if [ -z "$branch" ]; then
+		return 0
+	fi
+
+	if [[ "$branch" == refs/* ]]; then
+		echo "::error::BRANCH must be a branch name, not a ref: use '${branch#refs/heads/}' instead of '$branch'" >&2
+		return 1
+	fi
+
+	if [[ "$branch" =~ [[:space:][:cntrl:]] ]] || [ "${#branch}" -gt 255 ]; then
+		echo "::error::BRANCH must be a branch name of at most 255 characters, without spaces or control characters (got '$branch')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate the event filter
+# Event names are lowercase words separated by underscores (push, pull_request,
+# workflow_dispatch, ...). The list is not hardcoded because GitHub adds
+# events. Empty means no filter.
+# Args:
+#   $1 - Event name (may be empty)
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_event() {
+	local event="${1:-}"
+
+	if [ -z "$event" ]; then
+		return 0
+	fi
+
+	if ! [[ "$event" =~ ^[a-z][a-z_]*$ ]]; then
+		echo "::error::EVENT must be an event name such as push or pull_request, with lowercase letters and underscores only (got '$event')" >&2
 		return 1
 	fi
 }
@@ -1393,6 +1478,8 @@ main() {
 	validate_force_buffer_hours "$FORCE_BUFFER_HOURS" || return 1
 	validate_statuses "$STATUSES" || return 1
 	validate_workflow "$WORKFLOW" || return 1
+	validate_branch "$BRANCH" || return 1
+	validate_event "$EVENT" || return 1
 	validate_dry_run "$DRY_RUN" || return 1
 	validate_fail_on_error "$FAIL_ON_ERROR" || return 1
 	validate_cancel_delay_seconds "$CANCEL_DELAY_SECONDS" || return 1
@@ -1416,6 +1503,12 @@ main() {
 	fi
 	if [ -n "$WORKFLOW" ]; then
 		echo "Only the runs of the workflow ${WORKFLOW} are considered."
+	fi
+	if [ -n "$BRANCH" ]; then
+		echo "Only the runs of the branch ${BRANCH} are considered."
+	fi
+	if [ -n "$EVENT" ]; then
+		echo "Only the runs triggered by the event ${EVENT} are considered."
 	fi
 
 	reset_counters

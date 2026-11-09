@@ -14,7 +14,7 @@ setup() {
   PATH="$MOCK_DIR:$PATH"
 
   export REPO="myorg/myrepo"
-  unset WORKFLOW STATUSES MOCK_GH_FAIL_PATTERN MOCK_GH_FAIL_TIMES MOCK_GH_FAIL_MESSAGE
+  unset WORKFLOW STATUSES BRANCH EVENT MOCK_GH_FAIL_PATTERN MOCK_GH_FAIL_TIMES MOCK_GH_FAIL_MESSAGE
   # the failures of the tests are HTTP 500, which is retried: tests about the
   # retries set their own value
   export MAX_RETRIES=0
@@ -495,4 +495,50 @@ MOCK
   fetch_runs > /dev/null 2>&1
 
   [ "$LISTING_TRUNCATED" = "true" ]
+}
+
+# --------------------------------------------------------
+# Filters on the branch and the event
+# --------------------------------------------------------
+
+@test "fetch_runs filters on the branch" {
+  export BRANCH="main"
+
+  run fetch_runs
+
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" == *"-f branch=main"* ]] || false
+}
+
+@test "fetch_runs filters on the event" {
+  export EVENT="pull_request"
+
+  run fetch_runs
+
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" == *"-f event=pull_request"* ]] || false
+}
+
+@test "fetch_runs filters every status" {
+  export BRANCH="main"
+  export STATUSES="queued,waiting"
+
+  run fetch_runs
+
+  [ "$(grep -c -- '-f branch=main' "$MOCK_GH_CALL_LOG")" -eq 2 ]
+}
+
+@test "fetch_runs filters the runs of a workflow" {
+  export BRANCH="main"
+  export WORKFLOW="ci.yaml"
+
+  run fetch_runs
+
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" == *"/actions/workflows/ci.yaml/runs?status=queued"* ]] || false
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" == *"-f branch=main"* ]] || false
+}
+
+@test "fetch_runs sends no filter by default" {
+  run fetch_runs
+
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" != *"-f "* ]] || false
 }

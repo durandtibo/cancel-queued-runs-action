@@ -16,6 +16,8 @@ setup() {
   WOULD_CANCEL_COUNT=4
   DEFERRED_COUNT=0
   MAX_CANCELLATIONS=0
+  BRANCH=""
+  EVENT=""
 }
 
 teardown() {
@@ -227,4 +229,27 @@ teardown() {
   warning_line=$(grep -n 'was reached' "$GITHUB_STEP_SUMMARY" | cut -d: -f1)
   runs_line=$(grep -n '^#### Runs' "$GITHUB_STEP_SUMMARY" | cut -d: -f1)
   [ "$warning_line" -lt "$runs_line" ]
+}
+
+@test "write_summary shows the branch filter" {
+  BRANCH="feat/my-feature"
+
+  run write_summary 10
+
+  grep -qx 'Branch: `feat/my-feature`' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary shows the event filter" {
+  EVENT="schedule"
+
+  run write_summary 10
+
+  grep -qx 'Event: `schedule`' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary does not show the branch and the event without filter" {
+  run write_summary 10
+
+  ! grep -q '^Branch:' "$GITHUB_STEP_SUMMARY" || false
+  ! grep -q '^Event:' "$GITHUB_STEP_SUMMARY" || false
 }

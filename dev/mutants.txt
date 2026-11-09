@@ -98,3 +98,16 @@ cancelled_run_ids_json: IDs that are not numbers listed@@cancelled_run_ids_json.
 cancelled_run_ids_json: no separator@@cancelled_run_ids_json.bats@@s/sep = ","/sep = ""/
 cancelled_run_ids_json: no brackets@@cancelled_run_ids_json.bats@@s/printf '\[%s\]\\n'/printf '%s\\n'/
 write_outputs: cancelled_run_ids always empty@@write_outputs.bats@@s/echo "cancelled_run_ids=\$\(cancelled_run_ids_json\)"/echo "cancelled_run_ids=[]"/
+list_runs_of_status: branch filter not sent@@list_runs_of_status.bats@@s/filters\+=\(-f "branch=\$BRANCH"\)/:/
+list_runs_of_status: event filter not sent@@list_runs_of_status.bats@@s/filters\+=\(-f "event=\$EVENT"\)/:/
+list_runs_of_status: branch filter sent under the wrong name@@list_runs_of_status.bats@@s/-f "branch=\$BRANCH"/-f "head_branch=$BRANCH"/
+list_runs_of_status: request is not a GET@@list_runs_of_status.bats@@s/--method GET/--method POST/
+list_runs_of_status: filters sent in the query string without encoding@@list_runs_of_status.bats@@s/filters\+=\(-f "branch=\$BRANCH"\)/runs_path="$runs_path?branch=$BRANCH"/
+validate_branch: refs accepted@@validate_branch.bats@@s/\[\[ "\$branch" == refs\/\* \]\]/[[ "$branch" == refs\/never\/* ]]/
+validate_branch: spaces accepted@@validate_branch.bats@@s/\[\[:space:\]\[:cntrl:\]\]/[[:cntrl:]]/
+validate_branch: no length limit@@validate_branch.bats@@s/-gt 255 \]/-gt 99999 ]/
+validate_branch: length limit off by one@@validate_branch.bats@@s/-gt 255 \]/-ge 255 ]/
+validate_event: uppercase accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[A-Za-z][A-Za-z_]*$/
+validate_event: dash accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z][a-z_-]*$/
+validate_event: anything accepted after the first letter@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z]/
+write_summary: branch not shown@@write_summary.bats@@s/echo "Branch: /echo "Ignored: /
