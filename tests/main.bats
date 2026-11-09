@@ -16,8 +16,8 @@ setup() {
   # Mock the functions that talk to the network or do the actual work
   fetch_runs() {
     printf '%s\n' \
-      '{"id": 1, "updated_at": "2025-01-01T01:00:00Z"}' \
-      '{"id": 2, "updated_at": "2025-01-01T02:00:00Z"}'
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}'
   }
 
   process_all_runs() {

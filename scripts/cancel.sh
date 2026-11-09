@@ -70,13 +70,19 @@ log_status() {
 # ----------------------------
 # Fetch queued runs from GitHub API
 # Uses pagination to handle repositories with many queued runs
+#
+# Prints one JSON object per line with the fields:
+#   id        - workflow run ID
+#   queued_at - when the run started waiting: run_started_at (which is reset
+#               when a run is re-run), falling back to created_at. updated_at is
+#               not used because it changes whenever the run is touched.
 # ----------------------------
 fetch_runs() {
 	gh api \
 		-H "Accept: application/vnd.github+json" \
 		"/repos/$REPO/actions/runs?status=queued&per_page=100" \
 		--paginate \
-		--jq '.workflow_runs[] | {id: .id, updated_at: .updated_at}'
+		--jq '.workflow_runs[] | {id: .id, queued_at: (.run_started_at // .created_at)}'
 }
 
 # ----------------------------
@@ -133,28 +139,28 @@ get_status_code() {
 # The age is kept in seconds (not truncated to whole hours) so that a run that
 # exceeds the threshold by a few minutes is not treated as if it were younger.
 # Args:
-#   $1 - ISO 8601 timestamp for "updated_at" (e.g., "2025-01-01T10:00:00Z")
+#   $1 - ISO 8601 timestamp for "queued_at" (e.g., "2025-01-01T10:00:00Z")
 #   $2 - ISO 8601 timestamp for "now" (optional, defaults to current UTC time)
 # Returns:
 #   Age in seconds (integer), or -1 if a timestamp is empty
 # ----------------------------
 compute_age_seconds() {
-	local updated_at="$1"
+	local queued_at="$1"
 	local now="${2:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 
 	# Return -1 if any timestamp is empty
-	if [ -z "$updated_at" ] || [ -z "$now" ]; then
+	if [ -z "$queued_at" ] || [ -z "$now" ]; then
 		echo -1
 		return
 	fi
 
-	local updated_ts
+	local queued_ts
 	local now_ts
 
-	updated_ts=$(to_unix_ts "$updated_at")
+	queued_ts=$(to_unix_ts "$queued_at")
 	now_ts=$(to_unix_ts "$now")
 
-	echo $((now_ts - updated_ts))
+	echo $((now_ts - queued_ts))
 }
 
 # ----------------------------
@@ -249,19 +255,19 @@ process_run() {
 process_all_runs() {
 	local runs_stream="$1"
 	local failed=0
-	local run run_id updated_at age_seconds
+	local run run_id queued_at age_seconds
 
 	# Use stdin redirection instead of a pipeline to avoid subshell issues
 	while read -r run; do
 		run_id=$(echo "$run" | jq -r '.id')
-		updated_at=$(echo "$run" | jq -r '.updated_at')
+		queued_at=$(echo "$run" | jq -r '.queued_at')
 
 		# skip invalid entries
-		if [ -z "$run_id" ] || [ "$run_id" = "null" ] || [ -z "$updated_at" ] || [ "$updated_at" = "null" ]; then
+		if [ -z "$run_id" ] || [ "$run_id" = "null" ] || [ -z "$queued_at" ] || [ "$queued_at" = "null" ]; then
 			continue
 		fi
 
-		age_seconds=$(compute_age_seconds "$updated_at")
+		age_seconds=$(compute_age_seconds "$queued_at")
 		echo "Run $run_id has been queued for $(format_age "$age_seconds")."
 
 		# process the run and track failures

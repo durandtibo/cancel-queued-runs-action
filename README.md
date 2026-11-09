@@ -137,7 +137,9 @@ For additional use cases and complete workflow examples, see the [examples/](exa
 ## 🧩 How It Works
 
 1. **Fetch Queued Runs**: Uses the GitHub API to list all workflow runs with status `queued`
-2. **Calculate Age**: Determines how long each run has been queued (in hours)
+2. **Calculate Age**: Determines how long each run has been queued, measured from when the run
+   started waiting (`run_started_at`, which is reset when a run is re-run, falling back to
+   `created_at`)
 3. **Filter**: Identifies runs older than the configured `max_age_hours`
 4. **Cancel**: Sends cancellation requests for eligible runs
 5. **Report**: Logs the status of each operation
