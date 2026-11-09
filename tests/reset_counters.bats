@@ -24,3 +24,16 @@ setup() {
   [ "$FAILED_COUNT" -eq 0 ]
   [ "$WOULD_CANCEL_COUNT" -eq 0 ]
 }
+
+@test "reset_counters forgets the requests already sent" {
+  REQUEST_SENT=true
+
+  reset_counters
+
+  [ "$REQUEST_SENT" = "false" ]
+}
+
+@test "no request is recorded as sent when the script is sourced" {
+  [ "$REQUEST_SENT" = "false" ]
+}
+

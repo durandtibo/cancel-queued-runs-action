@@ -56,6 +56,14 @@ inputs:
     default: ""
     required: false
 
+  cancel_delay_seconds:
+    description: >
+      Number of seconds to wait between two cancel requests, to stay under the secondary rate
+      limits of GitHub when many runs are cancelled (GitHub asks for about one second between
+      requests that modify data). Must be a non-negative integer; 0 means no delay.
+    default: "0"
+    required: false
+
   dry_run:
     description: >
       If "true", only log the runs that would be cancelled, without cancelling anything.
@@ -94,4 +102,5 @@ runs:
         FORCE_BUFFER_HOURS: ${{ inputs.force_cancel_buffer_hours }}
         STATUSES: ${{ inputs.statuses }}
         WORKFLOW: ${{ inputs.workflow }}
+        CANCEL_DELAY_SECONDS: ${{ inputs.cancel_delay_seconds }}
         DRY_RUN: ${{ inputs.dry_run }}

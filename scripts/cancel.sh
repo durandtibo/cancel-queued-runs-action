@@ -19,6 +19,10 @@
 #              (default: empty, all the workflows)
 #   DRY_RUN - "true" to only log the runs that would be cancelled, without
 #             calling the cancel endpoints; "false" otherwise (default: false)
+#   CANCEL_DELAY_SECONDS - Seconds to wait between two cancel requests, to stay
+#                          under the secondary rate limits of GitHub when many
+#                          runs are cancelled. Non-negative integer, 0 means no
+#                          delay (default: 0)
 #
 # Internal tuning (not action inputs, positive integers in seconds/counts):
 #   MAX_RETRIES - Retries of a rate-limited cancel request (default: 3)
@@ -48,12 +52,17 @@ FORCE_BUFFER_HOURS="${FORCE_BUFFER_HOURS:-3}"
 WORKFLOW="${WORKFLOW:-}"
 STATUSES="${STATUSES:-queued}"
 DRY_RUN="${DRY_RUN:-false}"
+CANCEL_DELAY_SECONDS="${CANCEL_DELAY_SECONDS:-0}"
 
 # Counters filled by process_all_runs and reported by main
 CANCELLED_COUNT=0
 SKIPPED_COUNT=0
 FAILED_COUNT=0
 WOULD_CANCEL_COUNT=0
+
+# Whether a cancel request was already sent, to wait before the next one. It
+# is set by throttle_requests, which must not be called in a subshell.
+REQUEST_SENT=false
 
 # Outcome of the last process_run call: one of
 #   noop, cancelled, skipped, would-cancel, failed
@@ -457,6 +466,26 @@ format_age() {
 }
 
 # ----------------------------
+# Wait before a cancel request, when another one was sent before
+# Spaces the requests by CANCEL_DELAY_SECONDS (GitHub asks for about one second
+# between mutating requests; faster bursts trigger secondary rate limits). The
+# first request of an execution is never delayed. Nothing is waited for when
+# CANCEL_DELAY_SECONDS is 0. It records that a request is about to be sent in a
+# global variable, so it must be called in the main shell, not in a subshell
+# such as $(...).
+# Globals:
+#   CANCEL_DELAY_SECONDS - Seconds to wait between two requests
+#   REQUEST_SENT - Set to true by this function
+# ----------------------------
+throttle_requests() {
+	if [ "$REQUEST_SENT" = "true" ] && [ "$CANCEL_DELAY_SECONDS" -gt 0 ]; then
+		sleep "$CANCEL_DELAY_SECONDS"
+	fi
+
+	REQUEST_SENT=true
+}
+
+# ----------------------------
 # Process a single workflow run
 # Cancels the run if needed and logs the result
 #
@@ -485,6 +514,8 @@ format_age() {
 #   MAX_AGE_HOURS - Base threshold for cancellation
 #   FORCE_BUFFER_HOURS - Extra hours before force-cancel is used
 #   DRY_RUN - "true" to log without cancelling
+#   CANCEL_DELAY_SECONDS - Seconds to wait between two requests (see
+#                          throttle_requests)
 # Returns:
 #   0 on success or if the run is no longer cancellable, 1 on failure
 # ----------------------------
@@ -517,8 +548,10 @@ process_run() {
 		echo "Force-cancelling run $run_id (age=$age)..."
 		# The force-cancel endpoint returns 409 unless a regular cancel was
 		# attempted first, so try the standard cancel and fall back to force.
+		throttle_requests
 		response=$(cancel_run "$run_id")
 		if [ "$(get_status_code "$response")" != "202" ]; then
+			throttle_requests
 			response=$(force_cancel_run "$run_id")
 		fi
 	elif [ "$age_seconds" -gt "$max_age_seconds" ]; then
@@ -528,6 +561,7 @@ process_run() {
 			return 0
 		fi
 		echo "Cancelling run $run_id (age=$age)..."
+		throttle_requests
 		response=$(cancel_run "$run_id")
 	else
 		# Age does not exceed thresholds, nothing to do
@@ -555,13 +589,14 @@ process_run() {
 }
 
 # ----------------------------
-# Reset the counters reported by main
+# Reset the counters reported by main, and forget the requests already sent
 # ----------------------------
 reset_counters() {
 	CANCELLED_COUNT=0
 	SKIPPED_COUNT=0
 	FAILED_COUNT=0
 	WOULD_CANCEL_COUNT=0
+	REQUEST_SENT=false
 }
 
 # ----------------------------
@@ -790,6 +825,22 @@ validate_dry_run() {
 }
 
 # ----------------------------
+# Validate the delay between cancel requests
+# Args:
+#   $1 - Delay in seconds
+# Returns:
+#   0 if it is a non-negative integer without leading zero, 1 otherwise
+# ----------------------------
+validate_cancel_delay_seconds() {
+	local delay="${1:-}"
+
+	if ! [[ "$delay" =~ ^(0|[1-9][0-9]*)$ ]]; then
+		echo "::error::CANCEL_DELAY_SECONDS must be a non-negative integer (got '$delay')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
 # Validate the target repository
 # The value is used to build API paths, so only the characters allowed in
 # GitHub owner and repository names are accepted and "." / ".." are rejected.
@@ -867,11 +918,15 @@ main() {
 	validate_statuses "$STATUSES" || return 1
 	validate_workflow "$WORKFLOW" || return 1
 	validate_dry_run "$DRY_RUN" || return 1
+	validate_cancel_delay_seconds "$CANCEL_DELAY_SECONDS" || return 1
 	validate_auth || return 1
 
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
 	if [ "$DRY_RUN" = "true" ]; then
 		echo "🧪 Dry run enabled: no run will be cancelled."
+	fi
+	if [ "$CANCEL_DELAY_SECONDS" -gt 0 ]; then
+		echo "Waiting ${CANCEL_DELAY_SECONDS}s between two cancel requests."
 	fi
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 	if [ "${STATUSES// /}" != "queued" ]; then

@@ -10,7 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
-  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -534,3 +534,41 @@ setup_outputs() {
 
   [ "$runs" = "caller value" ]
 }
+
+# --------------------------------------------------------
+# Delay between the cancel requests
+# --------------------------------------------------------
+
+@test "main fails when CANCEL_DELAY_SECONDS is invalid" {
+  export CANCEL_DELAY_SECONDS="-1"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer (got '-1')" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main accepts a CANCEL_DELAY_SECONDS value of 0" {
+  export CANCEL_DELAY_SECONDS=0
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
+
+@test "main announces the delay between the requests" {
+  export CANCEL_DELAY_SECONDS=2
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Waiting 2s between two cancel requests." ]]
+}
+
+@test "main does not mention the delay by default" {
+  run main
+
+  [[ ! "$output" =~ "Waiting" ]]
+}
+
