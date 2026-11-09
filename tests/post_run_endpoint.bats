@@ -73,13 +73,64 @@ teardown() {
 }
 
 @test "post_run_endpoint warns on stderr with the gh error message" {
+  export MOCK_STDERR="gh: Server Error (HTTP 500)"
+  export MOCK_STDOUT="HTTP/2.0 500 Internal Server Error"
+  export MOCK_EXIT=1
+
+  err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
+
+  [[ "$err" == "::warning::gh api (cancel) failed for run 12345: gh: Server Error (HTTP 500) " ]]
+}
+
+@test "post_run_endpoint does not warn about a 404 response" {
   export MOCK_STDERR="gh: Not Found (HTTP 404)"
   export MOCK_STDOUT="HTTP/2.0 404 Not Found"
   export MOCK_EXIT=1
 
   err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
 
-  [[ "$err" == "::warning::gh api (cancel) failed for run 12345: gh: Not Found (HTTP 404) " ]]
+  [ -z "$err" ]
+}
+
+@test "post_run_endpoint does not warn about a 409 response" {
+  export MOCK_STDERR="gh: Conflict (HTTP 409)"
+  export MOCK_STDOUT="HTTP/2.0 409 Conflict"
+  export MOCK_EXIT=1
+
+  err=$(post_run_endpoint 12345 force-cancel 2>&1 >/dev/null)
+
+  [ -z "$err" ]
+}
+
+@test "post_run_endpoint still prints the response of a 409 on stdout" {
+  export MOCK_STDERR="gh: Conflict (HTTP 409)"
+  export MOCK_STDOUT="HTTP/2.0 409 Conflict"
+  export MOCK_EXIT=1
+
+  out=$(post_run_endpoint 12345 cancel 2>/dev/null)
+
+  [[ "$out" == "HTTP/2.0 409 Conflict" ]]
+}
+
+@test "post_run_endpoint warns about a 403 response" {
+  export MOCK_STDERR="gh: Resource not accessible by integration (HTTP 403)"
+  export MOCK_STDOUT="HTTP/2.0 403 Forbidden"
+  export MOCK_EXIT=1
+
+  err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
+
+  [[ "$err" == *"::warning::gh api (cancel) failed for run 12345"* ]]
+  [[ "$err" == *"HTTP 403"* ]]
+}
+
+@test "post_run_endpoint warns when gh fails without any response" {
+  export MOCK_STDERR="gh: network unreachable"
+  export MOCK_NO_STDOUT=1
+  export MOCK_EXIT=1
+
+  err=$(post_run_endpoint 12345 cancel 2>&1 >/dev/null)
+
+  [[ "$err" == *"::warning::gh api (cancel) failed for run 12345: gh: network unreachable"* ]]
 }
 
 @test "post_run_endpoint does not mix the warning with the response on stdout" {

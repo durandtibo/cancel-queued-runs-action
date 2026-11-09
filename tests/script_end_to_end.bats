@@ -41,6 +41,12 @@ if [ "$1" = "auth" ]; then
 fi
 
 if [[ "$*" == *"-X POST"* ]]; then
+  # Fail like gh does for an HTTP error: response on stdout, message on stderr
+  if [ -n "${MOCK_GH_POST_CODE:-}" ]; then
+    printf 'HTTP/2.0 %s Error\n\n{}\n' "$MOCK_GH_POST_CODE"
+    echo "gh: Error (HTTP $MOCK_GH_POST_CODE)" >&2
+    exit 1
+  fi
   printf 'HTTP/2.0 202 Accepted\n\n{}\n'
   exit 0
 fi
@@ -62,7 +68,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN WORKFLOW STATUSES
+  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -165,4 +171,23 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   [[ "$output" =~ "Found 3 queued workflow run(s)." ]]
   grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
   grep -q "/repos/myorg/myrepo/actions/runs/333/cancel" "$MOCK_GH_CALL_LOG"
+}
+
+@test "end-to-end: a run that is no longer cancellable (409) gives a single warning" {
+  export MOCK_GH_POST_CODE=409
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | grep -c '::warning::')" -eq 1 ]
+  [[ "$output" =~ "::warning::Run 111 could not be cancelled (HTTP 409)" ]]
+}
+
+@test "end-to-end: a real API error (500) still shows the gh message" {
+  export MOCK_GH_POST_CODE=500
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::warning::gh api (cancel) failed for run 111: gh: Error (HTTP 500)" ]]
 }

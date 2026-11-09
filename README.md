@@ -283,9 +283,12 @@ notes on handling stale runs.
 
 **Cause**: The `gh api` call failed, and the error message of `gh` is forwarded as a warning
 annotation. Typical reasons are an invalid or expired token (`HTTP 401`), a missing permission
-(`HTTP 403`), a run that no longer exists (`HTTP 404`), or a network error.
+(`HTTP 403`), a server error (`HTTP 5xx`), or a network error.
 
 **Solution**: Read the message after the colon, it is the error reported by `gh`.
+
+A run that no longer exists (`HTTP 404`) or that cannot be cancelled anymore (`HTTP 409`) is not
+reported this way: it gives a single `::warning::Run ... could not be cancelled` and is skipped.
 
 ### Log shows `::error::Cannot list the workflow runs of ...`
 

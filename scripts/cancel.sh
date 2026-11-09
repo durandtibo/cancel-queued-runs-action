@@ -175,11 +175,28 @@ fetch_runs() {
 }
 
 # ----------------------------
+# Tell whether an HTTP status code means that the run is no longer cancellable
+# 404 (run not found) and 409 (run cannot be cancelled) are expected when a
+# run starts or completes between the listing and the cancel request.
+# Args:
+#   $1 - HTTP status code
+# Returns:
+#   0 for 404 and 409, 1 otherwise
+# ----------------------------
+is_skippable_status() {
+	local status_code="${1:-}"
+
+	[ "$status_code" = "404" ] || [ "$status_code" = "409" ]
+}
+
+# ----------------------------
 # POST to a cancel endpoint of a workflow run
 # Prints the full HTTP response (headers and body) on stdout. If gh writes
 # anything on stderr (network error, bad credentials, missing gh, HTTP error
 # message, ...), it is forwarded as a ::warning:: annotation on stderr instead
-# of being discarded, so that failures can be diagnosed from the logs.
+# of being discarded, so that failures can be diagnosed from the logs. The
+# exception is a response with an expected status (404 or 409, see
+# is_skippable_status): process_run already reports it with a single warning.
 # Always returns 0: the caller decides what to do from the status code.
 # Args:
 #   $1 - Workflow run ID
@@ -201,7 +218,7 @@ post_run_endpoint() {
 			-i 2>"$stderr_file"
 	) || true
 
-	if [ -s "$stderr_file" ]; then
+	if [ -s "$stderr_file" ] && ! is_skippable_status "$(get_status_code "$response")"; then
 		echo "::warning::gh api ($action) failed for run $run_id: $(tr '\n' ' ' <"$stderr_file")" >&2
 	fi
 	rm -f "$stderr_file"
@@ -484,7 +501,7 @@ process_run() {
 
 	status_code=$(get_status_code "$response")
 
-	if [ "$status_code" = "404" ] || [ "$status_code" = "409" ]; then
+	if is_skippable_status "$status_code"; then
 		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code): it is no longer queued or cannot be cancelled, skipping."
 		PROCESS_RUN_OUTCOME="skipped"
 		return 0
