@@ -6,7 +6,8 @@
 # longer than a specified maximum age (in hours).
 #
 # Environment Variables:
-#   GH_TOKEN - GitHub token with actions:write permission (required)
+#   GH_TOKEN - GitHub token with actions:write permission (required, unless
+#              GITHUB_TOKEN is set or gh is logged in with "gh auth login")
 #   REPO - Repository in owner/name format (required)
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
 #
@@ -350,17 +351,71 @@ process_all_runs() {
 }
 
 # ----------------------------
+# Validate the maximum queue age
+# Args:
+#   $1 - Maximum queue age in hours
+# Returns:
+#   0 if it is a positive integer without leading zero, 1 otherwise
+# ----------------------------
+validate_max_age_hours() {
+	local max_age_hours="${1:-}"
+
+	if ! [[ "$max_age_hours" =~ ^[1-9][0-9]*$ ]]; then
+		echo "::error::MAX_AGE_HOURS must be a positive integer (got '$max_age_hours')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate the target repository
+# The value is used to build API paths, so only the characters allowed in
+# GitHub owner and repository names are accepted and "." / ".." are rejected.
+# Args:
+#   $1 - Repository in owner/name format
+# Returns:
+#   0 if valid, 1 otherwise
+# ----------------------------
+validate_repo() {
+	local target_repo="${1:-}"
+
+	if [ -z "$target_repo" ]; then
+		echo "::error::REPO is required (owner/name)" >&2
+		return 1
+	fi
+
+	if ! [[ "$target_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || [[ "$target_repo" =~ ^\.{1,2}/ ]] || [[ "$target_repo" =~ /\.{1,2}$ ]]; then
+		echo "::error::REPO must be in owner/name format (got '$target_repo')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
+# Validate that GitHub credentials are available
+# Credentials come from GH_TOKEN / GITHUB_TOKEN (the github_token input in the
+# action) or, for local runs, from a session created with "gh auth login".
+# Returns:
+#   0 if credentials are available, 1 otherwise
+# ----------------------------
+validate_auth() {
+	if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+		return 0
+	fi
+
+	if gh auth status >/dev/null 2>&1; then
+		return 0
+	fi
+
+	echo "::error::No GitHub credentials found: provide a token (github_token input / GH_TOKEN) or run 'gh auth login'" >&2
+	return 1
+}
+
+# ----------------------------
 # Main workflow logic
 # ----------------------------
 main() {
-	if ! [[ "$MAX_AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
-		echo "❌ MAX_AGE_HOURS must be a positive integer (got '$MAX_AGE_HOURS')" >&2
-		return 1
-	fi
-	if [ -z "${REPO:-}" ]; then
-		echo "❌ REPO is required (owner/name)" >&2
-		return 1
-	fi
+	validate_max_age_hours "$MAX_AGE_HOURS" || return 1
+	validate_repo "${REPO:-}" || return 1
+	validate_auth || return 1
 
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
