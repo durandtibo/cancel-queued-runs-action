@@ -686,3 +686,109 @@ fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
   [ "$PROCESS_RUN_OUTCOME" = "failed" ]
 }
 
+# --------------------------------------------------------
+# Boundaries of the age
+# --------------------------------------------------------
+
+@test "process_run does nothing for an age of 0 seconds" {
+  record_calls
+
+  run process_run "123" 0
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run does nothing for a negative age (clock skew)" {
+  record_calls
+
+  run process_run "123" -300
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run sets the outcome to noop for a negative age" {
+  record_calls
+
+  process_run "123" -300 >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "noop" ]
+}
+
+@test "process_run does nothing at exactly 1 hour when MAX_AGE_HOURS is 1" {
+  record_calls
+  MAX_AGE_HOURS=1
+
+  run process_run "123" 3600
+
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run cancels one second after 1 hour when MAX_AGE_HOURS is 1" {
+  record_calls
+  MAX_AGE_HOURS=1
+
+  run process_run "123" 3601
+
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run still uses the standard cancel at MAX_AGE_HOURS + 3 hours when MAX_AGE_HOURS is 1" {
+  record_calls
+  MAX_AGE_HOURS=1
+
+  run process_run "123" $((4 * 3600))
+
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run force-cancels one second after MAX_AGE_HOURS + 3 hours when MAX_AGE_HOURS is 1" {
+  mkdir -p "$BATS_TEST_DIRNAME/mocks"
+  CALL_LOG="$BATS_TEST_DIRNAME/mocks/calls.log"
+  : > "$CALL_LOG"
+  MAX_AGE_HOURS=1
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 409 Conflict"; }
+  force_cancel_run() { echo "force_cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 202 Accepted"; }
+
+  run process_run "123" $((4 * 3600 + 1))
+
+  [ "$(cat "$CALL_LOG")" = "$(printf 'cancel_run 123\nforce_cancel_run 123')" ]
+}
+
+@test "process_run handles a very large MAX_AGE_HOURS (one year)" {
+  record_calls
+  MAX_AGE_HOURS=8760
+
+  run process_run "123" $((8760 * 3600))
+  [ ! -s "$CALL_LOG" ]
+
+  run process_run "123" $((8760 * 3600 + 1))
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run with a zero buffer does nothing at exactly MAX_AGE_HOURS in dry run" {
+  FORCE_BUFFER_HOURS=0
+  DRY_RUN=true
+
+  run process_run "123" $((2 * 3600))
+
+  [ -z "$output" ]
+}
+
+@test "process_run with a zero buffer force-cancels one second after MAX_AGE_HOURS in dry run" {
+  FORCE_BUFFER_HOURS=0
+  DRY_RUN=true
+
+  run process_run "123" $((2 * 3600 + 1))
+
+  [[ "$output" =~ "Would force-cancel run 123" ]] || false
+}
+
+@test "process_run shows the age of the boundary run as 2h00m for the standard cancel" {
+  DRY_RUN=true
+
+  run process_run "123" $((2 * 3600 + 1))
+
+  [[ "$output" =~ "Would cancel run 123 (age=2h00m)" ]] || false
+}

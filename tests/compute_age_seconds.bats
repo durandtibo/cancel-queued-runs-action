@@ -92,3 +92,70 @@ setup() {
 
     [ -z "$out" ]
 }
+
+# --------------------------------------------------------
+# Boundaries: calendar edges and time zones
+# --------------------------------------------------------
+
+@test "compute_age_seconds counts one second across the end of a year" {
+  result=$(compute_age_seconds "2024-12-31T23:59:59Z" "2025-01-01T00:00:00Z")
+
+  [ "$result" -eq 1 ]
+}
+
+@test "compute_age_seconds counts the 29th of February of a leap year" {
+  result=$(compute_age_seconds "2024-02-28T12:00:00Z" "2024-03-01T12:00:00Z")
+
+  [ "$result" -eq 172800 ]
+}
+
+@test "compute_age_seconds has no 29th of February in a common year" {
+  result=$(compute_age_seconds "2025-02-28T12:00:00Z" "2025-03-01T12:00:00Z")
+
+  [ "$result" -eq 86400 ]
+}
+
+@test "compute_age_seconds counts a full year" {
+  result=$(compute_age_seconds "2025-01-01T00:00:00Z" "2026-01-01T00:00:00Z")
+
+  [ "$result" -eq 31536000 ]
+}
+
+@test "compute_age_seconds works after 2038, the end of 32-bit timestamps" {
+  result=$(compute_age_seconds "2038-01-19T03:14:07Z" "2038-01-19T03:14:09Z")
+
+  [ "$result" -eq 2 ]
+}
+
+@test "compute_age_seconds is not affected by the local time zone on a day with a DST change (New York)" {
+  # 2025-03-09 only has 23 hours in New York, but 24 in UTC
+  export TZ="America/New_York"
+
+  result=$(compute_age_seconds "2025-03-09T00:00:00Z" "2025-03-10T00:00:00Z")
+
+  [ "$result" -eq 86400 ]
+}
+
+@test "compute_age_seconds is not affected by the local time zone on a day with a DST change (Paris)" {
+  # 2025-10-26 has 25 hours in Paris, but 24 in UTC
+  export TZ="Europe/Paris"
+
+  result=$(compute_age_seconds "2025-10-26T00:00:00Z" "2025-10-27T00:00:00Z")
+
+  [ "$result" -eq 86400 ]
+}
+
+@test "compute_age_seconds gives the same age in every time zone" {
+  a=$(TZ="Pacific/Auckland" compute_age_seconds "2025-06-01T10:00:00Z" "2025-06-01T13:30:00Z")
+  b=$(TZ="America/Los_Angeles" compute_age_seconds "2025-06-01T10:00:00Z" "2025-06-01T13:30:00Z")
+
+  [ "$a" -eq 12600 ]
+  [ "$b" -eq 12600 ]
+}
+
+@test "compute_age_seconds falls back to the current time when now is empty" {
+  # an empty second argument falls back to the current time: it is not -1
+  result=$(compute_age_seconds "2025-01-01T00:00:00Z" "")
+
+  [ "$result" -gt 0 ]
+}
