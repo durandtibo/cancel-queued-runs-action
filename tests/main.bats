@@ -640,15 +640,16 @@ setup_outputs() {
 @test "main reports a failed run when the list of runs cannot be parsed and FAIL_ON_ERROR is false" {
   setup_outputs
   export FAIL_ON_ERROR=false
-  # use the real process_all_runs with a listing that is not valid JSON
+  # use the real process_all_runs with a listing that is valid JSON but that
+  # does not contain run objects, so that the runs can be counted but not parsed
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
-  fetch_runs() { echo "this is not json"; }
+  fetch_runs() { printf '%s\n' '"not a run"' '"neither is this"'; }
 
   run main
 
   [ "$status" -eq 0 ]
-  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
-  [[ "$output" =~ "1 run(s) could not be processed" ]] || false
+  grep -qx "failed_count=2" "$GITHUB_OUTPUT"
+  [[ "$output" =~ "2 run(s) could not be processed" ]] || false
 }
 
 @test "main still fails when the runs cannot be listed and FAIL_ON_ERROR is false" {
