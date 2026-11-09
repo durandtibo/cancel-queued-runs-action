@@ -72,24 +72,23 @@ The `run_for_repos.sh` script allows you to test the cancel action across multip
 
 ### Setup
 
-1. Add repository names to `dev/repos.txt`, one per line in `owner/name` format:
-
-   ```text
-   octocat/hello-world
-   octocat/spoon-knife
-   ```
-
-2. Set your GitHub token:
+1. Set your GitHub token:
 
    ```bash
    export GH_TOKEN="your-github-token"
    ```
 
-3. Run the script:
+2. Run the script. It lists the public, non-archived repositories of the user with `gh repo list`
+   and runs `scripts/cancel.sh` on each of them:
 
    ```bash
-   ./dev/run_for_repos.sh
+   ./dev/run_for_repos.sh                                   # user durandtibo
+   ./dev/run_for_repos.sh -u octocat -a 48 -r 10            # custom user, MAX_AGE_HOURS, MAX_RUNS
+   DRY_RUN=true ./dev/run_for_repos.sh --username octocat   # other variables pass through
    ```
+
+   Options: `-u/--username` (default `durandtibo`), `-a/--max-age-hours` (`MAX_AGE_HOURS`),
+   `-r/--max-runs` (`MAX_RUNS`). Without `-a`/`-r`, the defaults of `cancel.sh` apply.
 
 ### Use Cases
 

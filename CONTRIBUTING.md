@@ -65,8 +65,8 @@ export MAX_AGE_HOURS=24  # optional
 
 For testing across multiple repositories:
 
-1. Add repository names to `dev/repos.txt` (one per line in `owner/name` format)
-2. Run: `./dev/run_for_repos.sh`
+Run `./dev/run_for_repos.sh -u <username>` (default `durandtibo`): it runs the script on the public,
+non-archived repositories of the user. See `--help` for `MAX_AGE_HOURS` and `MAX_RUNS`.
 
 See [dev/README.md](dev/README.md) for more details on development and debugging.
 

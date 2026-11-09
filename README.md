@@ -554,7 +554,8 @@ Yes, you can either:
 
 - Set up the action in each repository
 - Use a centralized workflow with a matrix strategy to target multiple repositories
-- See `dev/run_for_repos.sh` for batch processing examples
+- Run `dev/run_for_repos.sh -u <username>` to process all the public, non-archived repositories
+  of a user
 
 ### Does this work with private repositories?
 
