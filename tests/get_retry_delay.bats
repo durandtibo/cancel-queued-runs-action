@@ -66,3 +66,33 @@ setup() {
   result=$(get_retry_delay "$(printf 'HTTP/2.0 429 Too Many Requests\nRetry-After: 3600\n\n{}')" 1)
   [ "$result" -eq 3600 ]
 }
+
+# Recorded-style responses of gh api -i (CRLF line endings), see tests/fixtures
+fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
+
+@test "get_retry_delay reads the Retry-After header of a recorded secondary rate limit" {
+  result=$(get_retry_delay "$(fixture response_403_secondary_rate_limit.http)" 1)
+  [ "$result" -eq 30 ]
+}
+
+@test "get_retry_delay reads the Retry-After header of a recorded 429 response" {
+  result=$(get_retry_delay "$(fixture response_429.http)" 1)
+  [ "$result" -eq 60 ]
+}
+
+@test "get_retry_delay uses the reset time of a recorded exhausted primary rate limit" {
+  # the clock is 1000 and the fixture resets at 1030: 30 seconds + 1
+  result=$(get_retry_delay "$(fixture response_403_primary_rate_limit.http)" 1)
+  [ "$result" -eq 31 ]
+}
+
+@test "get_retry_delay falls back to the backoff for a recorded response without delay" {
+  result=$(get_retry_delay "$(fixture response_500.http)" 3)
+  [ "$result" -eq 20 ]
+}
+
+@test "get_retry_delay does not use the reset time when the quota is not exhausted" {
+  # 4986 requests remain: the reset header must be ignored
+  result=$(get_retry_delay "$(fixture response_403_forbidden.http)" 1)
+  [ "$result" -eq 5 ]
+}

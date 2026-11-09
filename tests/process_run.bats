@@ -645,3 +645,44 @@ record_sleeps() {
   # only the wait before the cancel request, none before the force-cancel
   [ "$(cat "$SLEEP_LOG")" = "7" ]
 }
+
+# --------------------------------------------------------
+# Recorded responses of gh api -i (CRLF line endings), see tests/fixtures
+# --------------------------------------------------------
+
+fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
+
+@test "process_run cancels a run when the response is a recorded 202" {
+  cancel_run() { fixture response_202.http; }
+
+  process_run "123" $((3 * 3600)) >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "cancelled" ]
+}
+
+@test "process_run skips a run when the response is a recorded 404" {
+  cancel_run() { fixture response_404.http; }
+
+  process_run "123" $((3 * 3600)) >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+}
+
+@test "process_run skips a run when the response is a recorded 409" {
+  cancel_run() { fixture response_409.http; }
+
+  process_run "123" $((3 * 3600)) >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+}
+
+@test "process_run fails a run when the response is a recorded 403 for a missing permission" {
+  cancel_run() { fixture response_403_forbidden.http; }
+
+  status=0
+  process_run "123" $((3 * 3600)) >/dev/null || status=$?
+
+  [ "$status" -eq 1 ]
+  [ "$PROCESS_RUN_OUTCOME" = "failed" ]
+}
+

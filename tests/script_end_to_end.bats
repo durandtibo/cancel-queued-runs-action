@@ -41,6 +41,17 @@ if [ "$1" = "auth" ]; then
 fi
 
 if [[ "$*" == *"-X POST"* ]]; then
+  # Replay a recorded response (CRLF line endings), failing like gh does for
+  # an HTTP error: response on stdout, message on stderr, exit code 1
+  if [ -n "${MOCK_GH_POST_FIXTURE:-}" ]; then
+    cat "$FIXTURE_DIR/$MOCK_GH_POST_FIXTURE"
+    code=$(head -n1 "$FIXTURE_DIR/$MOCK_GH_POST_FIXTURE" | tr -d '\r' | awk '{print $2}')
+    if [ "${code:0:1}" != "2" ]; then
+      echo "gh: Error (HTTP $code)" >&2
+      exit 1
+    fi
+    exit 0
+  fi
   # Fail like gh does for an HTTP error: response on stdout, message on stderr
   if [ -n "${MOCK_GH_POST_CODE:-}" ]; then
     printf 'HTTP/2.0 %s Error\n\n{}\n' "$MOCK_GH_POST_CODE"
@@ -65,10 +76,11 @@ jq -c "$filter" "$runs_file"
 MOCK
   chmod +x "$MOCK_DIR/gh"
 
+  export FIXTURE_DIR="$BATS_TEST_DIRNAME/fixtures"
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT
+  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -351,4 +363,96 @@ JSON
   [[ "$output" =~ "::warning::2 runs were listed for the status 'queued'" ]] || false
   grep -qx "listing_truncated=true" "$GITHUB_OUTPUT"
   grep -q 'maximum that GitHub returns' "$GITHUB_STEP_SUMMARY"
+}
+
+# --------------------------------------------------------
+# Recorded responses of gh api -i (CRLF line endings)
+# Run 111 is old enough for the force-cancel tier: the cancel request, then
+# the force-cancel request when the first one is not accepted.
+# --------------------------------------------------------
+
+@test "end-to-end: a recorded 202 response cancels the run with a single request" {
+  export MOCK_GH_POST_FIXTURE=response_202.http
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Cancellation request accepted for run 111" ]] || false
+  [ "$(posts)" -eq 1 ]
+}
+
+@test "end-to-end: a recorded 404 response skips the run without a force-cancel request" {
+  export MOCK_GH_POST_FIXTURE=response_404.http
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 1 ]
+  grep -qx "skipped_count=1" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: a recorded 409 response skips the run after the force-cancel request" {
+  export MOCK_GH_POST_FIXTURE=response_409.http
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 2 ]
+  grep -qx "skipped_count=1" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: a recorded 500 response fails the run" {
+  export MOCK_GH_POST_FIXTURE=response_500.http
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Cancellation failed for run 111" ]] || false
+}
+
+@test "end-to-end: a recorded 403 for a missing permission fails without any retry" {
+  export MOCK_GH_POST_FIXTURE=response_403_forbidden.http
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Status code: 403 for run 111" ]] || false
+  [[ ! "$output" =~ "Rate limited" ]] || false
+}
+
+@test "end-to-end: a recorded 429 response that asks for a long wait is not retried" {
+  export MOCK_GH_POST_FIXTURE=response_429.http
+  export RETRY_MAX_DELAY=5
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Rate limited on run 111 (cancel), giving up (needs 60s" ]] || false
+}
+
+@test "end-to-end: a recorded secondary rate limit that asks for a long wait is not retried" {
+  export MOCK_GH_POST_FIXTURE=response_403_secondary_rate_limit.http
+  export RETRY_MAX_DELAY=5
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Rate limited on run 111 (cancel), giving up (needs 30s" ]] || false
+}
+
+@test "end-to-end: a recorded exhausted primary rate limit is retried once, then given up" {
+  export MOCK_GH_POST_FIXTURE=response_403_primary_rate_limit.http
+  # the reset time of the fixture is long past: the wait is the 1 second minimum
+  export MAX_RETRIES=1
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "Rate limited on run 111 (cancel), retrying in 1s (retry 1/1)" ]] || false
+  [[ "$output" =~ "Rate limited on run 111 (cancel), giving up" ]] || false
 }

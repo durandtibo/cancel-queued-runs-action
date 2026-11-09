@@ -58,3 +58,34 @@ setup() {
   run is_rate_limited ""
   [ "$status" -eq 1 ]
 }
+
+# Recorded-style responses of gh api -i (CRLF line endings), see tests/fixtures
+fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
+
+@test "is_rate_limited is true for a recorded 429 response" {
+  run is_rate_limited "$(fixture response_429.http)"
+  [ "$status" -eq 0 ]
+}
+
+@test "is_rate_limited is true for a recorded secondary rate limit (403 with Retry-After)" {
+  run is_rate_limited "$(fixture response_403_secondary_rate_limit.http)"
+  [ "$status" -eq 0 ]
+}
+
+@test "is_rate_limited is true for a recorded exhausted primary rate limit (403)" {
+  run is_rate_limited "$(fixture response_403_primary_rate_limit.http)"
+  [ "$status" -eq 0 ]
+}
+
+@test "is_rate_limited is false for a recorded 403 for a missing permission" {
+  # it has X-Ratelimit-Remaining: 4986, which is not an exhausted quota
+  run is_rate_limited "$(fixture response_403_forbidden.http)"
+  [ "$status" -eq 1 ]
+}
+
+@test "is_rate_limited is false for the other recorded responses" {
+  for name in response_202.http response_202_http11.http response_404.http response_409.http response_500.http; do
+    run is_rate_limited "$(fixture "$name")"
+    [ "$status" -eq 1 ] || { echo "rate limited: $name"; false; }
+  done
+}

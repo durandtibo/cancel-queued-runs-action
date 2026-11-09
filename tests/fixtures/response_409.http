@@ -1,0 +1,13 @@
+HTTP/2.0 409 Conflict
+Access-Control-Allow-Origin: *
+Content-Type: application/json; charset=utf-8
+Date: Mon, 09 Nov 2026 10:00:00 GMT
+Server: github.com
+X-Github-Media-Type: github.v3; format=json
+X-Ratelimit-Limit: 5000
+X-Ratelimit-Remaining: 4988
+X-Ratelimit-Reset: 1030
+X-Ratelimit-Resource: core
+X-Ratelimit-Used: 12
+
+{"message":"Cannot cancel a workflow run that is completed.","documentation_url":"https://docs.github.com/rest/actions/workflow-runs#cancel-a-workflow-run","status":"409"}
