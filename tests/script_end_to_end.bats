@@ -101,7 +101,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG MOCK_GH_LIST_FAILS
+  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG MOCK_GH_LIST_FAILS MAX_CANCELLATIONS
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -666,4 +666,109 @@ JSON
   [[ "$output" =~ "::error::Cannot list the workflow runs of myorg/myrepo" ]] || false
   [ "$(posts)" -eq 0 ]
   grep -qx "found_count=0" "$GITHUB_OUTPUT"
+}
+
+# --------------------------------------------------------
+# Limit on the number of cancellations
+# --------------------------------------------------------
+
+three_old_runs() {
+  cat > "$MOCK_GH_RUNS" << 'JSON'
+{
+  "workflow_runs": [
+    {"id": 111, "updated_at": "2020-01-01T00:00:00Z"},
+    {"id": 112, "updated_at": "2020-01-02T00:00:00Z"},
+    {"id": 113, "updated_at": "2020-01-03T00:00:00Z"}
+  ]
+}
+JSON
+}
+
+@test "end-to-end: cancels every old run without a limit" {
+  three_old_runs
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 3 ]
+  grep -qx "cancelled_count=3" "$GITHUB_OUTPUT"
+  grep -qx "deferred_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: cancels at most MAX_CANCELLATIONS runs" {
+  three_old_runs
+  export MAX_CANCELLATIONS=2
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 2 ]
+  grep -qx "cancelled_count=2" "$GITHUB_OUTPUT"
+  grep -qx "deferred_count=1" "$GITHUB_OUTPUT"
+  grep -q "runs/111/cancel" "$MOCK_GH_CALL_LOG"
+  grep -q "runs/112/cancel" "$MOCK_GH_CALL_LOG"
+  run grep -q "runs/113/" "$MOCK_GH_CALL_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "end-to-end: warns about the runs left alone" {
+  three_old_runs
+  export MAX_CANCELLATIONS=1
+
+  run "$SCRIPT"
+
+  [[ "$output" =~ "At most 1 run(s) will be cancelled." ]] || false
+  [[ "$output" =~ "::warning::MAX_CANCELLATIONS (1) reached: 2 more run(s) are old enough to be cancelled but were left alone." ]] || false
+}
+
+@test "end-to-end: a dry run applies the limit too and sends no request" {
+  three_old_runs
+  export MAX_CANCELLATIONS=2
+  export DRY_RUN=true
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 0 ]
+  grep -qx "would_cancel_count=2" "$GITHUB_OUTPUT"
+  grep -qx "deferred_count=1" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: the runs that are not old enough do not use the limit" {
+  export MAX_CANCELLATIONS=1
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  # run 111 is old, run 222 is in the future: one cancellation, nothing left alone
+  [ "$(posts)" -eq 1 ]
+  grep -qx "deferred_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: the summary shows the runs left alone" {
+  three_old_runs
+  export MAX_CANCELLATIONS=1
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_STEP_SUMMARY"
+
+  run "$SCRIPT"
+
+  grep -q '^| Left alone (`max_cancellations` reached) | 2 |$' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "end-to-end: an invalid MAX_CANCELLATIONS fails before any API call" {
+  export MAX_CANCELLATIONS=-1
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "MAX_CANCELLATIONS must be a non-negative integer" ]] || false
+  [ ! -s "$MOCK_GH_CALL_LOG" ]
 }

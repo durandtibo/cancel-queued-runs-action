@@ -76,3 +76,18 @@ list_runs_of_status: error that is not transient retried@@list_runs_of_status.ba
 list_runs_of_status: delay not capped@@list_runs_of_status.bats@@s/\[ "\$delay" -gt "\$RETRY_MAX_DELAY" \]/[ "$delay" -gt 999999 ]/
 list_runs_of_status: delay does not grow@@list_runs_of_status.bats@@s/get_retry_delay "" "\$attempt"/get_retry_delay "" 1/
 list_runs_of_status: no wait between attempts@@list_runs_of_status.bats@@s/^\t\tsleep "\$delay"$/\t\t:/
+is_old_enough: age equal to the threshold accepted@@is_old_enough.bats@@s/\[ "\$age_seconds" -gt \$\(\(MAX_AGE_HOURS \* 3600\)\) \]/[ "$age_seconds" -ge $((MAX_AGE_HOURS * 3600)) ]/
+is_old_enough: threshold in minutes@@is_old_enough.bats@@s/\$\(\(MAX_AGE_HOURS \* 3600\)\) \]$/$((MAX_AGE_HOURS * 60)) ]/
+cancellation_limit_reached: limit reached one run too late@@cancellation_limit_reached.bats@@s/-ge "\$MAX_CANCELLATIONS" \]/-gt "$MAX_CANCELLATIONS" ]/
+cancellation_limit_reached: no limit not honoured@@cancellation_limit_reached.bats@@s/\[ "\$MAX_CANCELLATIONS" -gt 0 \] &&/true \&\&/
+cancellation_limit_reached: dry run not counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT))/
+cancellation_limit_reached: skipped runs counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT + WOULD_CANCEL_COUNT + SKIPPED_COUNT))/
+process_all_runs: runs not old enough left alone too@@process_all_runs.bats@@s/if cancellation_limit_reached && is_old_enough "\$age_seconds"; then/if cancellation_limit_reached; then/
+process_all_runs: limit ignored@@process_all_runs.bats@@s/if cancellation_limit_reached && is_old_enough "\$age_seconds"; then/if false; then/
+process_all_runs: left-alone runs not counted@@process_all_runs.bats@@s/DEFERRED_COUNT=\$\(\(DEFERRED_COUNT \+ 1\)\)/DEFERRED_COUNT=$DEFERRED_COUNT/
+process_all_runs: no warning for the runs left alone@@process_all_runs.bats@@s/^\tif \[ "\$DEFERRED_COUNT" -gt 0 \]; then$/\tif false; then/
+reset_counters: runs left alone not reset@@reset_counters.bats@@s/^\tDEFERRED_COUNT=0$/\t:/
+write_outputs: deferred_count reports the skipped runs@@write_outputs.bats@@s/echo "deferred_count=\$DEFERRED_COUNT"/echo "deferred_count=$SKIPPED_COUNT"/
+write_summary: no limit warning@@write_summary.bats@@s/^\t\tif \[ "\$DEFERRED_COUNT" -gt 0 \]; then$/\t\tif false; then/
+validate_max_cancellations: leading zero accepted@@validate_max_cancellations.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[0-9]+$ ]]; then/
+validate_max_cancellations: zero rejected@@validate_max_cancellations.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[1-9][0-9]*$ ]]; then/

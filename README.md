@@ -43,6 +43,7 @@ backlogs.
 - Configurable maximum queue age (in hours)
 - Dry-run mode to preview which runs would be cancelled
 - Optional filter to only cancel the runs of one workflow
+- Optional safety limit on the number of runs cancelled by one execution
 - Lightweight composite action
 - Works with private and public repositories
 - Requires only the GitHub-provided `GITHUB_TOKEN`
@@ -93,11 +94,13 @@ jobs:
 | `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
 | `cancel_delay_seconds`      | ❌ No    | `0`                        | Seconds to wait between two cancel requests (`0` means no delay)                        |
+| `max_cancellations`         | ❌ No    | `0`                        | Maximum number of runs cancelled by one execution (`0` means no limit)                  |
 | `fail_on_error`             | ❌ No    | `true`                     | If `false`, a run that could not be cancelled does not fail the step                    |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
 > **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `cancel_delay_seconds`,
-> `fail_on_error`, `dry_run` and all the [outputs](#-outputs) were added after `v1.9`. Use a later
+> `max_cancellations`, `fail_on_error`, `dry_run` and all the [outputs](#-outputs) were added after
+> `v1.9`. Use a later
 > release (or a commit of `main`) to get them; the examples below that use them need such a
 > release.
 
@@ -112,6 +115,7 @@ jobs:
 | `skipped_count`      | Number of runs skipped because they were no longer cancellable (404 or 409)                                                                                              |
 | `failed_count`       | Number of runs that could not be cancelled or processed (for example an invalid timestamp, or a list of runs that cannot be parsed)                                      |
 | `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)                                                                                                     |
+| `deferred_count`     | Number of runs that were old enough to be cancelled but were left alone because the `max_cancellations` limit was reached                                                |
 | `listing_truncated`  | `true` if the listing reached the 1000 runs that GitHub returns for a status, so older runs may be missing (see [Troubleshooting](#-troubleshooting)), otherwise `false` |
 
 The outputs are written even when some runs failed (the step then fails unless `fail_on_error` is
@@ -205,6 +209,26 @@ delayed, and nothing is waited for in a dry run.
     cancel_delay_seconds: 1
 ```
 
+### Example: limit the number of runs cancelled by one execution
+
+`max_cancellations` is a safety valve against a misconfiguration: with a `max_age_hours` that is
+much too small, a single execution could cancel hundreds of runs. The action cancels at most this
+number of runs (the first ones of the list returned by GitHub, most recent first), leaves the other
+runs that are old enough alone, and reports them in the `deferred_count` output, in a warning and in
+the job summary. The next execution processes them. In a dry run, the runs that would be cancelled
+count, so that the preview shows what a real run would do. Runs that are skipped (`404`, `409`) or
+that fail are not counted, and the runs that are not old enough are never affected. `0` (the
+default) means no limit.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  id: cancel
+  with:
+    max_age_hours: 24
+    max_cancellations: 50
+- run: echo "${{ steps.cancel.outputs.deferred_count }} run(s) left for the next execution"
+```
+
 ### Example: do not fail the job when a run cannot be cancelled
 
 By default the step fails when a run could not be cancelled, for example after a rate limit or a
@@ -266,7 +290,8 @@ For additional use cases and complete workflow examples, see the [examples/](exa
 2. **Calculate Age**: Determines how old each run is, measured from its last update
    (`updated_at`), which moves forward when a run is re-run, for example after a failure
 3. **Filter**: Identifies runs older than the configured `max_age_hours`
-4. **Cancel**: Sends cancellation requests for eligible runs (or only logs them with `dry_run: true`)
+4. **Cancel**: Sends cancellation requests for eligible runs (or only logs them with `dry_run: true`),
+   up to `max_cancellations` runs when the limit is set
 5. **Report**: Logs the status of each operation
 
 The action uses the GitHub CLI (`gh`) internally to interact with GitHub's Actions API. It includes
@@ -406,6 +431,16 @@ this happens, so that a following step can decide to run the action again:
 - if: steps.cancel.outputs.listing_truncated == 'true'
   uses: durandtibo/cancel-queued-runs-action@v1.9
 ```
+
+### Log shows `::warning::MAX_CANCELLATIONS (...) reached`
+
+**Cause**: More runs than `max_cancellations` are old enough to be cancelled. The first runs were
+cancelled, the others were left alone on purpose.
+
+**Solution**: Nothing to do if the limit is intended: the next execution processes the remaining
+runs. If it is not, raise `max_cancellations` (or set it to `0` for no limit). If you did not expect
+so many runs to be cancelled, check `max_age_hours` and use `dry_run: true` first. The number of
+runs left alone is in the `deferred_count` output and in the job summary.
 
 ### Log shows `::warning::Rate limited on run ... giving up`
 

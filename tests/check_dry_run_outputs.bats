@@ -10,14 +10,16 @@ setup() {
   export SKIPPED_COUNT=0
   export FAILED_COUNT=0
   export WOULD_CANCEL_COUNT=2
+  export DEFERRED_COUNT=0
   export LISTING_TRUNCATED=false
+  unset MAX_CANCELLATIONS
 }
 
 @test "check_dry_run_outputs accepts valid outputs" {
   run "$CHECK"
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "found=3 would_cancel=2 truncated=false" ]] || false
+  [[ "$output" =~ "found=3 would_cancel=2 deferred=0 truncated=false" ]] || false
 }
 
 @test "check_dry_run_outputs accepts a repository without run" {
@@ -147,4 +149,95 @@ setup() {
   run "$CHECK"
 
   [ "$status" -eq 1 ]
+}
+
+# --------------------------------------------------------
+# Limit on the number of cancellations
+# --------------------------------------------------------
+
+@test "check_dry_run_outputs rejects an unset deferred_count" {
+  unset DEFERRED_COUNT
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "DEFERRED_COUNT must be a non-negative integer" ]] || false
+}
+
+@test "check_dry_run_outputs rejects a deferred_count that is not a number" {
+  export DEFERRED_COUNT=many
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "check_dry_run_outputs accepts runs left alone when there is a limit" {
+  export MAX_CANCELLATIONS=2
+  export FOUND_COUNT=5
+  export WOULD_CANCEL_COUNT=2
+  export DEFERRED_COUNT=3
+
+  run "$CHECK"
+
+  [ "$status" -eq 0 ]
+}
+
+@test "check_dry_run_outputs rejects runs left alone without a limit" {
+  export FOUND_COUNT=5
+  export DEFERRED_COUNT=1
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "deferred_count must be 0 without a limit (got '1')" ]] || false
+}
+
+@test "check_dry_run_outputs rejects runs left alone when MAX_CANCELLATIONS is 0" {
+  export MAX_CANCELLATIONS=0
+  export DEFERRED_COUNT=1
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "check_dry_run_outputs rejects more runs to cancel than the limit" {
+  export MAX_CANCELLATIONS=1
+  export WOULD_CANCEL_COUNT=2
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "would_cancel_count (2) cannot exceed max_cancellations (1)" ]] || false
+}
+
+@test "check_dry_run_outputs accepts exactly the limit of runs to cancel" {
+  export MAX_CANCELLATIONS=2
+  export WOULD_CANCEL_COUNT=2
+
+  run "$CHECK"
+
+  [ "$status" -eq 0 ]
+}
+
+@test "check_dry_run_outputs rejects runs to cancel and left alone that exceed the runs found" {
+  export MAX_CANCELLATIONS=2
+  export FOUND_COUNT=3
+  export WOULD_CANCEL_COUNT=2
+  export DEFERRED_COUNT=2
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "cannot exceed found_count (3) together" ]] || false
+}
+
+@test "check_dry_run_outputs rejects a MAX_CANCELLATIONS that is not a number" {
+  export MAX_CANCELLATIONS=lots
+
+  run "$CHECK"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "MAX_CANCELLATIONS must be a non-negative integer (got 'lots')" ]] || false
 }
