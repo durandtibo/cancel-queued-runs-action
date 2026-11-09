@@ -164,3 +164,15 @@ teardown() {
 
   [ -z "$(ls -A "$TMPDIR")" ]
 }
+
+#----------------------------
+# Test cancel_run retries rate limited requests
+#----------------------------
+@test "cancel_run delegates to post_run_endpoint_with_retry" {
+  post_run_endpoint_with_retry() { echo "delegated: $*"; }
+
+  run cancel_run 12345
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "delegated: 12345 cancel" ]
+}

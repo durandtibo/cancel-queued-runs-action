@@ -11,6 +11,14 @@
 #   REPO - Repository in owner/name format (required)
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
 #
+# Internal tuning (not action inputs, positive integers in seconds/counts):
+#   MAX_RETRIES - Retries of a rate-limited cancel request (default: 3)
+#   RETRY_BASE_DELAY - First backoff delay in seconds, doubled at each retry
+#                      when GitHub gives no delay (default: 5)
+#   RETRY_MAX_DELAY - Longest delay we are willing to wait, in seconds; a
+#                     rate limit that requires waiting longer is not retried
+#                     (default: 60)
+#
 # Exit Codes:
 #   0 - Success (all eligible runs cancelled, or no longer cancellable)
 #   1 - One or more cancellations failed
@@ -19,6 +27,9 @@
 set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
+MAX_RETRIES="${MAX_RETRIES:-3}"
+RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
+RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -141,6 +152,110 @@ post_run_endpoint() {
 }
 
 # ----------------------------
+# Tell whether an HTTP response is a rate limit error
+# A plain 403 (missing permission) is NOT a rate limit and must not be retried.
+# Args:
+#   $1 - Full HTTP response (headers and body)
+# Returns:
+#   0 if rate limited (429, or 403 with a rate limit header/message), else 1
+# ----------------------------
+is_rate_limited() {
+	local response="${1:-}"
+	local status_code
+	status_code=$(get_status_code "$response")
+
+	if [ "$status_code" = "429" ]; then
+		return 0
+	fi
+
+	if [ "$status_code" = "403" ] &&
+		echo "$response" | grep -qiE '^retry-after:|^x-ratelimit-remaining:[[:space:]]*0[[:space:]]*$|rate limit'; then
+		return 0
+	fi
+
+	return 1
+}
+
+# ----------------------------
+# Compute how long to wait before retrying a rate-limited request
+# Uses, in order: the Retry-After header, the X-RateLimit-Reset header when
+# the quota is exhausted, then an exponential backoff
+# (RETRY_BASE_DELAY * 2^(attempt-1)). The result is at least 1 second and is
+# NOT capped: the caller compares it with RETRY_MAX_DELAY.
+# Args:
+#   $1 - Full HTTP response (headers and body)
+#   $2 - Attempt number, starting at 1
+# Returns:
+#   Delay in seconds (integer)
+# ----------------------------
+get_retry_delay() {
+	local response="$1"
+	local attempt="${2:-1}"
+	local delay=""
+	local remaining reset now
+
+	delay=$(echo "$response" | awk 'tolower($1)=="retry-after:" {print int($2+0); exit}')
+
+	if [ -z "$delay" ]; then
+		remaining=$(echo "$response" | awk 'tolower($1)=="x-ratelimit-remaining:" {print int($2+0); exit}')
+		reset=$(echo "$response" | awk 'tolower($1)=="x-ratelimit-reset:" {print int($2+0); exit}')
+		if [ "$remaining" = "0" ] && [ -n "$reset" ]; then
+			now=$(date -u +%s)
+			delay=$((reset - now + 1))
+		fi
+	fi
+
+	if [ -z "$delay" ]; then
+		delay=$((RETRY_BASE_DELAY * (1 << (attempt - 1))))
+	fi
+
+	if [ "$delay" -lt 1 ]; then
+		delay=1
+	fi
+
+	echo "$delay"
+}
+
+# ----------------------------
+# POST to a cancel endpoint, retrying when GitHub rate limits the request
+# Retries at most MAX_RETRIES times. It gives up immediately, without waiting,
+# when the required delay exceeds RETRY_MAX_DELAY. In both cases the last
+# response is returned, so the caller handles it like any other failure.
+# Args:
+#   $1 - Workflow run ID
+#   $2 - Endpoint action ("cancel" or "force-cancel")
+# ----------------------------
+post_run_endpoint_with_retry() {
+	local run_id="$1"
+	local action="$2"
+	local attempt=0
+	local response delay
+
+	while :; do
+		response=$(post_run_endpoint "$run_id" "$action")
+
+		if ! is_rate_limited "$response"; then
+			break
+		fi
+
+		attempt=$((attempt + 1))
+		delay=$(get_retry_delay "$response" "$attempt")
+
+		if [ "$attempt" -gt "$MAX_RETRIES" ] || [ "$delay" -gt "$RETRY_MAX_DELAY" ]; then
+			echo "::warning::Rate limited on run $run_id ($action), giving up (needs ${delay}s, attempt $attempt, max $MAX_RETRIES retries, max wait ${RETRY_MAX_DELAY}s)" >&2
+			break
+		fi
+
+		echo "::warning::Rate limited on run $run_id ($action), retrying in ${delay}s (retry $attempt/$MAX_RETRIES)" >&2
+		sleep "$delay"
+	done
+
+	if [ -n "$response" ]; then
+		printf '%s\n' "$response"
+	fi
+}
+
+# ----------------------------
 # Cancel a run normally
 # ----------------------------
 cancel_run() {
@@ -151,7 +266,7 @@ cancel_run() {
 		return 1
 	fi
 
-	post_run_endpoint "$run_id" "cancel"
+	post_run_endpoint_with_retry "$run_id" "cancel"
 }
 
 # ----------------------------
@@ -165,7 +280,7 @@ force_cancel_run() {
 		return 1
 	fi
 
-	post_run_endpoint "$run_id" "force-cancel"
+	post_run_endpoint_with_retry "$run_id" "force-cancel"
 }
 
 # ----------------------------
