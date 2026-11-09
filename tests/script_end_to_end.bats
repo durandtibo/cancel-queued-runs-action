@@ -68,7 +68,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS
+  unset DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -239,3 +239,33 @@ JSON
   [ "$(posts)" -eq 0 ]
 }
 
+@test "end-to-end: a failed cancellation fails the step by default" {
+  export MOCK_GH_POST_CODE=500
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "end-to-end: a failed cancellation does not fail the step when FAIL_ON_ERROR is false" {
+  export MOCK_GH_POST_CODE=500
+  export FAIL_ON_ERROR=false
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -qx "failed_count=1" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "end-to-end: an invalid FAIL_ON_ERROR fails before any API call" {
+  export FAIL_ON_ERROR=nope
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "FAIL_ON_ERROR must be 'true' or 'false'" ]] || false
+  [ "$(posts)" -eq 0 ]
+}

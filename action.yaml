@@ -64,6 +64,15 @@ inputs:
     default: "0"
     required: false
 
+  fail_on_error:
+    description: >
+      If "true" (the default), the step fails when a run could not be cancelled. If "false", it
+      only logs a warning and succeeds, and the failures stay available in the failed_count
+      output. Invalid inputs and a failure to list the runs always fail the step. Must be "true"
+      or "false".
+    default: "true"
+    required: false
+
   dry_run:
     description: >
       If "true", only log the runs that would be cancelled, without cancelling anything.
@@ -103,4 +112,5 @@ runs:
         STATUSES: ${{ inputs.statuses }}
         WORKFLOW: ${{ inputs.workflow }}
         CANCEL_DELAY_SECONDS: ${{ inputs.cancel_delay_seconds }}
+        FAIL_ON_ERROR: ${{ inputs.fail_on_error }}
         DRY_RUN: ${{ inputs.dry_run }}

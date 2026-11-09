@@ -10,7 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
-  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -572,3 +572,94 @@ setup_outputs() {
   [[ ! "$output" =~ "Waiting" ]]
 }
 
+# --------------------------------------------------------
+# Fail on error
+# --------------------------------------------------------
+
+@test "main fails when FAIL_ON_ERROR is not true or false" {
+  export FAIL_ON_ERROR="sometimes"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "FAIL_ON_ERROR must be 'true' or 'false' (got 'sometimes')" ]] || false
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main fails when a run could not be cancelled by default" {
+  export MOCK_PROCESS_STATUS=1
+
+  run main
+
+  [ "$status" -eq 1 ]
+}
+
+@test "main fails when a run could not be cancelled and FAIL_ON_ERROR is true" {
+  export FAIL_ON_ERROR=true
+  export MOCK_PROCESS_STATUS=1
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ ! "$output" =~ "fail_on_error is false" ]]
+}
+
+@test "main succeeds with a warning when a run could not be cancelled and FAIL_ON_ERROR is false" {
+  export FAIL_ON_ERROR=false
+  export MOCK_PROCESS_STATUS=1
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "::warning::" ]] || false
+  [[ "$output" =~ "fail_on_error is false" ]]
+}
+
+@test "main does not say that all the runs succeeded when FAIL_ON_ERROR is false and a run failed" {
+  export FAIL_ON_ERROR=false
+  export MOCK_PROCESS_STATUS=1
+
+  run main
+
+  [[ ! "$output" =~ "All eligible runs processed successfully." ]]
+}
+
+@test "main still writes the failed count when FAIL_ON_ERROR is false" {
+  setup_outputs
+  export FAIL_ON_ERROR=false
+  export MOCK_PROCESS_STATUS=1
+  export MOCK_FAILED=3
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "failed_count=3" "$GITHUB_OUTPUT"
+  grep -q "Failed | 3 |" "$GITHUB_STEP_SUMMARY"
+}
+
+@test "main still fails when the runs cannot be listed and FAIL_ON_ERROR is false" {
+  export FAIL_ON_ERROR=false
+  fetch_runs() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+}
+
+@test "main still fails on an invalid input when FAIL_ON_ERROR is false" {
+  export FAIL_ON_ERROR=false
+  export MAX_AGE_HOURS=abc
+
+  run main
+
+  [ "$status" -eq 1 ]
+}
+
+@test "main succeeds when nothing failed and FAIL_ON_ERROR is false" {
+  export FAIL_ON_ERROR=false
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "All eligible runs processed successfully." ]]
+}
