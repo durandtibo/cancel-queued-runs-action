@@ -90,6 +90,15 @@ inputs:
     default: "0"
     required: false
 
+  max_runs:
+    description: >
+      Maximum number of runs to keep: only the max_runs most recent runs (by queue time) are
+      kept, and the older ones are cancelled whatever their age. The max_age_hours threshold
+      still applies to the kept runs. The limit is applied to the runs selected by statuses,
+      workflow, branch and event. Must be a non-negative integer; 0 means no limit.
+    default: "0"
+    required: false
+
   fail_on_error:
     description: >
       If "true" (the default), the step fails when a run could not be cancelled. If "false", it
@@ -162,5 +171,6 @@ runs:
         EVENT: ${{ inputs.event }}
         CANCEL_DELAY_SECONDS: ${{ inputs.cancel_delay_seconds }}
         MAX_CANCELLATIONS: ${{ inputs.max_cancellations }}
+        MAX_RUNS: ${{ inputs.max_runs }}
         FAIL_ON_ERROR: ${{ inputs.fail_on_error }}
         DRY_RUN: ${{ inputs.dry_run }}

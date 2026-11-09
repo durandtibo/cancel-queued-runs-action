@@ -871,3 +871,39 @@ record_ordered_calls() {
 
   [ "$(cat "$CALL_LOG")" = "$(printf 'cancel_run 777\nforce_cancel_run 777')" ]
 }
+
+@test "process_run cancels a young run that is over the MAX_RUNS limit" {
+  LOG_FILE="$BATS_TEST_TMPDIR/calls.log"
+  cancel_run() { echo "cancel $1" >> "$LOG_FILE"; echo "HTTP 202"; }
+  get_status_code() { echo 202; }
+  throttle_requests() { :; }
+  MAX_AGE_HOURS=24
+  FORCE_BUFFER_HOURS=3
+  DRY_RUN=false
+
+  process_run 7 3600 true >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "cancelled" ]
+  grep -q "cancel 7" "$LOG_FILE"
+}
+
+@test "process_run leaves a young run alone when it is not over the limit" {
+  MAX_AGE_HOURS=24
+  FORCE_BUFFER_HOURS=3
+  DRY_RUN=false
+
+  process_run 7 3600 false >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "noop" ]
+}
+
+@test "process_run reports a young run over the limit as would-cancel in a dry run" {
+  MAX_AGE_HOURS=24
+  FORCE_BUFFER_HOURS=3
+  DRY_RUN=true
+
+  run process_run 7 3600 true
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Would cancel run 7" ]] || false
+}
