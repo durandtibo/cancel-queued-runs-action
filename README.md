@@ -187,6 +187,14 @@ limitations.
 **Solution**: These runs may need to be manually deleted. See [dev/README.md](dev/README.md) for
 notes on handling stale runs.
 
+### Log shows `::warning::gh api (cancel) failed ...` or `No HTTP response`
+
+**Cause**: The `gh api` call failed, and the error message of `gh` is forwarded as a warning
+annotation. Typical reasons are an invalid or expired token (`HTTP 401`), a missing permission
+(`HTTP 403`), a run that no longer exists (`HTTP 404`), or a network error.
+
+**Solution**: Read the message after the colon, it is the error reported by `gh`.
+
 ### Permission denied error
 
 **Cause**: Insufficient permissions for the GitHub token.

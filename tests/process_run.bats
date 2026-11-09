@@ -201,3 +201,17 @@ setup() {
 
   [[ "$output" =~ "(age=24h59m)" ]]
 }
+
+# --------------------------------------------------------
+# gh API failure without any HTTP response
+# --------------------------------------------------------
+
+@test "process_run reports a failure without HTTP response when the API call fails" {
+  cancel_run() { :; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "No HTTP response (the gh API call failed) for run 123" ]]
+  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [ "$status" -eq 1 ]
+}
