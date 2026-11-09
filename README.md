@@ -88,7 +88,7 @@ jobs:
 | --------------------------- | -------- | -------------------------- | --------------------------------------------------------------------------------------- |
 | `github_token`              | ❌ No    | `${{ github.token }}`      | Token with `actions:write` permissions                                                  |
 | `repo`                      | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                                                       |
-| `max_age_hours`             | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued                                 |
+| `max_age_hours`             | ❌ No    | `24`                       | Maximum age of a run in hours, since its last update (see the [FAQ](#-faq))             |
 | `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
 | `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
@@ -399,6 +399,16 @@ permissions:
 No, this action only cancels workflow runs that have not started: the **queued** state, and
 optionally `waiting`, `pending` and `requested` with the `statuses` input. Running (`in_progress`)
 or completed workflows are never affected.
+
+### How is the age of a run computed?
+
+The age is the time elapsed since the `updated_at` timestamp of the run, not since its creation.
+GitHub moves `updated_at` forward when the run is updated, for example when it is re-run after a
+failure. A run that was created three days ago but re-run an hour ago is therefore one hour old and
+is not cancelled with `max_age_hours: 24`. This is deliberate: the action must not cancel a run
+that was queued again only because its first attempt is old. It applies to every status considered
+(`queued`, `waiting`, `pending` and `requested`). The age is shown in the logs
+(`Run 12947114653 is 30h12m old.`).
 
 ### Will it cancel the workflow that calls this action?
 
