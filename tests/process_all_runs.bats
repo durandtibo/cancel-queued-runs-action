@@ -12,11 +12,11 @@ setup() {
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 
   # -------------------------
-  # Mock compute_age_hours
+  # Mock compute_age_seconds
   # -------------------------
-  compute_age_hours() {
-    # Always return fixed age for deterministic tests
-    echo 5
+  compute_age_seconds() {
+    # Always return a fixed age (5 hours) for deterministic tests
+    echo 18000
   }
 
   # -------------------------
@@ -59,8 +59,8 @@ teardown() {
   # Output should NOT contain error message
   [[ ! "$output" =~ "Error:" ]]
 
-  grep -q "process_run 101 5" "$LOG_FILE"
-  grep -q "process_run 202 5" "$LOG_FILE"
+  grep -q "process_run 101 18000" "$LOG_FILE"
+  grep -q "process_run 202 18000" "$LOG_FILE"
 }
 
 @test "process_all_runs returns 1 when process_run fails" {
@@ -80,8 +80,8 @@ teardown() {
   # Output should contain error message with count
   [[ "$output" =~ "Error: 2 run(s) failed to cancel" ]]
 
-  grep -q "process_run 111 5" "$LOG_FILE"
-  grep -q "process_run 222 5" "$LOG_FILE"
+  grep -q "process_run 111 18000" "$LOG_FILE"
+  grep -q "process_run 222 18000" "$LOG_FILE"
 }
 
 @test "process_all_runs skips runs with missing fields" {
@@ -98,8 +98,8 @@ teardown() {
   # Exit code should be 0 (success)
   [ "$status" -eq 0 ]
 
-  grep -q "process_run 333 5" "$LOG_FILE"
-  grep -q "process_run 555 5" "$LOG_FILE"
+  grep -q "process_run 333 18000" "$LOG_FILE"
+  grep -q "process_run 555 18000" "$LOG_FILE"
 
   # Ensure skipped runs do NOT appear
   if grep -q "process_run 444" "$LOG_FILE"; then false; fi
@@ -111,7 +111,7 @@ teardown() {
 
   run process_all_runs "$runs_stream"
 
-  [[ "$output" =~ "Run 999 has been queued for 5 hours." ]]
+  [[ "$output" =~ "Run 999 has been queued for 5h00m." ]]
 }
 
 @test "process_all_runs counts partial failures correctly" {
