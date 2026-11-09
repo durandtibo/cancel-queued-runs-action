@@ -118,6 +118,11 @@ The outputs are written even when some runs failed (the step then fails unless `
 counts as a table to the
 [job summary](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary).
 
+The job summary also lists the runs that were cancelled, skipped, failed or (in a dry run) would be
+cancelled, in a table with a link to each run, its age and the result. Runs that were left alone
+because they are not old enough are not listed. At most 50 runs are listed; the summary then says
+how many more are not shown, and all of them are in the logs of the step.
+
 ```yaml
 - uses: durandtibo/cancel-queued-runs-action@v1.9
   id: cancel

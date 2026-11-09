@@ -38,11 +38,15 @@
 #   RUNS_LISTING_LIMIT - Number of runs after which GitHub stops listing the
 #                        runs of a status (default: 1000, the documented limit
 #                        of the API); reaching it gives a warning
+#   SUMMARY_MAX_RUNS - Number of runs listed in the job summary; the others
+#                      are only counted (default: 50)
 #
 # GitHub Actions integration (optional, ignored when the variables are unset):
 #   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
 #                   skipped_count, failed_count and would_cancel_count are written
 #   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
+#   GITHUB_SERVER_URL - Base URL of the links to the runs in the summary
+#                       (default: https://github.com)
 #
 # Exit Codes:
 #   0 - Success (all eligible runs cancelled, or no longer cancellable), or
@@ -67,6 +71,10 @@ SKIPPED_COUNT=0
 FAILED_COUNT=0
 WOULD_CANCEL_COUNT=0
 
+# The runs that were acted on, one "id|age|outcome" per line, listed in the
+# job summary. Filled by record_run, reset by reset_counters.
+RUN_RECORDS=""
+
 # Whether a cancel request was already sent, to wait before the next one. It
 # is set by throttle_requests, which must not be called in a subshell.
 REQUEST_SENT=false
@@ -78,6 +86,7 @@ MAX_RETRIES="${MAX_RETRIES:-3}"
 RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
 RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
 RUNS_LISTING_LIMIT="${RUNS_LISTING_LIMIT:-1000}"
+SUMMARY_MAX_RUNS="${SUMMARY_MAX_RUNS:-50}"
 
 # ----------------------------
 # Cross-platform timestamp parser
@@ -596,7 +605,8 @@ process_run() {
 }
 
 # ----------------------------
-# Reset the counters reported by main, and forget the requests already sent
+# Reset the counters reported by main, the requests already sent and the runs
+# recorded for the summary
 # ----------------------------
 reset_counters() {
 	CANCELLED_COUNT=0
@@ -604,12 +614,28 @@ reset_counters() {
 	FAILED_COUNT=0
 	WOULD_CANCEL_COUNT=0
 	REQUEST_SENT=false
+	RUN_RECORDS=""
+}
+
+# ----------------------------
+# Record what happened to a run, to list it in the job summary
+# It must be called in the main shell, not in a subshell such as $(...).
+# Args:
+#   $1 - Run ID
+#   $2 - Age of the run, as text (for example "30h12m", or "unknown")
+#   $3 - Outcome: cancelled, would-cancel, skipped or failed
+# Globals:
+#   RUN_RECORDS - Gets one more "id|age|outcome" line
+# ----------------------------
+record_run() {
+	RUN_RECORDS="${RUN_RECORDS}${1}|${2}|${3}"$'\n'
 }
 
 # ----------------------------
 # Process all workflow runs
 # Updates the counters CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT and
-# WOULD_CANCEL_COUNT (reset at the start of the call).
+# WOULD_CANCEL_COUNT (reset at the start of the call), and records the runs
+# that were cancelled, skipped, failed or would be cancelled in RUN_RECORDS.
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
@@ -645,6 +671,7 @@ process_all_runs() {
 		if ! age_seconds=$(compute_age_seconds "$queued_at"); then
 			echo "::error::Skipping run $run_id: cannot compute its age from '$queued_at'"
 			FAILED_COUNT=$((FAILED_COUNT + 1))
+			record_run "$run_id" "unknown" "failed"
 			continue
 		fi
 		echo "Run $run_id is $(format_age "$age_seconds") old."
@@ -657,8 +684,15 @@ process_all_runs() {
 			skipped) SKIPPED_COUNT=$((SKIPPED_COUNT + 1)) ;;
 			would-cancel) WOULD_CANCEL_COUNT=$((WOULD_CANCEL_COUNT + 1)) ;;
 			esac
+			# the runs that were left alone (noop) are not listed
+			case "$PROCESS_RUN_OUTCOME" in
+			cancelled | skipped | would-cancel)
+				record_run "$run_id" "$(format_age "$age_seconds")" "$PROCESS_RUN_OUTCOME"
+				;;
+			esac
 		else
 			FAILED_COUNT=$((FAILED_COUNT + 1))
+			record_run "$run_id" "$(format_age "$age_seconds")" "failed"
 		fi
 	done 3<<<"$parsed"
 
@@ -690,6 +724,65 @@ write_outputs() {
 		echo "failed_count=$FAILED_COUNT"
 		echo "would_cancel_count=$WOULD_CANCEL_COUNT"
 	} >>"$GITHUB_OUTPUT"
+}
+
+# ----------------------------
+# Describe the outcome of a run for the job summary
+# Args:
+#   $1 - Outcome: cancelled, would-cancel, skipped or failed
+# Returns:
+#   The label on stdout (the outcome itself for an unknown outcome)
+# ----------------------------
+describe_outcome() {
+	case "${1:-}" in
+	cancelled) echo "Cancelled" ;;
+	would-cancel) echo "Would be cancelled (dry run)" ;;
+	skipped) echo "Skipped (no longer cancellable)" ;;
+	failed) echo "Failed" ;;
+	*) echo "${1:-}" ;;
+	esac
+}
+
+# ----------------------------
+# Print the Markdown table of the runs that were acted on
+# Lists at most SUMMARY_MAX_RUNS runs, each linked to its page, and tells how
+# many more are not shown. Prints nothing when no run was recorded.
+# Globals:
+#   RUN_RECORDS, SUMMARY_MAX_RUNS, REPO, GITHUB_SERVER_URL (optional)
+# ----------------------------
+write_summary_runs() {
+	local run_id age outcome
+	local shown=0
+	local total
+	local server="${GITHUB_SERVER_URL:-https://github.com}"
+
+	if [ -z "$RUN_RECORDS" ]; then
+		return 0
+	fi
+
+	total=$(printf '%s' "$RUN_RECORDS" | grep -c '')
+
+	echo
+	echo "#### Runs"
+	echo
+	echo "| Run | Age | Result |"
+	echo "| --- | --- | --- |"
+
+	while IFS='|' read -r run_id age outcome; do
+		if [ -z "$run_id" ]; then
+			continue
+		fi
+		if [ "$shown" -ge "$SUMMARY_MAX_RUNS" ]; then
+			break
+		fi
+		shown=$((shown + 1))
+		echo "| [${run_id}](${server}/${REPO}/actions/runs/${run_id}) | ${age} | $(describe_outcome "$outcome") |"
+	done <<<"$RUN_RECORDS"
+
+	if [ "$total" -gt "$shown" ]; then
+		echo
+		echo "$((total - shown)) more run(s) are not listed here, see the logs of the step."
+	fi
 }
 
 # ----------------------------
@@ -729,6 +822,7 @@ write_summary() {
 		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
 		echo "| Skipped (no longer cancellable) | $SKIPPED_COUNT |"
 		echo "| Failed | $FAILED_COUNT |"
+		write_summary_runs
 	} >>"$GITHUB_STEP_SUMMARY"
 }
 
