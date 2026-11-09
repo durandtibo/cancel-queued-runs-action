@@ -287,6 +287,15 @@ annotation. Typical reasons are an invalid or expired token (`HTTP 401`), a miss
 
 **Solution**: Read the message after the colon, it is the error reported by `gh`.
 
+### Log shows `::error::Cannot list the workflow runs of ...`
+
+**Cause**: The call that lists the runs failed, for example because of an invalid token, a missing
+permission, a wrong `repo` or `workflow`, a network error or a GitHub outage. The error reported by
+`gh` is printed just above.
+
+**Solution**: Fix the cause reported by `gh`. No run is cancelled in this case, the step fails, and
+the [outputs](#-outputs) are all set to `0` so that the next steps do not read empty values.
+
 ### Log shows `::error::Invalid timestamp ...`
 
 **Cause**: A run has a timestamp that is not in the `YYYY-MM-DDTHH:MM:SSZ` format returned by the

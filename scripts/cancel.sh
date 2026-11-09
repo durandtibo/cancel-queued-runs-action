@@ -139,6 +139,12 @@ log_status() {
 #               deliberately not created_at: updated_at moves forward when a
 #               run is re-run (for example after a failure), so a re-queued
 #               run is not cancelled because of its original creation date.
+#
+# Returns:
+#   0 on success, 1 as soon as a listing call fails (the runs already printed
+#   are incomplete then, so the caller must not use them). The check is
+#   explicit because "set -e" is ignored when the function is called in an
+#   "if" condition.
 # ----------------------------
 fetch_runs() {
 	local runs_path="/repos/$REPO/actions/runs"
@@ -164,7 +170,7 @@ fetch_runs() {
 			-H "Accept: application/vnd.github+json" \
 			"$runs_path?status=$run_status&per_page=100" \
 			--paginate \
-			--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}'
+			--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}' || return 1
 	done
 }
 
@@ -801,7 +807,13 @@ main() {
 	reset_counters
 	local exit_code=0
 
-	runs=$(fetch_runs)
+	# The outputs are written even when the listing fails, so that the next
+	# steps do not read empty values
+	if ! runs=$(fetch_runs); then
+		echo "::error::Cannot list the workflow runs of ${REPO} (see the messages above)" >&2
+		write_outputs 0
+		return 1
+	fi
 
 	run_count=$(echo "$runs" | jq -s 'length')
 	echo "Found $run_count queued workflow run(s)."

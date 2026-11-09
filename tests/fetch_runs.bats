@@ -45,6 +45,12 @@ JSON
 # Log request arguments
 echo "\$@" >> "$MOCK_GH_CALL_LOG"
 
+# Fail like gh does for an HTTP error when the arguments match the pattern
+if [ -n "\${MOCK_GH_FAIL_PATTERN:-}" ] && [[ "\$*" == *"\$MOCK_GH_FAIL_PATTERN"* ]]; then
+  echo "gh: Server Error (HTTP 500)" >&2
+  exit 1
+fi
+
 # Find the --jq filter, if any
 filter=""
 while [ \$# -gt 0 ]; do
@@ -233,4 +239,39 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -s "$MOCK_GH_CALL_LOG" ]
+}
+
+@test "fetch_runs fails when the gh call fails" {
+  export MOCK_GH_FAIL_PATTERN="status=queued"
+
+  run fetch_runs
+
+  [ "$status" -eq 1 ]
+}
+
+@test "fetch_runs fails when the gh call of the first status fails and the next one succeeds" {
+  export STATUSES="queued,waiting"
+  export MOCK_GH_FAIL_PATTERN="status=queued"
+
+  run fetch_runs
+
+  [ "$status" -eq 1 ]
+}
+
+@test "fetch_runs fails when the gh call of the last status fails" {
+  export STATUSES="queued,waiting"
+  export MOCK_GH_FAIL_PATTERN="status=waiting"
+
+  run fetch_runs
+
+  [ "$status" -eq 1 ]
+}
+
+@test "fetch_runs stops at the first failing status" {
+  export STATUSES="queued,waiting"
+  export MOCK_GH_FAIL_PATTERN="status=queued"
+
+  run fetch_runs
+
+  [ "$(wc -l < "$MOCK_GH_CALL_LOG" | tr -d ' ')" -eq 1 ]
 }
