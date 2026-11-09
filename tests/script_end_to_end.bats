@@ -101,7 +101,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG MOCK_GH_LIST_FAILS MAX_CANCELLATIONS
+  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG MOCK_GH_LIST_FAILS MAX_CANCELLATIONS BRANCH EVENT
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -831,4 +831,67 @@ JSON
 
   [ "$status" -eq 1 ]
   grep -qx 'cancelled_run_ids=\[\]' "$GITHUB_OUTPUT"
+}
+
+# --------------------------------------------------------
+# Filters on the branch and the event
+# --------------------------------------------------------
+
+@test "end-to-end: the branch and the event are sent to GitHub as filters" {
+  export BRANCH="feat/my-feature"
+  export EVENT="pull_request"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -q -- "--method GET" "$MOCK_GH_CALL_LOG"
+  grep -q -- "-f branch=feat/my-feature -f event=pull_request" "$MOCK_GH_CALL_LOG"
+  [[ "$output" =~ "Only the runs of the branch feat/my-feature are considered." ]] || false
+}
+
+@test "end-to-end: no filter is sent by default" {
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  run grep -q -- "-f " "$MOCK_GH_CALL_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "end-to-end: the filters are used for every status and for the workflow" {
+  export BRANCH="main"
+  export STATUSES="queued,waiting"
+  export WORKFLOW="ci.yaml"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- "workflows/ci.yaml/runs?status=.*-f branch=main" "$MOCK_GH_CALL_LOG")" -eq 2 ]
+}
+
+@test "end-to-end: the cancel requests are not sent with the filters" {
+  export BRANCH="main"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -- "-X POST" "$MOCK_GH_CALL_LOG" | grep -c -- "-f ")" -eq 0 ]
+}
+
+@test "end-to-end: an invalid BRANCH fails before any API call" {
+  export BRANCH="refs/heads/main"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "BRANCH must be a branch name, not a ref" ]] || false
+  [ ! -s "$MOCK_GH_CALL_LOG" ]
+}
+
+@test "end-to-end: an invalid EVENT fails before any API call" {
+  export EVENT="Push"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$MOCK_GH_CALL_LOG" ]
 }

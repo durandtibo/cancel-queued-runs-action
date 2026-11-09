@@ -11,6 +11,8 @@ setup() {
 
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
   WORK_DIR=""
+  BRANCH=""
+  EVENT=""
   MAX_RETRIES=3
   RETRY_BASE_DELAY=5
   RETRY_MAX_DELAY=60
@@ -326,4 +328,86 @@ gh_calls() { wc -l < "$GH_LOG" | tr -d ' '; }
 
   [ "$status" -eq 1 ]
   [ "$(gh_calls)" -eq 0 ]
+}
+
+# --------------------------------------------------------
+# Filters
+# --------------------------------------------------------
+
+@test "list_runs_of_status sends a GET request" {
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null
+
+  [[ "$(cat "$GH_LOG")" == *"--method GET"* ]] || false
+}
+
+@test "list_runs_of_status sends no filter by default" {
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null
+
+  [[ "$(cat "$GH_LOG")" != *"-f "* ]] || false
+  [[ "$(cat "$GH_LOG")" != *"branch="* ]] || false
+  [[ "$(cat "$GH_LOG")" != *"event="* ]] || false
+}
+
+@test "list_runs_of_status filters on the branch" {
+  BRANCH="main"
+
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null
+
+  [[ "$(cat "$GH_LOG")" == *"-f branch=main"* ]] || false
+  [[ "$(cat "$GH_LOG")" != *"event="* ]] || false
+}
+
+@test "list_runs_of_status filters on the event" {
+  EVENT="schedule"
+
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null
+
+  [[ "$(cat "$GH_LOG")" == *"-f event=schedule"* ]] || false
+  [[ "$(cat "$GH_LOG")" != *"branch="* ]] || false
+}
+
+@test "list_runs_of_status filters on the branch and the event together" {
+  BRANCH="main"
+  EVENT="push"
+
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null
+
+  [[ "$(cat "$GH_LOG")" == *"-f branch=main -f event=push"* ]] || false
+}
+
+@test "list_runs_of_status keeps the status and the paging with a filter" {
+  BRANCH="main"
+
+  list_runs_of_status "/repos/o/r/actions/runs" waiting > /dev/null
+
+  [[ "$(cat "$GH_LOG")" == *"/repos/o/r/actions/runs?status=waiting&per_page=100"* ]] || false
+  [[ "$(cat "$GH_LOG")" == *"--paginate"* ]] || false
+}
+
+@test "list_runs_of_status passes a branch with a slash as one argument" {
+  BRANCH="feat/my-feature"
+  gh() { printf '%s\n' "$@" > "$MOCK_DIR/args.txt"; }
+
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null
+
+  grep -qxF "branch=feat/my-feature" "$MOCK_DIR/args.txt"
+}
+
+@test "list_runs_of_status passes a hostile branch as one argument, not as a parameter" {
+  BRANCH='main&event=schedule'
+  gh() { printf '%s\n' "$@" > "$MOCK_DIR/args.txt"; }
+
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null
+
+  grep -qxF 'branch=main&event=schedule' "$MOCK_DIR/args.txt"
+  [ "$(grep -c '^event=' "$MOCK_DIR/args.txt" || true)" -eq 0 ]
+}
+
+@test "list_runs_of_status keeps the filters when it retries" {
+  BRANCH="main"
+  export MOCK_FAILS=1
+
+  list_runs_of_status "/repos/o/r/actions/runs" queued > /dev/null 2>&1
+
+  [ "$(grep -c -- '-f branch=main' "$GH_LOG")" -eq 2 ]
 }
