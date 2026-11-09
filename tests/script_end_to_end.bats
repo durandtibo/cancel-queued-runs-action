@@ -895,3 +895,53 @@ JSON
   [ "$status" -eq 1 ]
   [ ! -s "$MOCK_GH_CALL_LOG" ]
 }
+
+# --------------------------------------------------------
+# Timestamp the age is measured from
+# --------------------------------------------------------
+
+@test "end-to-end: a run whose updated_at moved forward while it stayed queued is still cancelled" {
+  cat > "$MOCK_GH_RUNS" << 'JSON'
+{
+  "workflow_runs": [
+    {"id": 111, "created_at": "2020-01-01T00:00:00Z", "run_started_at": "2020-01-01T00:00:00Z", "updated_at": "2999-01-01T00:00:00Z"}
+  ]
+}
+JSON
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -ge 1 ]
+  grep -q "runs/111/cancel" "$MOCK_GH_CALL_LOG"
+}
+
+@test "end-to-end: a run created long ago but re-run recently is not cancelled" {
+  cat > "$MOCK_GH_RUNS" << 'JSON'
+{
+  "workflow_runs": [
+    {"id": 111, "run_attempt": 2, "created_at": "2020-01-01T00:00:00Z", "run_started_at": "2999-01-01T00:00:00Z", "updated_at": "2999-01-01T00:00:01Z"}
+  ]
+}
+JSON
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$(posts)" -eq 0 ]
+}
+
+@test "end-to-end: a run without run_started_at is aged from updated_at" {
+  cat > "$MOCK_GH_RUNS" << 'JSON'
+{
+  "workflow_runs": [
+    {"id": 111, "created_at": "2999-01-01T00:00:00Z", "run_started_at": null, "updated_at": "2020-01-01T00:00:00Z"}
+  ]
+}
+JSON
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  grep -q "runs/111/cancel" "$MOCK_GH_CALL_LOG"
+}

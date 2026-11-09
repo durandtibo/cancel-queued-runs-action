@@ -89,7 +89,7 @@ jobs:
 | --------------------------- | -------- | -------------------------- | --------------------------------------------------------------------------------------- |
 | `github_token`              | ❌ No    | `${{ github.token }}`      | Token with `actions:write` permissions                                                  |
 | `repo`                      | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                                                       |
-| `max_age_hours`             | ❌ No    | `24`                       | Maximum age of a run in hours, since its last update (see the [FAQ](#-faq))             |
+| `max_age_hours`             | ❌ No    | `24`                       | Maximum age of a run in hours, since it was queued or re-run (see the [FAQ](#-faq))     |
 | `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
 | `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
@@ -323,8 +323,8 @@ For additional use cases and complete workflow examples, see the [examples/](exa
    (`queued` by default), restricted to the `workflow`, `branch` and `event` when they are set. A
    run listed under two statuses, because its status changed between the two calls, is only
    considered once
-2. **Calculate Age**: Determines how old each run is, measured from its last update
-   (`updated_at`), which moves forward when a run is re-run, for example after a failure
+2. **Calculate Age**: Determines how old each run is, measured from the time it was queued
+   (`run_started_at`), which moves forward when a run is re-run, for example after a failure
 3. **Filter**: Identifies runs older than the configured `max_age_hours`
 4. **Cancel**: Sends cancellation requests for eligible runs (or only logs them with `dry_run: true`),
    up to `max_cancellations` runs when the limit is set
@@ -519,13 +519,19 @@ or completed workflows are never affected.
 
 ### How is the age of a run computed?
 
-The age is the time elapsed since the `updated_at` timestamp of the run, not since its creation.
-GitHub moves `updated_at` forward when the run is updated, for example when it is re-run after a
-failure. A run that was created three days ago but re-run an hour ago is therefore one hour old and
-is not cancelled with `max_age_hours: 24`. This is deliberate: the action must not cancel a run
-that was queued again only because its first attempt is old. It applies to every status considered
-(`queued`, `waiting`, `pending` and `requested`). The age is shown in the logs
-(`Run 12947114653 is 30h12m old.`).
+The age is the time elapsed since the `run_started_at` timestamp of the run, not since its
+creation. GitHub moves `run_started_at` forward when the run is re-run, for example after a
+failure, while `created_at` keeps the date of the first attempt. A run that was created three days
+ago but re-run an hour ago is therefore one hour old and is not cancelled with `max_age_hours: 24`.
+This is deliberate: the action must not cancel a run that was queued again only because its first
+attempt is old. When GitHub gives no `run_started_at`, the `updated_at` timestamp is used instead.
+It applies to every status considered (`queued`, `waiting`, `pending` and `requested`). The age is
+shown in the logs (`Run 12947114653 is 30h12m old.`).
+
+The age is not measured from `updated_at`: GitHub also moves it forward while a run stays queued
+(runs queued for more than a day were seen with an `updated_at` up to 22 hours after their start),
+so a run could look much younger than the time it had really been waiting, and be cancelled
+hours late.
 
 ### Will it cancel the workflow that calls this action?
 

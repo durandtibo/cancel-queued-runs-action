@@ -111,3 +111,7 @@ validate_event: uppercase accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$
 validate_event: dash accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z][a-z_-]*$/
 validate_event: anything accepted after the first letter@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z]/
 write_summary: branch not shown@@write_summary.bats@@s/echo "Branch: /echo "Ignored: /
+fetch_runs: age measured from updated_at@@fetch_runs.bats@@s/\(\.run_started_at \/\/ \.updated_at\)/(.updated_at)/
+fetch_runs: no fallback when run_started_at is missing@@fetch_runs.bats@@s/\(\.run_started_at \/\/ \.updated_at\)/(.run_started_at)/
+fetch_runs: age measured from created_at@@fetch_runs.bats@@s/\(\.run_started_at \/\/ \.updated_at\)/(.created_at)/
+fetch_runs: fallback preferred over run_started_at@@fetch_runs.bats@@s/\(\.run_started_at \/\/ \.updated_at\)/(.updated_at \/\/ .run_started_at)/

@@ -350,7 +350,7 @@ list_runs_of_status() {
 				"$runs_path?status=$run_status&per_page=100" \
 				${filters[@]+"${filters[@]}"} \
 				--paginate \
-				--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}' \
+				--jq '.workflow_runs[] | {id: .id, queued_at: (.run_started_at // .updated_at)}' \
 				2>"$stderr_file"
 		); then
 			if [ -s "$stderr_file" ]; then
@@ -402,10 +402,14 @@ list_runs_of_status() {
 #
 # Prints one JSON object per line with the fields:
 #   id        - workflow run ID
-#   queued_at - the timestamp the age is measured from: updated_at. It is
-#               deliberately not created_at: updated_at moves forward when a
-#               run is re-run (for example after a failure), so a re-queued
-#               run is not cancelled because of its original creation date.
+#   queued_at - the timestamp the age is measured from: run_started_at, or
+#               updated_at when GitHub gives none. It is deliberately not
+#               created_at: run_started_at moves forward when a run is re-run
+#               (for example after a failure), so a re-queued run is not
+#               cancelled because of its original creation date. It is not
+#               updated_at either: GitHub also moves updated_at while a run
+#               stays queued (observed up to 22 hours later), which made a run
+#               look younger than the time it had really been waiting.
 #
 # A run listed under several statuses (its status changed between two calls)
 # is printed once (see dedupe_runs).
