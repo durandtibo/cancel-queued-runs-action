@@ -31,6 +31,12 @@ setup() {
 # Log all arguments
 echo "$@" >> "$MOCK_GH_CALL_LOG"
 
+# Simulate a gh failure (e.g., network or authentication error)
+if [ -n "$MOCK_STDERR" ]; then
+    echo "$MOCK_STDERR" >&2
+    exit 1
+fi
+
 # Determine response for cancel endpoints
 if [[ "$@" =~ cancel ]]; then
     if [ "$MOCK_RESPONSE" = "202" ]; then
@@ -117,4 +123,44 @@ teardown() {
   run cancel_run ""
   [ "$status" -ne 0 ]
   [[ "$output" == *"run_id is empty"* ]]
+}
+
+#----------------------------
+# Test cancel_run surfaces gh errors
+#----------------------------
+@test "cancel_run forwards gh stderr as a warning on stderr" {
+  export MOCK_STDERR="gh: Bad credentials (HTTP 401)"
+
+  err=$(cancel_run 12345 2>&1 >/dev/null)
+
+  [[ "$err" == *"::warning::"* ]]
+  [[ "$err" == *"cancel"* ]]
+  [[ "$err" == *"run 12345"* ]]
+  [[ "$err" == *"Bad credentials (HTTP 401)"* ]]
+}
+
+@test "cancel_run prints nothing on stdout and succeeds when gh fails without a response" {
+  export MOCK_STDERR="gh: network unreachable"
+
+  run cancel_run 12345
+
+  out=$(cancel_run 12345 2>/dev/null)
+  [ "$status" -eq 0 ]
+  [ -z "$out" ]
+}
+
+@test "cancel_run does not print a warning when gh succeeds" {
+  err=$(cancel_run 12345 2>&1 >/dev/null)
+
+  [ -z "$err" ]
+}
+
+@test "cancel_run does not leave temporary files behind" {
+  export TMPDIR="$BATS_TEST_DIRNAME/mocks/tmp"
+  mkdir -p "$TMPDIR"
+  export MOCK_STDERR="gh: boom"
+
+  cancel_run 12345 >/dev/null 2>&1
+
+  [ -z "$(ls -A "$TMPDIR")" ]
 }

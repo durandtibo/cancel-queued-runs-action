@@ -61,6 +61,9 @@ log_status() {
 	500)
 		echo "❌ Status code: $status_code - Internal error for run $run_id"
 		;;
+	"")
+		echo "❌ No HTTP response (the gh API call failed) for run $run_id"
+		;;
 	*)
 		echo "❌ Status code: $status_code for run $run_id"
 		;;
@@ -87,6 +90,43 @@ fetch_runs() {
 }
 
 # ----------------------------
+# POST to a cancel endpoint of a workflow run
+# Prints the full HTTP response (headers and body) on stdout. If gh writes
+# anything on stderr (network error, bad credentials, missing gh, HTTP error
+# message, ...), it is forwarded as a ::warning:: annotation on stderr instead
+# of being discarded, so that failures can be diagnosed from the logs.
+# Always returns 0: the caller decides what to do from the status code.
+# Args:
+#   $1 - Workflow run ID
+#   $2 - Endpoint action ("cancel" or "force-cancel")
+# ----------------------------
+post_run_endpoint() {
+	local run_id="$1"
+	local action="$2"
+	local stderr_file
+	local response
+
+	stderr_file=$(mktemp "${TMPDIR:-/tmp}/cancel-queued-runs.XXXXXX")
+
+	response=$(
+		gh api \
+			-X POST \
+			-H "Accept: application/vnd.github+json" \
+			"/repos/$REPO/actions/runs/$run_id/$action" \
+			-i 2>"$stderr_file"
+	) || true
+
+	if [ -s "$stderr_file" ]; then
+		echo "::warning::gh api ($action) failed for run $run_id: $(tr '\n' ' ' <"$stderr_file")" >&2
+	fi
+	rm -f "$stderr_file"
+
+	if [ -n "$response" ]; then
+		printf '%s\n' "$response"
+	fi
+}
+
+# ----------------------------
 # Cancel a run normally
 # ----------------------------
 cancel_run() {
@@ -97,11 +137,7 @@ cancel_run() {
 		return 1
 	fi
 
-	gh api \
-		-X POST \
-		-H "Accept: application/vnd.github+json" \
-		"/repos/$REPO/actions/runs/$run_id/cancel" \
-		-i 2>/dev/null || true
+	post_run_endpoint "$run_id" "cancel"
 }
 
 # ----------------------------
@@ -115,11 +151,7 @@ force_cancel_run() {
 		return 1
 	fi
 
-	gh api \
-		-X POST \
-		-H "Accept: application/vnd.github+json" \
-		"/repos/$REPO/actions/runs/$run_id/force-cancel" \
-		-i 2>/dev/null || true
+	post_run_endpoint "$run_id" "force-cancel"
 }
 
 # ----------------------------
