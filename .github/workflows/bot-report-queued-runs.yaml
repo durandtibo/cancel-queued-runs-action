@@ -1,0 +1,61 @@
+# Report queued runs workflow.
+# Lists the public, non-archived repositories of a user and reports the number
+# of queued workflow runs for each repository in the job summary, sorted by
+# decreasing number of queued runs.
+
+name: Report Queued Runs
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Run every Monday at 8:00 AM UTC
+  workflow_dispatch: # to trigger manually
+    inputs:
+      username:
+        description: GitHub username (or organization) to inspect
+        required: false
+        default: durandtibo
+        type: string
+
+permissions: {}
+
+jobs:
+  report:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    env:
+      USERNAME: ${{ inputs.username || 'durandtibo' }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # ratchet:actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ secrets.TIBOT_CLIENT_ID }}
+          private-key: ${{ secrets.TIBOT_APP_PRIVATE_KEY }}
+          owner: ${{ env.USERNAME }}
+          permission-actions: read
+
+      - name: Count queued runs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          : > counts.tsv
+          repos=$(gh repo list "$USERNAME" --visibility public --no-archived \
+            --limit 1000 --json name --jq '.[].name')
+          for repo in $repos; do
+            count=$(gh api "repos/$USERNAME/$repo/actions/runs?status=queued&per_page=1" \
+              --jq '.total_count')
+            printf '%s\t%s\n' "$count" "$repo" >> counts.tsv
+          done
+
+          {
+            echo "## Queued workflow runs for \`$USERNAME\`"
+            echo
+            echo "| Repository | Queued runs |"
+            echo "| --- | ---: |"
+            sort -t$'\t' -k1,1nr -k2,2 counts.tsv | while IFS=$'\t' read -r count repo; do
+              echo "| [$repo](https://github.com/$USERNAME/$repo/actions?query=status%3Aqueued) | $count |"
+            done
+            echo
+            echo "**Total:** $(awk -F'\t' '{s+=$1} END {print s+0}' counts.tsv)"
+          } >> "$GITHUB_STEP_SUMMARY"
