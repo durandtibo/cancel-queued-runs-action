@@ -141,3 +141,48 @@ teardown() {
   # Output should contain error message showing 1 failure
   [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]]
 }
+
+@test "process_all_runs counts a run with an invalid timestamp as a failure" {
+  compute_age_seconds() {
+    if [[ "$1" == "garbage" ]]; then
+      echo "::error::Invalid timestamp 'garbage'" >&2
+      return 1
+    fi
+    echo 18000
+  }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 111, "queued_at": "2025-02-01T03:00:00Z"}' \
+      '{"id": 222, "queued_at": "garbage"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::Skipping run 222: cannot compute its age from 'garbage'" ]]
+  [[ "$output" =~ "Error: 1 run(s) failed to cancel" ]]
+}
+
+@test "process_all_runs keeps processing the other runs after an invalid timestamp" {
+  compute_age_seconds() {
+    if [[ "$1" == "garbage" ]]; then
+      return 1
+    fi
+    echo 18000
+  }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 111, "queued_at": "2025-02-01T03:00:00Z"}' \
+      '{"id": 222, "queued_at": "garbage"}' \
+      '{"id": 333, "queued_at": "2025-02-01T05:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 1 ]
+  grep -q "process_run 111 18000" "$LOG_FILE"
+  grep -q "process_run 333 18000" "$LOG_FILE"
+  if grep -q "process_run 222" "$LOG_FILE"; then false; fi
+}
