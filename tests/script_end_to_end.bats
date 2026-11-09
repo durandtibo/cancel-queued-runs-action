@@ -72,6 +72,16 @@ if [[ "$*" == *"-X POST"* ]]; then
   exit 0
 fi
 
+# The first MOCK_GH_LIST_FAILS listing calls fail with a server error
+if [ -n "${MOCK_GH_LIST_FAILS:-}" ]; then
+  fails=$(cat "$MOCK_GH_LIST_COUNT" 2>/dev/null || echo 0)
+  if [ "$fails" -lt "$MOCK_GH_LIST_FAILS" ]; then
+    echo $((fails + 1)) > "$MOCK_GH_LIST_COUNT"
+    echo "gh: Bad Gateway (HTTP 502)" >&2
+    exit 1
+  fi
+fi
+
 runs_file="$MOCK_GH_RUNS"
 if [[ "$*" == *"status=waiting"* ]]; then
   runs_file="$MOCK_GH_RUNS_WAITING"
@@ -86,11 +96,12 @@ jq -c "$filter" "$runs_file"
 MOCK
   chmod +x "$MOCK_DIR/gh"
 
+  export MOCK_GH_LIST_COUNT="$MOCK_DIR/list_count"
   export FIXTURE_DIR="$BATS_TEST_DIRNAME/fixtures"
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG
+  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG MOCK_GH_LIST_FAILS
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -622,4 +633,37 @@ JSON
 
   [ "$status" -eq 143 ]
   [ -z "$(ls -A "$TMPDIR")" ]
+}
+
+# --------------------------------------------------------
+# Retries of the listing
+# --------------------------------------------------------
+
+@test "end-to-end: a listing that fails once with a server error is retried" {
+  export MOCK_GH_LIST_FAILS=1
+  export RETRY_BASE_DELAY=1
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "::warning::Listing the runs with the status 'queued' failed" ]] || false
+  [[ "$output" =~ "retrying in 1s (retry 1/3)" ]] || false
+  [[ "$output" =~ "Found 2 workflow run(s)." ]] || false
+  grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
+}
+
+@test "end-to-end: a listing that keeps failing fails the step and all the outputs are 0" {
+  export MOCK_GH_LIST_FAILS=99
+  export MAX_RETRIES=1
+  export RETRY_BASE_DELAY=1
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "giving up (max 1 retries)" ]] || false
+  [[ "$output" =~ "::error::Cannot list the workflow runs of myorg/myrepo" ]] || false
+  [ "$(posts)" -eq 0 ]
+  grep -qx "found_count=0" "$GITHUB_OUTPUT"
 }
