@@ -24,12 +24,17 @@ MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 # Handles both GNU date (Linux) and BSD date (macOS)
 # ----------------------------
 # Converts ISO 8601 timestamp to Unix timestamp
+# The timestamp must use the format returned by the GitHub API
+# (YYYY-MM-DDTHH:MM:SSZ). Anything else is rejected with an ::error:: message
+# on stderr, because BSD date silently ignores trailing characters.
 # Args:
 #   $1 - ISO 8601 timestamp (e.g., "2025-01-15T10:30:00Z")
 # Returns:
-#   Unix timestamp (seconds since epoch)
+#   Unix timestamp (seconds since epoch) on stdout. An empty input returns 0.
+#   Exit code 1 if the timestamp is invalid.
 to_unix_ts() {
 	local ts="$1"
+	local unix_ts
 
 	# Empty input returns 0
 	if [ -z "$ts" ]; then
@@ -37,12 +42,20 @@ to_unix_ts() {
 		return
 	fi
 
+	if ! [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+		echo "::error::Invalid timestamp '$ts' (expected format: YYYY-MM-DDTHH:MM:SSZ)" >&2
+		return 1
+	fi
+
 	if date -d "$ts" +%s >/dev/null 2>&1; then
 		# Linux (GNU date)
 		date -d "$ts" -u +%s
-	else
+	elif unix_ts=$(date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null); then
 		# macOS (BSD date)
-		date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s
+		echo "$unix_ts"
+	else
+		echo "::error::Cannot parse timestamp '$ts'" >&2
+		return 1
 	fi
 }
 
@@ -174,7 +187,8 @@ get_status_code() {
 #   $1 - ISO 8601 timestamp for "queued_at" (e.g., "2025-01-01T10:00:00Z")
 #   $2 - ISO 8601 timestamp for "now" (optional, defaults to current UTC time)
 # Returns:
-#   Age in seconds (integer), or -1 if a timestamp is empty
+#   Age in seconds (integer), or -1 if a timestamp is empty.
+#   Exit code 1 if a timestamp is invalid.
 # ----------------------------
 compute_age_seconds() {
 	local queued_at="$1"
@@ -189,8 +203,8 @@ compute_age_seconds() {
 	local queued_ts
 	local now_ts
 
-	queued_ts=$(to_unix_ts "$queued_at")
-	now_ts=$(to_unix_ts "$now")
+	queued_ts=$(to_unix_ts "$queued_at") || return 1
+	now_ts=$(to_unix_ts "$now") || return 1
 
 	echo $((now_ts - queued_ts))
 }
@@ -282,7 +296,8 @@ process_run() {
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
-#   Exit code: 0 on success, 1 if any failures
+#   Exit code: 0 on success, 1 if any failures (failed cancellation, or a run
+#   whose age could not be computed because of an invalid timestamp)
 # ----------------------------
 process_all_runs() {
 	local runs_stream="$1"
@@ -299,7 +314,12 @@ process_all_runs() {
 			continue
 		fi
 
-		age_seconds=$(compute_age_seconds "$queued_at")
+		# an invalid timestamp is a failure for this run only, not for the others
+		if ! age_seconds=$(compute_age_seconds "$queued_at"); then
+			echo "::error::Skipping run $run_id: cannot compute its age from '$queued_at'"
+			failed=$((failed + 1))
+			continue
+		fi
 		echo "Run $run_id has been queued for $(format_age "$age_seconds")."
 
 		# process the run and track failures

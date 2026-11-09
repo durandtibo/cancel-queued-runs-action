@@ -195,6 +195,14 @@ annotation. Typical reasons are an invalid or expired token (`HTTP 401`), a miss
 
 **Solution**: Read the message after the colon, it is the error reported by `gh`.
 
+### Log shows `::error::Invalid timestamp ...`
+
+**Cause**: A run has a timestamp that is not in the `YYYY-MM-DDTHH:MM:SSZ` format returned by the
+GitHub API, so its age cannot be computed.
+
+**Solution**: The run is skipped, counted as a failure, and the other runs are still processed.
+Please open an issue with the log line if this happens with the GitHub API.
+
 ### Permission denied error
 
 **Cause**: Insufficient permissions for the GitHub token.
