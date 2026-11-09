@@ -24,6 +24,7 @@ backlogs.
 - [Prerequisites](#-prerequisites)
 - [Usage](#-usage)
 - [Inputs](#-inputs)
+- [Outputs](#-outputs)
 - [Examples](#-examples)
 - [How It Works](#-how-it-works)
 - [Troubleshooting](#-troubleshooting)
@@ -85,6 +86,30 @@ jobs:
 | `max_age_hours`             | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued                                 |
 | `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
+
+---
+
+## 📤 Outputs
+
+| Name                 | Description                                                                 |
+| -------------------- | --------------------------------------------------------------------------- |
+| `found_count`        | Number of queued workflow runs found in the repository                      |
+| `cancelled_count`    | Number of runs for which a cancel request was accepted                      |
+| `skipped_count`      | Number of runs skipped because they were no longer cancellable (404 or 409) |
+| `failed_count`       | Number of runs that could not be cancelled                                  |
+| `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)        |
+
+The outputs are written even when some runs failed (the step then fails, so use `if: always()` on
+a following step to read them), and the action appends the same counts as a table to the
+[job summary](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary).
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  id: cancel
+  with:
+    max_age_hours: 24
+- run: echo "Cancelled ${{ steps.cancel.outputs.cancelled_count }} run(s)"
+```
 
 ---
 

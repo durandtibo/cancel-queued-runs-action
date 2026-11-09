@@ -23,6 +23,11 @@
 #                     rate limit that requires waiting longer is not retried
 #                     (default: 60)
 #
+# GitHub Actions integration (optional, ignored when the variables are unset):
+#   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
+#                   skipped_count, failed_count and would_cancel_count are written
+#   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
+#
 # Exit Codes:
 #   0 - Success (all eligible runs cancelled, or no longer cancellable)
 #   1 - One or more cancellations failed
@@ -33,6 +38,16 @@ set -euo pipefail
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 FORCE_BUFFER_HOURS="${FORCE_BUFFER_HOURS:-3}"
 DRY_RUN="${DRY_RUN:-false}"
+
+# Counters filled by process_all_runs and reported by main
+CANCELLED_COUNT=0
+SKIPPED_COUNT=0
+FAILED_COUNT=0
+WOULD_CANCEL_COUNT=0
+
+# Outcome of the last process_run call: one of
+#   noop, cancelled, skipped, would-cancel, failed
+PROCESS_RUN_OUTCOME=""
 MAX_RETRIES="${MAX_RETRIES:-3}"
 RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
 RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
@@ -368,6 +383,9 @@ format_age() {
 # When DRY_RUN is "true", the run that would be cancelled is only logged and
 # no request is sent.
 #
+# The outcome is stored in PROCESS_RUN_OUTCOME (noop, cancelled, skipped,
+# would-cancel or failed) so that the caller can count what happened.
+#
 # Args:
 #   $1 - Run ID
 #   $2 - Age in seconds
@@ -386,6 +404,8 @@ process_run() {
 	local age
 	age=$(format_age "$age_seconds")
 
+	PROCESS_RUN_OUTCOME="noop"
+
 	# Do nothing if run_id is empty
 	if [ -z "$run_id" ]; then
 		return 0
@@ -399,6 +419,7 @@ process_run() {
 	if [ "$age_seconds" -gt "$force_age_seconds" ]; then
 		if [ "$DRY_RUN" = "true" ]; then
 			echo "🧪 [dry-run] Would force-cancel run $run_id (age=$age)"
+			PROCESS_RUN_OUTCOME="would-cancel"
 			return 0
 		fi
 		echo "Force-cancelling run $run_id (age=$age)..."
@@ -411,6 +432,7 @@ process_run() {
 	elif [ "$age_seconds" -gt "$max_age_seconds" ]; then
 		if [ "$DRY_RUN" = "true" ]; then
 			echo "🧪 [dry-run] Would cancel run $run_id (age=$age)"
+			PROCESS_RUN_OUTCOME="would-cancel"
 			return 0
 		fi
 		echo "Cancelling run $run_id (age=$age)..."
@@ -424,6 +446,7 @@ process_run() {
 
 	if [ "$status_code" = "404" ] || [ "$status_code" = "409" ]; then
 		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code): it is no longer queued or cannot be cancelled, skipping."
+		PROCESS_RUN_OUTCOME="skipped"
 		return 0
 	fi
 
@@ -431,14 +454,28 @@ process_run() {
 
 	if [ "$status_code" != "202" ]; then
 		echo "❌ Cancellation failed for run $run_id"
+		PROCESS_RUN_OUTCOME="failed"
 		return 1
 	fi
 
+	PROCESS_RUN_OUTCOME="cancelled"
 	return 0
 }
 
 # ----------------------------
+# Reset the counters reported by main
+# ----------------------------
+reset_counters() {
+	CANCELLED_COUNT=0
+	SKIPPED_COUNT=0
+	FAILED_COUNT=0
+	WOULD_CANCEL_COUNT=0
+}
+
+# ----------------------------
 # Process all workflow runs
+# Updates the counters CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT and
+# WOULD_CANCEL_COUNT (reset at the start of the call).
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
@@ -447,11 +484,12 @@ process_run() {
 # ----------------------------
 process_all_runs() {
 	local runs_stream="$1"
-	local failed=0
 	local parsed run_id queued_at age_seconds
 	# The unit separator is not whitespace, so read keeps empty fields
 	# (a tab would be collapsed and shift the fields)
 	local sep=$'\x1f'
+
+	reset_counters
 
 	# Extract the fields of all the runs with a single jq call instead of two
 	# jq processes per run
@@ -462,9 +500,8 @@ process_all_runs() {
 
 	# Read from fd 3 and not from stdin, so that nothing running inside the
 	# loop can consume the remaining runs. No pipeline: it would run the loop
-	# in a subshell and lose the failure counter.
+	# in a subshell and lose the counters.
 	while IFS="$sep" read -r -u 3 run_id queued_at; do
-
 		# skip invalid entries
 		if [ -z "$run_id" ] || [ "$run_id" = "null" ] || [ -z "$queued_at" ] || [ "$queued_at" = "null" ]; then
 			continue
@@ -473,24 +510,84 @@ process_all_runs() {
 		# an invalid timestamp is a failure for this run only, not for the others
 		if ! age_seconds=$(compute_age_seconds "$queued_at"); then
 			echo "::error::Skipping run $run_id: cannot compute its age from '$queued_at'"
-			failed=$((failed + 1))
+			FAILED_COUNT=$((FAILED_COUNT + 1))
 			continue
 		fi
 		echo "Run $run_id has been queued for $(format_age "$age_seconds")."
 
-		# process the run and track failures
-		if ! process_run "$run_id" "$age_seconds"; then
-			failed=$((failed + 1))
+		# process the run and count what happened
+		PROCESS_RUN_OUTCOME=""
+		if process_run "$run_id" "$age_seconds"; then
+			case "$PROCESS_RUN_OUTCOME" in
+			cancelled) CANCELLED_COUNT=$((CANCELLED_COUNT + 1)) ;;
+			skipped) SKIPPED_COUNT=$((SKIPPED_COUNT + 1)) ;;
+			would-cancel) WOULD_CANCEL_COUNT=$((WOULD_CANCEL_COUNT + 1)) ;;
+			esac
+		else
+			FAILED_COUNT=$((FAILED_COUNT + 1))
 		fi
 	done 3<<<"$parsed"
 
 	# Return failure if any cancellations failed
-	if [ "$failed" -gt 0 ]; then
-		echo "❌ Error: $failed run(s) failed to cancel."
+	if [ "$FAILED_COUNT" -gt 0 ]; then
+		echo "❌ Error: $FAILED_COUNT run(s) failed to cancel."
 		return 1
 	fi
 
 	return 0
+}
+
+# ----------------------------
+# Write the action outputs to $GITHUB_OUTPUT (no-op when it is unset)
+# Args:
+#   $1 - Number of queued runs found
+# ----------------------------
+write_outputs() {
+	local found_count="$1"
+
+	if [ -z "${GITHUB_OUTPUT:-}" ]; then
+		return 0
+	fi
+
+	{
+		echo "found_count=$found_count"
+		echo "cancelled_count=$CANCELLED_COUNT"
+		echo "skipped_count=$SKIPPED_COUNT"
+		echo "failed_count=$FAILED_COUNT"
+		echo "would_cancel_count=$WOULD_CANCEL_COUNT"
+	} >>"$GITHUB_OUTPUT"
+}
+
+# ----------------------------
+# Append a Markdown summary to $GITHUB_STEP_SUMMARY (no-op when it is unset)
+# Args:
+#   $1 - Number of queued runs found
+# ----------------------------
+write_summary() {
+	local found_count="$1"
+	local mode="Cancel stale queued runs"
+
+	if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+		return 0
+	fi
+
+	if [ "$DRY_RUN" = "true" ]; then
+		mode="Cancel stale queued runs (dry run, nothing was cancelled)"
+	fi
+
+	{
+		echo "### $mode"
+		echo
+		echo "Repository: \`${REPO}\`, maximum queue age: ${MAX_AGE_HOURS} hours"
+		echo
+		echo "| Result | Runs |"
+		echo "| --- | ---: |"
+		echo "| Queued runs found | $found_count |"
+		echo "| Cancelled | $CANCELLED_COUNT |"
+		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
+		echo "| Skipped (no longer cancellable) | $SKIPPED_COUNT |"
+		echo "| Failed | $FAILED_COUNT |"
+	} >>"$GITHUB_STEP_SUMMARY"
 }
 
 # ----------------------------
@@ -600,6 +697,9 @@ main() {
 	fi
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
 
+	reset_counters
+	local exit_code=0
+
 	runs=$(fetch_runs)
 
 	run_count=$(echo "$runs" | jq -s 'length')
@@ -607,16 +707,17 @@ main() {
 
 	if [ "$run_count" -eq 0 ]; then
 		echo "✅ No queued runs found."
-		return 0
+	elif process_all_runs "$runs"; then
+		echo "✅ All eligible runs processed successfully."
+	else
+		exit_code=1
 	fi
 
-	# Process runs
-	if process_all_runs "$runs"; then
-		echo "✅ All eligible runs processed successfully."
-		return 0
-	else
-		return 1
-	fi
+	# Report even when some runs failed
+	write_outputs "$run_count"
+	write_summary "$run_count"
+
+	return "$exit_code"
 }
 
 # ----------------------------
