@@ -58,4 +58,5 @@ jobs:
             done
             echo
             echo "**Total:** $(awk -F'\t' '{s+=$1} END {print s+0}' counts.tsv)"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
