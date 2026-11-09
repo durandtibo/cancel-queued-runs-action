@@ -250,9 +250,11 @@ Yes, as long as the provided token has the necessary permissions for the target 
 
 ### What happens if a run is cancelled while transitioning from queued to running?
 
-The GitHub API handles this gracefully. If a run starts executing between the time it's identified
-and when the cancel request is sent, the cancellation may fail (with a non-202 status code), but
-this won't cause the action to error.
+If a run starts or completes between the moment it is listed and the moment the cancel request is
+sent, GitHub rejects the request with HTTP `409` (or `404` if the run is gone). The action logs a
+`::warning::` for that run, skips it, and does **not** fail. Any other error (for example `401`,
+`403`, `5xx`, or a network error) is a real failure: it is logged, the other runs are still
+processed, and the step exits with code `1`.
 
 ---
 

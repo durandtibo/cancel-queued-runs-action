@@ -215,3 +215,75 @@ setup() {
   [[ "$output" =~ "Cancellation failed for run 123" ]]
   [ "$status" -eq 1 ]
 }
+
+# --------------------------------------------------------
+# Runs that are no longer cancellable (404 / 409) are skipped, not failed
+# --------------------------------------------------------
+
+@test "process_run skips a run when the cancel request returns 404" {
+  cancel_run() { echo -e "HTTP/2.0 404 Not Found\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run skips a run when the cancel request returns 409" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run skips an old run when the regular and the force cancel return 409" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+  force_cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 409)" ]]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run skips an old run when the force cancel returns 404" {
+  cancel_run() { echo -e "HTTP/2.0 500 Internal Server Error\n\n{}"; }
+  force_cancel_run() { echo -e "HTTP/2.0 404 Not Found\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  [[ "$output" =~ "::warning::Run 123 could not be cancelled (HTTP 404)" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run does not print the success line for a skipped run" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ ! "$output" =~ "Cancellation request accepted" ]]
+}
+
+@test "process_run still fails when the cancel request returns 403" {
+  cancel_run() { echo -e "HTTP/2.0 403 Forbidden\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "Status code: 403" ]]
+  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [ "$status" -eq 1 ]
+}
+
+@test "process_run still fails when the cancel request returns 401" {
+  cancel_run() { echo -e "HTTP/2.0 401 Unauthorized\n\n{}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "Cancellation failed for run 123" ]]
+  [ "$status" -eq 1 ]
+}
