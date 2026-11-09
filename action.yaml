@@ -82,7 +82,9 @@ inputs:
 
 outputs:
   found_count:
-    description: Number of queued workflow runs found in the repository.
+    description: >
+      Number of workflow runs found in the repository with the considered statuses (see the
+      statuses input; queued by default).
     value: ${{ steps.cancel.outputs.found_count }}
   cancelled_count:
     description: Number of runs for which a cancel request was accepted.

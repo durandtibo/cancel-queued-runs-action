@@ -30,7 +30,7 @@ teardown() {
 @test "write_summary writes a table with the counters" {
   run write_summary 10
 
-  grep -q '^| Queued runs found | 10 |$' "$GITHUB_STEP_SUMMARY"
+  grep -q '^| Runs found | 10 |$' "$GITHUB_STEP_SUMMARY"
   grep -q '^| Cancelled | 3 |$' "$GITHUB_STEP_SUMMARY"
   grep -q '^| Would be cancelled (dry run) | 4 |$' "$GITHUB_STEP_SUMMARY"
   grep -q '^| Skipped (no longer cancellable) | 2 |$' "$GITHUB_STEP_SUMMARY"
@@ -40,7 +40,7 @@ teardown() {
 @test "write_summary has a plain title for a real run" {
   run write_summary 10
 
-  grep -qx '### Cancel stale queued runs' "$GITHUB_STEP_SUMMARY"
+  grep -qx '### Cancel stale workflow runs' "$GITHUB_STEP_SUMMARY"
 }
 
 @test "write_summary says that nothing was cancelled in dry run" {
@@ -57,7 +57,7 @@ teardown() {
   run write_summary 10
 
   grep -qx "previous content" "$GITHUB_STEP_SUMMARY"
-  grep -q "Queued runs found" "$GITHUB_STEP_SUMMARY"
+  grep -q "Runs found" "$GITHUB_STEP_SUMMARY"
 }
 
 @test "write_summary prints nothing on stdout" {
@@ -90,4 +90,45 @@ teardown() {
 
   run grep -q "Workflow:" "$GITHUB_STEP_SUMMARY"
   [ "$status" -ne 0 ]
+}
+
+@test "write_summary does not say queued in the title or in the table" {
+  STATUSES="queued,waiting"
+
+  run write_summary 10
+
+  [ -z "$(grep -i "queued runs" "$GITHUB_STEP_SUMMARY" || true)" ]
+  [ -z "$(grep -iE '^###.*queued' "$GITHUB_STEP_SUMMARY" || true)" ]
+}
+
+@test "write_summary lists the statuses considered" {
+  STATUSES="queued"
+
+  run write_summary 10
+
+  grep -qx 'Statuses considered: `queued`' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary lists several statuses" {
+  STATUSES="queued,waiting"
+
+  run write_summary 10
+
+  grep -qx 'Statuses considered: `queued,waiting`' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary ignores the spaces of the statuses" {
+  STATUSES="queued, waiting , pending"
+
+  run write_summary 10
+
+  grep -qx 'Statuses considered: `queued,waiting,pending`' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary uses a neutral title in dry run too" {
+  DRY_RUN=true
+
+  run write_summary 10
+
+  grep -qx '### Cancel stale workflow runs (dry run, nothing was cancelled)' "$GITHUB_STEP_SUMMARY"
 }

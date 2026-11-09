@@ -319,7 +319,7 @@ setup_outputs() {
 
   run main
 
-  grep -q "Queued runs found | 2 |" "$GITHUB_STEP_SUMMARY"
+  grep -q "Runs found | 2 |" "$GITHUB_STEP_SUMMARY"
   grep -q "Cancelled | 2 |" "$GITHUB_STEP_SUMMARY"
 }
 
@@ -662,4 +662,14 @@ setup_outputs() {
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "All eligible runs processed successfully." ]]
+}
+
+@test "main writes the statuses considered in the summary" {
+  setup_outputs
+  export STATUSES="queued,waiting"
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx 'Statuses considered: `queued,waiting`' "$GITHUB_STEP_SUMMARY"
 }
