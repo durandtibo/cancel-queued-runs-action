@@ -40,6 +40,14 @@ inputs:
     default: "3"
     required: false
 
+  workflow:
+    description: >
+      Only cancel the runs of this workflow, given as a workflow file name (for example
+      "ci.yaml") or a numeric workflow ID. By default, the runs of all the workflows are
+      considered.
+    default: ""
+    required: false
+
   dry_run:
     description: >
       If "true", only log the runs that would be cancelled, without cancelling anything.
@@ -76,4 +84,5 @@ runs:
         REPO: ${{ inputs.repo }}
         MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
         FORCE_BUFFER_HOURS: ${{ inputs.force_cancel_buffer_hours }}
+        WORKFLOW: ${{ inputs.workflow }}
         DRY_RUN: ${{ inputs.dry_run }}

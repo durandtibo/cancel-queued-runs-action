@@ -41,6 +41,7 @@ backlogs.
 - Cancels workflow runs stuck in the **queued** state
 - Configurable maximum queue age (in hours)
 - Dry-run mode to preview which runs would be cancelled
+- Optional filter to only cancel the runs of one workflow
 - Lightweight composite action
 - Works with private and public repositories
 - Requires only the GitHub-provided `GITHUB_TOKEN`
@@ -85,6 +86,7 @@ jobs:
 | `repo`                      | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                                                       |
 | `max_age_hours`             | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued                                 |
 | `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
+| `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
 ---
@@ -142,6 +144,19 @@ The log then contains lines such as:
 ```text
 Run 12947114653 has been queued for 30h12m.
 🧪 [dry-run] Would force-cancel run 12947114653 (age=30h12m)
+```
+
+### Example: only cancel the runs of one workflow
+
+`workflow` takes a workflow file name (the name of the file in `.github/workflows/`) or a numeric
+workflow ID. The display name of a workflow (the `name:` key) is not supported because several
+workflows can share it.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  with:
+    max_age_hours: 12
+    workflow: ci.yaml
 ```
 
 ### Example: scheduled cleanup every hour

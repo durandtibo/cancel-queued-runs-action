@@ -10,6 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -363,4 +364,33 @@ setup_outputs() {
   run main
 
   [ "$status" -eq 0 ]
+}
+
+# --------------------------------------------------------
+# Workflow filter
+# --------------------------------------------------------
+
+@test "main fails when WORKFLOW is invalid" {
+  export WORKFLOW="../secrets"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "WORKFLOW must be a workflow file name" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main announces the workflow filter" {
+  export WORKFLOW="ci.yaml"
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]]
+}
+
+@test "main does not mention a workflow without filter" {
+  run main
+
+  [[ ! "$output" =~ "Only the runs of the workflow" ]]
 }
