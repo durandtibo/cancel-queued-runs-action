@@ -186,3 +186,97 @@ teardown() {
   grep -q "process_run 333 18000" "$LOG_FILE"
   if grep -q "process_run 222" "$LOG_FILE"; then false; fi
 }
+
+@test "process_all_runs calls jq once whatever the number of runs" {
+  real_jq=$(command -v jq)
+  export JQ_CALL_LOG="$MOCK_DIR/jq_calls.log"
+  : > "$JQ_CALL_LOG"
+  cat > "$MOCK_DIR/jq" << MOCK
+#!/usr/bin/env bash
+echo call >> "$JQ_CALL_LOG"
+exec "$real_jq" "\$@"
+MOCK
+  chmod +x "$MOCK_DIR/jq"
+  PATH="$MOCK_DIR:$PATH"
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}' \
+      '{"id": 3, "queued_at": "2025-01-01T03:00:00Z"}' \
+      '{"id": 4, "queued_at": "2025-01-01T04:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$JQ_CALL_LOG" | tr -d ' ')" -eq 1 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 4 ]
+}
+
+@test "process_all_runs skips runs whose fields are null or missing" {
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": null, "queued_at": "2025-03-01T05:00:00Z"}' \
+      '{"queued_at": "2025-03-01T05:00:00Z"}' \
+      '{"id": 666, "queued_at": null}' \
+      '{"id": 777}' \
+      '{"id": 888, "queued_at": "2025-03-01T07:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 1 ]
+  grep -q "process_run 888 18000" "$LOG_FILE"
+}
+
+@test "process_all_runs does not shift fields when the id is empty" {
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": "", "queued_at": "2025-03-01T06:00:00Z"}' \
+      '{"id": 555, "queued_at": "2025-03-01T07:00:00Z"}'
+  )
+
+  run process_all_runs "$runs_stream"
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 1 ]
+  grep -q "process_run 555 18000" "$LOG_FILE"
+}
+
+@test "process_all_runs does nothing with an empty stream" {
+  run process_all_runs ""
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "process_all_runs fails with an error when the stream is not valid JSON" {
+  run process_all_runs "this is not json"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::Cannot parse the list of queued runs" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "process_all_runs processes every run even if process_run reads stdin" {
+  process_run() {
+    echo "process_run $1 $2" >> "$LOG_FILE"
+    cat > /dev/null
+    return 0
+  }
+
+  runs_stream=$(
+    printf '%s\n' \
+      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
+      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}' \
+      '{"id": 3, "queued_at": "2025-01-01T03:00:00Z"}'
+  )
+
+  # stdin is /dev/null: only the runs read from the stream must be seen
+  run process_all_runs "$runs_stream" < /dev/null
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 3 ]
+}

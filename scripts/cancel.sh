@@ -314,12 +314,22 @@ process_run() {
 process_all_runs() {
 	local runs_stream="$1"
 	local failed=0
-	local run run_id queued_at age_seconds
+	local parsed run_id queued_at age_seconds
+	# The unit separator is not whitespace, so read keeps empty fields
+	# (a tab would be collapsed and shift the fields)
+	local sep=$'\x1f'
 
-	# Use stdin redirection instead of a pipeline to avoid subshell issues
-	while read -r run; do
-		run_id=$(echo "$run" | jq -r '.id')
-		queued_at=$(echo "$run" | jq -r '.queued_at')
+	# Extract the fields of all the runs with a single jq call instead of two
+	# jq processes per run
+	if ! parsed=$(printf '%s\n' "$runs_stream" | jq -r '[.id, .queued_at] | map(tostring) | join("\u001f")'); then
+		echo "::error::Cannot parse the list of queued runs" >&2
+		return 1
+	fi
+
+	# Read from fd 3 and not from stdin, so that nothing running inside the
+	# loop can consume the remaining runs. No pipeline: it would run the loop
+	# in a subshell and lose the failure counter.
+	while IFS="$sep" read -r -u 3 run_id queued_at; do
 
 		# skip invalid entries
 		if [ -z "$run_id" ] || [ "$run_id" = "null" ] || [ -z "$queued_at" ] || [ "$queued_at" = "null" ]; then
@@ -338,7 +348,7 @@ process_all_runs() {
 		if ! process_run "$run_id" "$age_seconds"; then
 			failed=$((failed + 1))
 		fi
-	done <<<"$runs_stream"
+	done 3<<<"$parsed"
 
 	# Return failure if any cancellations failed
 	if [ "$failed" -gt 0 ]; then
