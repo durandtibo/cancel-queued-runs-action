@@ -12,6 +12,8 @@
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
 #   FORCE_BUFFER_HOURS - Hours after MAX_AGE_HOURS from which force-cancel is
 #                        used as a fallback (non-negative integer, default: 3)
+#   STATUSES - Comma-separated run statuses to consider, among queued, waiting,
+#              pending and requested (default: queued)
 #   WORKFLOW - Only consider the runs of this workflow, given as a workflow
 #              file name (e.g., ci.yaml) or a numeric workflow ID
 #              (default: empty, all the workflows)
@@ -41,6 +43,7 @@ set -euo pipefail
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 FORCE_BUFFER_HOURS="${FORCE_BUFFER_HOURS:-3}"
 WORKFLOW="${WORKFLOW:-}"
+STATUSES="${STATUSES:-queued}"
 DRY_RUN="${DRY_RUN:-false}"
 
 # Counters filled by process_all_runs and reported by main
@@ -127,6 +130,9 @@ log_status() {
 # If WORKFLOW is set, only the runs of that workflow are listed, through the
 # per-workflow endpoint (the filtering is done by GitHub).
 #
+# The API accepts a single status per request, so each status of STATUSES
+# (comma-separated, duplicates ignored) is listed with its own paginated call.
+#
 # Prints one JSON object per line with the fields:
 #   id        - workflow run ID
 #   queued_at - when the run started waiting: run_started_at (which is reset
@@ -140,11 +146,25 @@ fetch_runs() {
 		runs_path="/repos/$REPO/actions/workflows/$WORKFLOW/runs"
 	fi
 
-	gh api \
-		-H "Accept: application/vnd.github+json" \
-		"$runs_path?status=queued&per_page=100" \
-		--paginate \
-		--jq '.workflow_runs[] | {id: .id, queued_at: (.run_started_at // .created_at)}'
+	local run_status
+	local seen=","
+	local -a status_list=()
+	IFS=',' read -r -a status_list <<<"${STATUSES// /}"
+
+	# ${arr[@]+...} avoids an "unbound variable" error for an empty array with
+	# set -u on bash 3.2
+	for run_status in ${status_list[@]+"${status_list[@]}"}; do
+		if [[ "$seen" == *",$run_status,"* ]]; then
+			continue
+		fi
+		seen="$seen$run_status,"
+
+		gh api \
+			-H "Accept: application/vnd.github+json" \
+			"$runs_path?status=$run_status&per_page=100" \
+			--paginate \
+			--jq '.workflow_runs[] | {id: .id, queued_at: (.run_started_at // .created_at)}'
+	done
 }
 
 # ----------------------------
@@ -640,6 +660,38 @@ validate_force_buffer_hours() {
 }
 
 # ----------------------------
+# Validate the list of run statuses
+# Only the statuses of runs that have not started are accepted, so that a
+# typo can never make the action cancel a run that is already in progress.
+# Args:
+#   $1 - Comma-separated statuses (spaces around commas are ignored)
+# Returns:
+#   0 if every status is one of queued, waiting, pending, requested; 1 otherwise
+# ----------------------------
+validate_statuses() {
+	local statuses="${1:-}"
+	local run_status
+	local -a status_list=()
+
+	statuses="${statuses// /}"
+	if [ -z "$statuses" ]; then
+		echo "::error::STATUSES must not be empty (allowed: queued, waiting, pending, requested)" >&2
+		return 1
+	fi
+
+	IFS=',' read -r -a status_list <<<"$statuses"
+	for run_status in "${status_list[@]}"; do
+		case "$run_status" in
+		queued | waiting | pending | requested) ;;
+		*)
+			echo "::error::STATUSES contains an unsupported status '$run_status' (allowed: queued, waiting, pending, requested)" >&2
+			return 1
+			;;
+		esac
+	done
+}
+
+# ----------------------------
 # Validate the workflow filter
 # The value is used to build an API path, so only the characters of a workflow
 # file name or ID are accepted ("." and ".." are rejected). Empty means no
@@ -728,6 +780,7 @@ main() {
 	validate_max_age_hours "$MAX_AGE_HOURS" || return 1
 	validate_repo "${REPO:-}" || return 1
 	validate_force_buffer_hours "$FORCE_BUFFER_HOURS" || return 1
+	validate_statuses "$STATUSES" || return 1
 	validate_workflow "$WORKFLOW" || return 1
 	validate_dry_run "$DRY_RUN" || return 1
 	validate_auth || return 1
@@ -737,6 +790,9 @@ main() {
 		echo "🧪 Dry run enabled: no run will be cancelled."
 	fi
 	echo "🔎 Checking for stale queued workflow runs for ${REPO}..."
+	if [ "${STATUSES// /}" != "queued" ]; then
+		echo "Run statuses considered: ${STATUSES// /}"
+	fi
 	if [ -n "$WORKFLOW" ]; then
 		echo "Only the runs of the workflow ${WORKFLOW} are considered."
 	fi

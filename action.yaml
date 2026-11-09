@@ -40,6 +40,14 @@ inputs:
     default: "3"
     required: false
 
+  statuses:
+    description: >
+      Comma-separated list of the run statuses to consider, among "queued", "waiting",
+      "pending" and "requested" (for example "queued,waiting" to also cancel runs that wait
+      for an approval or a concurrency slot). Runs that are in progress are never cancelled.
+    default: "queued"
+    required: false
+
   workflow:
     description: >
       Only cancel the runs of this workflow, given as a workflow file name (for example
@@ -84,5 +92,6 @@ runs:
         REPO: ${{ inputs.repo }}
         MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
         FORCE_BUFFER_HOURS: ${{ inputs.force_cancel_buffer_hours }}
+        STATUSES: ${{ inputs.statuses }}
         WORKFLOW: ${{ inputs.workflow }}
         DRY_RUN: ${{ inputs.dry_run }}

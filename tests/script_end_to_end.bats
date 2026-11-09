@@ -21,6 +21,16 @@ setup() {
 }
 JSON
 
+  # Runs that wait for an approval (status=waiting)
+  export MOCK_GH_RUNS_WAITING="$MOCK_DIR/runs_waiting.json"
+  cat > "$MOCK_GH_RUNS_WAITING" << 'JSON'
+{
+  "workflow_runs": [
+    {"id": 333, "created_at": "2020-01-01T00:00:00Z", "run_started_at": "2020-01-01T00:00:00Z"}
+  ]
+}
+JSON
+
   # Fake gh: lists runs for GET requests, answers 202 to cancel POSTs
   cat > "$MOCK_DIR/gh" << 'MOCK'
 #!/usr/bin/env bash
@@ -35,19 +45,24 @@ if [[ "$*" == *"-X POST"* ]]; then
   exit 0
 fi
 
+runs_file="$MOCK_GH_RUNS"
+if [[ "$*" == *"status=waiting"* ]]; then
+  runs_file="$MOCK_GH_RUNS_WAITING"
+fi
+
 filter=""
 while [ $# -gt 0 ]; do
   if [ "$1" = "--jq" ]; then filter="$2"; fi
   shift
 done
-jq -c "$filter" "$MOCK_GH_RUNS"
+jq -c "$filter" "$runs_file"
 MOCK
   chmod +x "$MOCK_DIR/gh"
 
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset DRY_RUN WORKFLOW
+  unset DRY_RUN WORKFLOW STATUSES
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -128,4 +143,26 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   [[ "$output" =~ "Only the runs of the workflow ci.yaml are considered." ]]
   grep -q "/repos/myorg/myrepo/actions/workflows/ci.yaml/runs" "$MOCK_GH_CALL_LOG"
   grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
+}
+
+@test "end-to-end: runs waiting for approval are ignored by default" {
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  run grep -q "status=waiting" "$MOCK_GH_CALL_LOG"
+  [ "$status" -ne 0 ]
+  run grep -q "runs/333/" "$MOCK_GH_CALL_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "end-to-end: runs waiting for approval are cancelled when requested" {
+  export STATUSES="queued,waiting"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Run statuses considered: queued,waiting" ]]
+  [[ "$output" =~ "Found 3 queued workflow run(s)." ]]
+  grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
+  grep -q "/repos/myorg/myrepo/actions/runs/333/cancel" "$MOCK_GH_CALL_LOG"
 }
