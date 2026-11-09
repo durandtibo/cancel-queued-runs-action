@@ -9,6 +9,7 @@ This document contains notes, known issues, and development guidance for contrib
 - [Debugging Tips](#debugging-tips)
 - [Writing Bats Tests](#writing-bats-tests)
 - [Checking the Tests with Mutations](#checking-the-tests-with-mutations)
+- [Testing the Wiring of `action.yaml`](#testing-the-wiring-of-actionyaml)
 - [Architecture Notes](#architecture-notes)
 
 ---
@@ -178,6 +179,19 @@ reports:
 
 `make mutation-check` takes about a minute. To run one mutation, give a part of its name:
 `dev/mutation_check.sh process_run`.
+
+---
+
+## Testing the Wiring of `action.yaml`
+
+The bats tests run `scripts/cancel.sh` directly: they cannot see a wrong wiring in `action.yaml` (an
+input that is not passed to the script, an output that is not exposed). The `test-outputs` job of
+`.github/workflows/ci-test-local.yaml` runs the action from the repository code in dry run and
+checks its outputs with `dev/check_dry_run_outputs.sh` (the checks are unit tested in
+`tests/check_dry_run_outputs.bats`). It also checks that an invalid input fails the step. These
+jobs only run in GitHub Actions: to try the check locally, export the six outputs as environment
+variables (`FOUND_COUNT`, `CANCELLED_COUNT`, `SKIPPED_COUNT`, `FAILED_COUNT`, `WOULD_CANCEL_COUNT`,
+`LISTING_TRUNCATED`) and run the script.
 
 ---
 
