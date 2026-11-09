@@ -64,6 +64,7 @@ jobs:
           repo: ${{ github.repository }}
           max_age_hours: 1
           statuses: queued,waiting,pending,requested
+          max_cancellations: 1
           dry_run: true
 
       - name: Check the outputs of the dry run
@@ -73,7 +74,10 @@ jobs:
           SKIPPED_COUNT: ${{ steps.dry-run.outputs.skipped_count }}
           FAILED_COUNT: ${{ steps.dry-run.outputs.failed_count }}
           WOULD_CANCEL_COUNT: ${{ steps.dry-run.outputs.would_cancel_count }}
+          DEFERRED_COUNT: ${{ steps.dry-run.outputs.deferred_count }}
           LISTING_TRUNCATED: ${{ steps.dry-run.outputs.listing_truncated }}
+          # the value of max_cancellations of the step above
+          MAX_CANCELLATIONS: 1
         run: |
           ./dev/check_dry_run_outputs.sh
 

@@ -11,6 +11,7 @@ setup() {
   SKIPPED_COUNT=2
   FAILED_COUNT=1
   WOULD_CANCEL_COUNT=4
+  DEFERRED_COUNT=5
 }
 
 teardown() {
@@ -82,4 +83,18 @@ teardown() {
   run write_outputs 10
 
   grep -qx "listing_truncated=true" "$GITHUB_OUTPUT"
+}
+
+@test "write_outputs writes deferred_count" {
+  write_outputs 10
+
+  grep -qx "deferred_count=5" "$GITHUB_OUTPUT"
+}
+
+@test "write_outputs writes deferred_count=0 after a reset" {
+  reset_counters
+
+  write_outputs 0
+
+  grep -qx "deferred_count=0" "$GITHUB_OUTPUT"
 }

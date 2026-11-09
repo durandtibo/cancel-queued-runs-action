@@ -10,7 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
-  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR MAX_CANCELLATIONS
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -1072,4 +1072,76 @@ use_real_flow() {
   main > /dev/null
 
   [ "$(wc -l < "$MOCK_DIR/make_temp_file.log" | tr -d ' ')" -eq 1 ]
+}
+
+# --------------------------------------------------------
+# Limit on the number of cancellations
+# --------------------------------------------------------
+
+@test "main fails when MAX_CANCELLATIONS is invalid" {
+  export MAX_CANCELLATIONS="-1"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "MAX_CANCELLATIONS must be a non-negative integer (got '-1')" ]] || false
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main fails when MAX_CANCELLATIONS has a leading zero" {
+  export MAX_CANCELLATIONS="05"
+
+  run main
+
+  [ "$status" -eq 1 ]
+}
+
+@test "main accepts a MAX_CANCELLATIONS value of 0" {
+  export MAX_CANCELLATIONS=0
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
+
+@test "main accepts a MAX_CANCELLATIONS value of 10" {
+  export MAX_CANCELLATIONS=10
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
+
+@test "main announces the limit on the number of cancellations" {
+  export MAX_CANCELLATIONS=5
+
+  run main
+
+  [[ "$output" =~ "At most 5 run(s) will be cancelled." ]] || false
+}
+
+@test "main does not mention the limit by default" {
+  run main
+
+  [[ ! "$output" =~ "At most" ]] || false
+}
+
+@test "main does not fail when runs are left alone because of the limit" {
+  export MAX_CANCELLATIONS=1
+  process_all_runs() { DEFERRED_COUNT=4; return 0; }
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
+
+@test "main writes deferred_count in the outputs" {
+  export MAX_CANCELLATIONS=1
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  : > "$GITHUB_OUTPUT"
+  process_all_runs() { DEFERRED_COUNT=4; return 0; }
+
+  main > /dev/null
+
+  grep -qx "deferred_count=4" "$GITHUB_OUTPUT"
 }

@@ -27,6 +27,14 @@
 #                          under the secondary rate limits of GitHub when many
 #                          runs are cancelled. Non-negative integer, 0 means no
 #                          delay (default: 0)
+#   MAX_CANCELLATIONS - Maximum number of runs cancelled by one execution, as a
+#                       safety valve against a misconfiguration (for example a
+#                       too small MAX_AGE_HOURS). The runs that are old enough
+#                       but come after the limit are left alone and counted in
+#                       the deferred_count output. In a dry run, the runs that
+#                       would be cancelled count. Runs that are skipped or fail
+#                       do not count. Non-negative integer, 0 means no limit
+#                       (default: 0)
 #
 # Internal tuning (not action inputs, integers in seconds/counts, validated by
 # validate_tuning_variables):
@@ -46,8 +54,8 @@
 #
 # GitHub Actions integration (optional, ignored when the variables are unset):
 #   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
-#                   skipped_count, failed_count, would_cancel_count and
-#                   listing_truncated are written
+#                   skipped_count, failed_count, would_cancel_count,
+#                   deferred_count and listing_truncated are written
 #   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
 #   GITHUB_SERVER_URL - Base URL of the links to the runs in the summary
 #                       (default: https://github.com)
@@ -67,6 +75,7 @@ WORKFLOW="${WORKFLOW:-}"
 STATUSES="${STATUSES:-queued}"
 DRY_RUN="${DRY_RUN:-false}"
 CANCEL_DELAY_SECONDS="${CANCEL_DELAY_SECONDS:-0}"
+MAX_CANCELLATIONS="${MAX_CANCELLATIONS:-0}"
 FAIL_ON_ERROR="${FAIL_ON_ERROR:-true}"
 
 # Counters filled by process_all_runs and reported by main
@@ -74,6 +83,9 @@ CANCELLED_COUNT=0
 SKIPPED_COUNT=0
 FAILED_COUNT=0
 WOULD_CANCEL_COUNT=0
+# Runs that are old enough to be cancelled but were left alone because
+# MAX_CANCELLATIONS runs were already cancelled
+DEFERRED_COUNT=0
 
 # The runs that were acted on, one "id|age|outcome" per line, listed in the
 # job summary. Filled by record_run, reset by reset_counters.
@@ -796,6 +808,37 @@ process_run() {
 }
 
 # ----------------------------
+# Tell whether a run is old enough to be cancelled
+# Same threshold as process_run: the age must exceed MAX_AGE_HOURS.
+# Args:
+#   $1 - Age in seconds
+# Globals:
+#   MAX_AGE_HOURS - Age above which a run is cancelled
+# Returns:
+#   0 if the age exceeds MAX_AGE_HOURS, 1 otherwise
+# ----------------------------
+is_old_enough() {
+	local age_seconds="$1"
+
+	[ "$age_seconds" -gt $((MAX_AGE_HOURS * 3600)) ]
+}
+
+# ----------------------------
+# Tell whether MAX_CANCELLATIONS runs were already cancelled
+# The runs that were cancelled and, in a dry run, the runs that would be
+# cancelled are counted. The skipped and failed runs are not: they were not
+# cancelled. Nothing is ever limited when MAX_CANCELLATIONS is 0.
+# Globals:
+#   MAX_CANCELLATIONS, CANCELLED_COUNT, WOULD_CANCEL_COUNT
+# Returns:
+#   0 if the limit is reached, 1 otherwise
+# ----------------------------
+cancellation_limit_reached() {
+	[ "$MAX_CANCELLATIONS" -gt 0 ] &&
+		[ $((CANCELLED_COUNT + WOULD_CANCEL_COUNT)) -ge "$MAX_CANCELLATIONS" ]
+}
+
+# ----------------------------
 # Reset the counters reported by main, the requests already sent and the runs
 # recorded for the summary
 # ----------------------------
@@ -804,6 +847,7 @@ reset_counters() {
 	SKIPPED_COUNT=0
 	FAILED_COUNT=0
 	WOULD_CANCEL_COUNT=0
+	DEFERRED_COUNT=0
 	REQUEST_SENT=false
 	RUN_RECORDS=""
 }
@@ -824,9 +868,16 @@ record_run() {
 
 # ----------------------------
 # Process all workflow runs
-# Updates the counters CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT and
-# WOULD_CANCEL_COUNT (reset at the start of the call), and records the runs
-# that were cancelled, skipped, failed or would be cancelled in RUN_RECORDS.
+# Updates the counters CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT,
+# WOULD_CANCEL_COUNT and DEFERRED_COUNT (reset at the start of the call), and
+# records the runs that were cancelled, skipped, failed or would be cancelled in
+# RUN_RECORDS.
+#
+# Once MAX_CANCELLATIONS runs are cancelled (see cancellation_limit_reached),
+# the next runs that are old enough are not touched and are counted in
+# DEFERRED_COUNT, with a warning at the end. The runs are processed in the order
+# they are given. The runs that are not old enough are still looked at: they
+# are not affected by the limit.
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
@@ -880,6 +931,12 @@ process_all_runs() {
 		fi
 		echo "Run $run_id is $(format_age "$age_seconds") old."
 
+		# a run that is old enough is left alone once the limit is reached
+		if cancellation_limit_reached && is_old_enough "$age_seconds"; then
+			DEFERRED_COUNT=$((DEFERRED_COUNT + 1))
+			continue
+		fi
+
 		# process the run and count what happened
 		PROCESS_RUN_OUTCOME=""
 		if process_run "$run_id" "$age_seconds"; then
@@ -899,6 +956,10 @@ process_all_runs() {
 			record_run "$run_id" "$(format_age "$age_seconds")" "failed"
 		fi
 	done 3<<<"$parsed"
+
+	if [ "$DEFERRED_COUNT" -gt 0 ]; then
+		echo "::warning::MAX_CANCELLATIONS ($MAX_CANCELLATIONS) reached: $DEFERRED_COUNT more run(s) are old enough to be cancelled but were left alone. Run the action again to process them, or raise max_cancellations."
+	fi
 
 	# Return failure if any cancellations failed
 	if [ "$FAILED_COUNT" -gt 0 ]; then
@@ -927,6 +988,7 @@ write_outputs() {
 		echo "skipped_count=$SKIPPED_COUNT"
 		echo "failed_count=$FAILED_COUNT"
 		echo "would_cancel_count=$WOULD_CANCEL_COUNT"
+		echo "deferred_count=$DEFERRED_COUNT"
 		echo "listing_truncated=$LISTING_TRUNCATED"
 	} >>"$GITHUB_OUTPUT"
 }
@@ -1027,10 +1089,16 @@ write_summary() {
 		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
 		echo "| Skipped (no longer cancellable) | $SKIPPED_COUNT |"
 		echo "| Failed | $FAILED_COUNT |"
+		echo "| Left alone (\`max_cancellations\` reached) | $DEFERRED_COUNT |"
 		if [ "$LISTING_TRUNCATED" = "true" ]; then
 			echo
 			echo "> [!WARNING]"
 			echo "> The listing reached the maximum that GitHub returns for a query (${RUNS_LISTING_LIMIT} runs): older runs may be missing. Run the action again to process them."
+		fi
+		if [ "$DEFERRED_COUNT" -gt 0 ]; then
+			echo
+			echo "> [!WARNING]"
+			echo "> \`max_cancellations\` (${MAX_CANCELLATIONS}) was reached: ${DEFERRED_COUNT} more run(s) are old enough to be cancelled but were left alone. Run the action again to process them."
 		fi
 		write_summary_runs
 	} >>"$GITHUB_STEP_SUMMARY"
@@ -1172,6 +1240,22 @@ validate_cancel_delay_seconds() {
 }
 
 # ----------------------------
+# Validate the maximum number of cancellations
+# Args:
+#   $1 - Maximum number of runs to cancel (0 means no limit)
+# Returns:
+#   0 if it is a non-negative integer without leading zero, 1 otherwise
+# ----------------------------
+validate_max_cancellations() {
+	local max_cancellations="${1:-}"
+
+	if ! [[ "$max_cancellations" =~ ^(0|[1-9][0-9]*)$ ]]; then
+		echo "::error::MAX_CANCELLATIONS must be a non-negative integer (got '$max_cancellations')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
 # Validate the internal tuning variables
 # They are not action inputs but they can be set in the environment, and they
 # end up in arithmetic expressions, where a non-integer value would fail with a
@@ -1291,6 +1375,7 @@ main() {
 	validate_dry_run "$DRY_RUN" || return 1
 	validate_fail_on_error "$FAIL_ON_ERROR" || return 1
 	validate_cancel_delay_seconds "$CANCEL_DELAY_SECONDS" || return 1
+	validate_max_cancellations "$MAX_CANCELLATIONS" || return 1
 	validate_tuning_variables || return 1
 	validate_auth || return 1
 
@@ -1300,6 +1385,9 @@ main() {
 	fi
 	if [ "$CANCEL_DELAY_SECONDS" -gt 0 ]; then
 		echo "Waiting ${CANCEL_DELAY_SECONDS}s between two cancel requests."
+	fi
+	if [ "$MAX_CANCELLATIONS" -gt 0 ]; then
+		echo "At most ${MAX_CANCELLATIONS} run(s) will be cancelled."
 	fi
 	echo "🔎 Checking for stale workflow runs for ${REPO}..."
 	if [ "${STATUSES// /}" != "queued" ]; then

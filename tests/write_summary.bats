@@ -14,6 +14,8 @@ setup() {
   SKIPPED_COUNT=2
   FAILED_COUNT=1
   WOULD_CANCEL_COUNT=4
+  DEFERRED_COUNT=0
+  MAX_CANCELLATIONS=0
 }
 
 teardown() {
@@ -180,5 +182,49 @@ teardown() {
 
   warning_line=$(grep -n 'WARNING' "$GITHUB_STEP_SUMMARY" | head -n1 | cut -d: -f1)
   runs_line=$(grep -n '#### Runs' "$GITHUB_STEP_SUMMARY" | head -n1 | cut -d: -f1)
+  [ "$warning_line" -lt "$runs_line" ]
+}
+
+@test "write_summary shows the number of runs left alone because of the limit" {
+  DEFERRED_COUNT=7
+
+  run write_summary 10
+
+  grep -q '^| Left alone (`max_cancellations` reached) | 7 |$' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary shows 0 runs left alone by default" {
+  run write_summary 10
+
+  grep -q '^| Left alone (`max_cancellations` reached) | 0 |$' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary warns when runs were left alone because of the limit" {
+  MAX_CANCELLATIONS=3
+  DEFERRED_COUNT=7
+
+  run write_summary 10
+
+  grep -qxF '> [!WARNING]' "$GITHUB_STEP_SUMMARY"
+  grep -q 'max_cancellations` (3) was reached: 7 more run(s)' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary has no limit warning when no run was left alone" {
+  MAX_CANCELLATIONS=3
+
+  run write_summary 10
+
+  ! grep -q 'was reached' "$GITHUB_STEP_SUMMARY" || false
+}
+
+@test "write_summary puts the limit warning before the list of runs" {
+  MAX_CANCELLATIONS=3
+  DEFERRED_COUNT=7
+  record_run 123 "30h00m" cancelled
+
+  run write_summary 10
+
+  warning_line=$(grep -n 'was reached' "$GITHUB_STEP_SUMMARY" | cut -d: -f1)
+  runs_line=$(grep -n '^#### Runs' "$GITHUB_STEP_SUMMARY" | cut -d: -f1)
   [ "$warning_line" -lt "$runs_line" ]
 }

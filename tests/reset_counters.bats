@@ -9,9 +9,11 @@ setup() {
   SKIPPED_COUNT=4
   FAILED_COUNT=3
   WOULD_CANCEL_COUNT=2
+  DEFERRED_COUNT=1
 
   reset_counters
 
+  [ "$DEFERRED_COUNT" -eq 0 ]
   [ "$CANCELLED_COUNT" -eq 0 ]
   [ "$SKIPPED_COUNT" -eq 0 ]
   [ "$FAILED_COUNT" -eq 0 ]
@@ -19,6 +21,7 @@ setup() {
 }
 
 @test "the counters are 0 when the script is sourced" {
+  [ "$DEFERRED_COUNT" -eq 0 ]
   [ "$CANCELLED_COUNT" -eq 0 ]
   [ "$SKIPPED_COUNT" -eq 0 ]
   [ "$FAILED_COUNT" -eq 0 ]

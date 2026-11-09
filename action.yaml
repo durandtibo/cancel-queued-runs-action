@@ -64,6 +64,16 @@ inputs:
     default: "0"
     required: false
 
+  max_cancellations:
+    description: >
+      Maximum number of runs cancelled by one execution, as a safety valve against a
+      misconfiguration (for example a too small max_age_hours). The other runs that are old
+      enough are left alone, counted in the deferred_count output, and are processed by the next
+      execution. In a dry run, the runs that would be cancelled count. Runs that are skipped or
+      that fail do not count. Must be a non-negative integer; 0 means no limit.
+    default: "0"
+    required: false
+
   fail_on_error:
     description: >
       If "true" (the default), the step fails when a run could not be cancelled. If "false", it
@@ -100,6 +110,11 @@ outputs:
   would_cancel_count:
     description: Number of runs that would be cancelled (only set in dry run, otherwise 0).
     value: ${{ steps.cancel.outputs.would_cancel_count }}
+  deferred_count:
+    description: >
+      Number of runs that were old enough to be cancelled but were left alone because the
+      max_cancellations limit was reached (0 when there is no limit).
+    value: ${{ steps.cancel.outputs.deferred_count }}
   listing_truncated:
     description: >
       "true" if GitHub listed as many runs as it can return for a status (1000), so that older
@@ -122,5 +137,6 @@ runs:
         STATUSES: ${{ inputs.statuses }}
         WORKFLOW: ${{ inputs.workflow }}
         CANCEL_DELAY_SECONDS: ${{ inputs.cancel_delay_seconds }}
+        MAX_CANCELLATIONS: ${{ inputs.max_cancellations }}
         FAIL_ON_ERROR: ${{ inputs.fail_on_error }}
         DRY_RUN: ${{ inputs.dry_run }}
