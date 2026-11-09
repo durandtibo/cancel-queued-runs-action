@@ -655,6 +655,12 @@ process_all_runs() {
 	# jq processes per run
 	if ! parsed=$(printf '%s\n' "$runs_stream" | jq -r '[.id, .queued_at] | map(tostring) | join("\u001f")'); then
 		echo "::error::Cannot parse the list of runs" >&2
+		# None of the runs could be processed: count them (at least one) so
+		# that failed_count and the FAIL_ON_ERROR handling of the caller see it
+		FAILED_COUNT=$(printf '%s\n' "$runs_stream" | grep -c . || true)
+		if [ "$FAILED_COUNT" -lt 1 ]; then
+			FAILED_COUNT=1
+		fi
 		return 1
 	fi
 
