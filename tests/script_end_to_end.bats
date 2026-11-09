@@ -40,7 +40,17 @@ if [ "$1" = "auth" ]; then
   exit 0
 fi
 
+# Record what TMPDIR contains while the script is running
+if [ -n "${MOCK_GH_TMPDIR_LOG:-}" ]; then
+  ls -A "$TMPDIR" >> "$MOCK_GH_TMPDIR_LOG"
+fi
+
 if [[ "$*" == *"-X POST"* ]]; then
+  # Hang like a slow API: tell that the request started, then wait
+  if [ -n "${MOCK_GH_POST_HANG:-}" ]; then
+    touch "$MOCK_GH_POST_HANG"
+    sleep 3
+  fi
   # Replay a recorded response (CRLF line endings), failing like gh does for
   # an HTTP error: response on stdout, message on stderr, exit code 1
   if [ -n "${MOCK_GH_POST_FIXTURE:-}" ]; then
@@ -80,7 +90,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT
+  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -537,4 +547,79 @@ JSON
     "api -X POST -H x /repos/o/r/actions/runs/5/cancel -i" > "$MOCK_GH_CALL_LOG"
 
   [ "$(force_cancel_without_cancel)" = "5" ]
+}
+
+# --------------------------------------------------------
+# Temporary files
+# --------------------------------------------------------
+
+@test "end-to-end: leaves nothing in TMPDIR after a successful execution" {
+  export TMPDIR="$MOCK_DIR/tmp"
+  mkdir -p "$TMPDIR"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$TMPDIR")" ]
+}
+
+@test "end-to-end: leaves nothing in TMPDIR after a failed execution" {
+  export TMPDIR="$MOCK_DIR/tmp"
+  mkdir -p "$TMPDIR"
+  export MOCK_GH_POST_CODE=500
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [ -z "$(ls -A "$TMPDIR")" ]
+}
+
+@test "end-to-end: leaves nothing in TMPDIR after an invalid input" {
+  export TMPDIR="$MOCK_DIR/tmp"
+  mkdir -p "$TMPDIR"
+  export REPO="not-valid"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [ -z "$(ls -A "$TMPDIR")" ]
+}
+
+@test "end-to-end: keeps all the temporary files in a single directory of TMPDIR" {
+  export TMPDIR="$MOCK_DIR/tmp"
+  mkdir -p "$TMPDIR"
+  export MOCK_GH_TMPDIR_LOG="$MOCK_DIR/tmpdir.log"
+  : > "$MOCK_GH_TMPDIR_LOG"
+
+  run "$SCRIPT"
+
+  [ "$status" -eq 0 ]
+  # every call of gh saw the same single entry: the work directory
+  [ -s "$MOCK_GH_TMPDIR_LOG" ]
+  [ "$(sort -u "$MOCK_GH_TMPDIR_LOG" | wc -l | tr -d ' ')" -eq 1 ]
+  [[ "$(head -n1 "$MOCK_GH_TMPDIR_LOG")" == cancel-queued-runs.* ]] || false
+}
+
+@test "end-to-end: removes its temporary files when it receives SIGTERM during a request" {
+  export TMPDIR="$MOCK_DIR/tmp"
+  mkdir -p "$TMPDIR"
+  export MOCK_GH_POST_HANG="$MOCK_DIR/hanging"
+
+  # fd 3 is closed so that the request left running does not block bats
+  "$SCRIPT" > /dev/null 2>&1 3>&- &
+  pid=$!
+  for _ in $(seq 1 100); do
+    [ -e "$MOCK_GH_POST_HANG" ] && break
+    sleep 0.1
+  done
+  # the request is in flight and the temporary files exist
+  [ -e "$MOCK_GH_POST_HANG" ]
+  [ -n "$(ls -A "$TMPDIR")" ]
+
+  kill -TERM "$pid"
+  status=0
+  wait "$pid" || status=$?
+
+  [ "$status" -eq 143 ]
+  [ -z "$(ls -A "$TMPDIR")" ]
 }

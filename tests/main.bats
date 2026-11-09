@@ -1062,3 +1062,14 @@ use_real_flow() {
   grep -qx "cancelled_count=1" "$GITHUB_OUTPUT"
   grep -qx "failed_count=1" "$GITHUB_OUTPUT"
 }
+
+@test "main creates its temporary file with make_temp_file" {
+  make_temp_file() {
+    echo called >> "$MOCK_DIR/make_temp_file.log"
+    mktemp "$MOCK_DIR/runs.XXXXXX"
+  }
+
+  main > /dev/null
+
+  [ "$(wc -l < "$MOCK_DIR/make_temp_file.log" | tr -d ' ')" -eq 1 ]
+}

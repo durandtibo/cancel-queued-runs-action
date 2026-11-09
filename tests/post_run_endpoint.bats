@@ -215,3 +215,22 @@ fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
   # the warning (stderr) comes first in $output, then the response
   echo "$output" | grep -q "HTTP/2.0 403 Forbidden"
 }
+
+@test "post_run_endpoint creates its temporary file with make_temp_file" {
+  make_temp_file() {
+    echo called >> "$MOCK_DIR/make_temp_file.log"
+    mktemp "$MOCK_DIR/stderr.XXXXXX"
+  }
+
+  post_run_endpoint 12345 cancel > /dev/null
+
+  [ "$(wc -l < "$MOCK_DIR/make_temp_file.log" | tr -d ' ')" -eq 1 ]
+}
+
+@test "post_run_endpoint removes the temporary file made by make_temp_file" {
+  make_temp_file() { mktemp "$MOCK_DIR/stderr.XXXXXX"; }
+
+  post_run_endpoint 12345 cancel > /dev/null
+
+  [ -z "$(ls "$MOCK_DIR" | grep '^stderr\.' || true)" ]
+}

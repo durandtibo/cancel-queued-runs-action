@@ -235,3 +235,15 @@ The script handles date parsing differences between:
 - **macOS**: BSD `date` command with `-j -f` flags
 
 The `to_unix_ts()` function automatically detects the platform and uses the appropriate syntax.
+
+### Temporary Files
+
+The script runs with a single work directory, created by the entry point at the bottom of
+`scripts/cancel.sh` (`create_work_dir`) and removed by an `EXIT` trap (`cleanup_work_dir`). All the
+temporary files are created in it with `make_temp_file`, so nothing is left in `TMPDIR` when the
+step ends with a failure or is stopped by a signal (for example `SIGTERM` when a job is cancelled
+or times out).
+
+The trap is set by the entry point, not by `main`: `main` is called by the tests, where an `EXIT`
+trap would replace the one of bats. When `WORK_DIR` is empty (the functions sourced by a test),
+`make_temp_file` falls back to `TMPDIR` and the function that created the file removes it.

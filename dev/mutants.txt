@@ -56,3 +56,12 @@ validate_auth: credentials never found@@validate_auth.bats@@s/-n "\$\{GH_TOKEN:-
 validate_tuning_variables: zero accepted for positive integers@@validate_tuning_variables.bats@@s/pattern='\^\[1-9\]\[0-9\]\*\$'/pattern='^(0|[1-9][0-9]*)$'/
 process_all_runs: current time not shared by the runs@@process_all_runs.bats@@s/compute_age_seconds "\$queued_at" "\$now"/compute_age_seconds "$queued_at"/
 to_unix_ts: GNU date not in UTC@@to_unix_ts.bats@@s/date -u -d "\$ts" \+%s/date -d "$ts" +%s/
+make_temp_file: WORK_DIR ignored@@make_temp_file.bats@@s/mktemp "\$\{WORK_DIR:-\$\{TMPDIR:-\/tmp\}\}\//mktemp "${TMPDIR:-\/tmp}\//
+make_temp_file: no fallback on /tmp@@make_temp_file.bats@@s/\$\{WORK_DIR:-\$\{TMPDIR:-\/tmp\}\}/${WORK_DIR:-${TMPDIR}}/
+cleanup_work_dir: directory kept@@cleanup_work_dir.bats@@s/^(\t+)rm -rf "\$WORK_DIR"$/\1:/
+cleanup_work_dir: WORK_DIR not reset@@cleanup_work_dir.bats@@s/^\tWORK_DIR=""$/\t:/
+cleanup_work_dir: removes a path that is not a directory@@cleanup_work_dir.bats@@s/\[ -n "\$WORK_DIR" \] && \[ -d "\$WORK_DIR" \]/[ -n "$WORK_DIR" ] \&\& [ -e "$WORK_DIR" ]/
+create_work_dir: directory made in the current directory@@create_work_dir.bats@@s/mktemp -d "\$\{TMPDIR:-\/tmp\}\/cancel-queued-runs/mktemp -d "cancel-queued-runs/
+main: temporary file not made by make_temp_file@@main.bats@@s/runs_file=\$\(make_temp_file\)/runs_file=$(mktemp "${TMPDIR:-\/tmp}\/cancel-queued-runs.XXXXXX")/
+post_run_endpoint: temporary file not made by make_temp_file@@post_run_endpoint.bats@@s/stderr_file=\$\(make_temp_file\)/stderr_file=$(mktemp "${TMPDIR:-\/tmp}\/cancel-queued-runs.XXXXXX")/
+entry point: work directory not removed on exit@@script_end_to_end.bats@@s/^\ttrap cleanup_work_dir EXIT$/\t:/
