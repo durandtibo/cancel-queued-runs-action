@@ -97,11 +97,12 @@ jobs:
 | `event`                     | ❌ No    | `""` (all events)          | Only cancel the runs triggered by this event (`push`, `pull_request`, `schedule`, ...)  |
 | `cancel_delay_seconds`      | ❌ No    | `0`                        | Seconds to wait between two cancel requests (`0` means no delay)                        |
 | `max_cancellations`         | ❌ No    | `0`                        | Maximum number of runs cancelled by one execution (`0` means no limit)                  |
+| `max_runs`                  | ❌ No    | `0`                        | Number of most recent runs to keep, the older ones are cancelled (`0` means no limit)   |
 | `fail_on_error`             | ❌ No    | `true`                     | If `false`, a run that could not be cancelled does not fail the step                    |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
 > **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `branch`, `event`,
-> `cancel_delay_seconds`, `max_cancellations`, `fail_on_error`, `dry_run` and all the
+> `cancel_delay_seconds`, `max_cancellations`, `max_runs`, `fail_on_error`, `dry_run` and all the
 > [outputs](#-outputs) were added after `v1.9`. Use a later
 > release (or a commit of `main`) to get them; the examples below that use them need such a
 > release.
@@ -262,6 +263,21 @@ default) means no limit.
     max_age_hours: 24
     max_cancellations: 50
 - run: echo "${{ steps.cancel.outputs.deferred_count }} run(s) left for the next execution"
+```
+
+### Example: keep only the most recent runs
+
+`max_runs` bounds the size of the queue: only the `max_runs` most recent runs (sorted by queue
+time) are kept, and the older ones are cancelled even if they are not older than `max_age_hours`.
+`max_age_hours` still applies to the kept runs. The limit is applied to the runs selected by
+`statuses`, `workflow`, `branch` and `event`, and the runs cancelled because of it count towards
+`max_cancellations`. `0` (the default) means no limit.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  with:
+    max_age_hours: 24
+    max_runs: 100
 ```
 
 ### Example: do not fail the job when a run cannot be cancelled

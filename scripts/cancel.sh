@@ -42,6 +42,11 @@
 #                       would be cancelled count. Runs that are skipped or fail
 #                       do not count. Non-negative integer, 0 means no limit
 #                       (default: 0)
+#   MAX_RUNS - Maximum number of runs to keep: only the MAX_RUNS most recent
+#              runs (by queue time) are kept, and the older ones are cancelled
+#              whatever their age. The max_age_hours threshold still applies to
+#              the kept runs. Non-negative integer, 0 means no limit
+#              (default: 0)
 #
 # Internal tuning (not action inputs, integers in seconds/counts, validated by
 # validate_tuning_variables):
@@ -86,6 +91,7 @@ STATUSES="${STATUSES:-queued}"
 DRY_RUN="${DRY_RUN:-false}"
 CANCEL_DELAY_SECONDS="${CANCEL_DELAY_SECONDS:-0}"
 MAX_CANCELLATIONS="${MAX_CANCELLATIONS:-0}"
+MAX_RUNS="${MAX_RUNS:-0}"
 FAIL_ON_ERROR="${FAIL_ON_ERROR:-true}"
 
 # Counters filled by process_all_runs and reported by main
@@ -753,6 +759,8 @@ throttle_requests() {
 # Args:
 #   $1 - Run ID
 #   $2 - Age in seconds
+#   $3 - Optional, "true" if the run exceeds the MAX_RUNS limit: it is then
+#        cancelled even if it is not older than MAX_AGE_HOURS (default: false)
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
 #   FORCE_BUFFER_HOURS - Extra hours before force-cancel is used
@@ -765,6 +773,7 @@ throttle_requests() {
 process_run() {
 	local run_id="$1"
 	local age_seconds="$2"
+	local over_limit="${3:-false}"
 	local max_age_seconds=$((MAX_AGE_HOURS * 3600))
 	local force_age_seconds=$(((MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600))
 	local age
@@ -799,7 +808,7 @@ process_run() {
 			throttle_requests
 			response=$(force_cancel_run "$run_id")
 		fi
-	elif [ "$age_seconds" -gt "$max_age_seconds" ]; then
+	elif [ "$age_seconds" -gt "$max_age_seconds" ] || [ "$over_limit" = "true" ]; then
 		if [ "$DRY_RUN" = "true" ]; then
 			echo "🧪 [dry-run] Would cancel run $run_id (age=$age)"
 			PROCESS_RUN_OUTCOME="would-cancel"
@@ -847,6 +856,29 @@ is_old_enough() {
 	local age_seconds="$1"
 
 	[ "$age_seconds" -gt $((MAX_AGE_HOURS * 3600)) ]
+}
+
+# ----------------------------
+# Print the IDs of the runs that exceed the MAX_RUNS limit
+# The runs are sorted from the most recent to the oldest queue time (ties keep
+# the given order); the first MAX_RUNS are kept and the IDs of the others are
+# printed, one per line. Nothing is printed when MAX_RUNS is 0.
+# Args:
+#   $1 - Runs, one JSON object per line with "id" and "queued_at" fields
+# Globals:
+#   MAX_RUNS
+# Returns:
+#   0 on success, jq's exit code if the input is not valid JSON
+# ----------------------------
+select_excess_run_ids() {
+	local runs="$1"
+
+	if [ "$MAX_RUNS" -eq 0 ]; then
+		return 0
+	fi
+	printf '%s\n' "$runs" | jq -r -s --argjson keep "$MAX_RUNS" \
+		'map(select(.id != null and .queued_at != null))
+		| sort_by(.queued_at) | reverse | .[$keep:][] | .id | tostring'
 }
 
 # ----------------------------
@@ -912,7 +944,7 @@ record_run() {
 # ----------------------------
 process_all_runs() {
 	local runs_stream="$1"
-	local parsed run_id queued_at age_seconds now
+	local parsed run_id queued_at age_seconds now excess_ids over_limit
 	# The unit separator is not whitespace, so read keeps empty fields
 	# (a tab would be collapsed and shift the fields)
 	local sep=$'\x1f'
@@ -925,6 +957,13 @@ process_all_runs() {
 	# read it. An age computed from it is never larger than the real one, so a
 	# run that is younger than the threshold is never cancelled.
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+	# IDs of the runs older than the MAX_RUNS most recent ones
+	if ! excess_ids=$(select_excess_run_ids "$runs_stream"); then
+		echo "::error::Cannot parse the list of runs" >&2
+		FAILED_COUNT=1
+		return 1
+	fi
 
 	# Extract the fields of all the runs with a single jq call instead of two
 	# jq processes per run
@@ -957,15 +996,21 @@ process_all_runs() {
 		fi
 		echo "Run $run_id is $(format_age "$age_seconds") old."
 
+		over_limit=false
+		if [ -n "$excess_ids" ] && printf '%s\n' "$excess_ids" | grep -qxF "$run_id"; then
+			over_limit=true
+			echo "Run $run_id exceeds the limit of $MAX_RUNS run(s) to keep."
+		fi
+
 		# a run that is old enough is left alone once the limit is reached
-		if cancellation_limit_reached && is_old_enough "$age_seconds"; then
+		if cancellation_limit_reached && { is_old_enough "$age_seconds" || [ "$over_limit" = "true" ]; }; then
 			DEFERRED_COUNT=$((DEFERRED_COUNT + 1))
 			continue
 		fi
 
 		# process the run and count what happened
 		PROCESS_RUN_OUTCOME=""
-		if process_run "$run_id" "$age_seconds"; then
+		if process_run "$run_id" "$age_seconds" "$over_limit"; then
 			case "$PROCESS_RUN_OUTCOME" in
 			cancelled) CANCELLED_COUNT=$((CANCELLED_COUNT + 1)) ;;
 			skipped) SKIPPED_COUNT=$((SKIPPED_COUNT + 1)) ;;
@@ -1362,6 +1407,22 @@ validate_max_cancellations() {
 }
 
 # ----------------------------
+# Validate the maximum number of runs to keep
+# Args:
+#   $1 - Maximum number of runs to keep (0 means no limit)
+# Returns:
+#   0 if it is a non-negative integer without leading zero, 1 otherwise
+# ----------------------------
+validate_max_runs() {
+	local max_runs="${1:-}"
+
+	if ! [[ "$max_runs" =~ ^(0|[1-9][0-9]*)$ ]]; then
+		echo "::error::MAX_RUNS must be a non-negative integer (got '$max_runs')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
 # Validate the internal tuning variables
 # They are not action inputs but they can be set in the environment, and they
 # end up in arithmetic expressions, where a non-integer value would fail with a
@@ -1484,6 +1545,7 @@ main() {
 	validate_fail_on_error "$FAIL_ON_ERROR" || return 1
 	validate_cancel_delay_seconds "$CANCEL_DELAY_SECONDS" || return 1
 	validate_max_cancellations "$MAX_CANCELLATIONS" || return 1
+	validate_max_runs "$MAX_RUNS" || return 1
 	validate_tuning_variables || return 1
 	validate_auth || return 1
 
@@ -1496,6 +1558,9 @@ main() {
 	fi
 	if [ "$MAX_CANCELLATIONS" -gt 0 ]; then
 		echo "At most ${MAX_CANCELLATIONS} run(s) will be cancelled."
+	fi
+	if [ "$MAX_RUNS" -gt 0 ]; then
+		echo "Only the ${MAX_RUNS} most recent run(s) are kept."
 	fi
 	echo "🔎 Checking for stale workflow runs for ${REPO}..."
 	if [ "${STATUSES// /}" != "queued" ]; then

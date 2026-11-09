@@ -111,3 +111,6 @@ validate_event: uppercase accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$
 validate_event: dash accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z][a-z_-]*$/
 validate_event: anything accepted after the first letter@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z]/
 write_summary: branch not shown@@write_summary.bats@@s/echo "Branch: /echo "Ignored: /
+process_run: over-limit run ignored@@process_run.bats@@s/ \|\| \[ "\$over_limit" = "true" \]; then/; then/
+select_excess_run_ids: keeps the oldest runs instead of the newest@@select_excess_run_ids.bats@@s/sort_by\(\.queued_at\) \| reverse/sort_by(.queued_at)/
+select_excess_run_ids: keeps one run too few@@select_excess_run_ids.bats@@s/\.\[\$keep:\]\[\]/.[$keep + 1:][]/

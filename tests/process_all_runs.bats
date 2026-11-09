@@ -778,3 +778,50 @@ five_old_runs() {
   [ "$CANCELLED_COUNT" -eq 2 ]
   [ "$DEFERRED_COUNT" -eq 3 ]
 }
+
+@test "process_all_runs flags the runs beyond MAX_RUNS as over the limit" {
+  process_run() {
+    echo "process_run $1 $2 $3" >> "$LOG_FILE"
+  }
+  MAX_RUNS=1
+  runs='{"id":1,"queued_at":"2026-01-01T01:00:00Z"}
+{"id":2,"queued_at":"2026-01-01T03:00:00Z"}'
+
+  run process_all_runs "$runs"
+
+  [ "$status" -eq 0 ]
+  grep -q "process_run 1 18000 true" "$LOG_FILE"
+  grep -q "process_run 2 18000 false" "$LOG_FILE"
+}
+
+@test "process_all_runs flags no run as over the limit when MAX_RUNS is 0" {
+  process_run() {
+    echo "process_run $1 $2 $3" >> "$LOG_FILE"
+  }
+  MAX_RUNS=0
+  runs='{"id":1,"queued_at":"2026-01-01T01:00:00Z"}
+{"id":2,"queued_at":"2026-01-01T03:00:00Z"}'
+
+  run process_all_runs "$runs"
+
+  [ "$status" -eq 0 ]
+  if grep -q " true" "$LOG_FILE"; then false; fi
+}
+
+@test "process_all_runs defers a run over the limit once MAX_CANCELLATIONS is reached" {
+  process_run() {
+    echo "process_run $1" >> "$LOG_FILE"
+    PROCESS_RUN_OUTCOME="noop"
+    if [ "$3" = "true" ]; then PROCESS_RUN_OUTCOME="cancelled"; fi
+  }
+  MAX_RUNS=1
+  MAX_CANCELLATIONS=1
+  runs='{"id":1,"queued_at":"2026-01-01T01:00:00Z"}
+{"id":2,"queued_at":"2026-01-01T02:00:00Z"}
+{"id":3,"queued_at":"2026-01-01T03:00:00Z"}'
+
+  process_all_runs "$runs" >/dev/null
+
+  [ "$CANCELLED_COUNT" -eq 1 ]
+  [ "$DEFERRED_COUNT" -eq 1 ]
+}

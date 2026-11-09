@@ -10,7 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
-  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR MAX_CANCELLATIONS BRANCH EVENT
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR MAX_CANCELLATIONS MAX_RUNS BRANCH EVENT
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -1200,4 +1200,13 @@ use_real_flow() {
 
   [[ ! "$output" =~ "Only the runs of the branch" ]] || false
   [[ ! "$output" =~ "triggered by the event" ]] || false
+}
+
+@test "main fails when MAX_RUNS is invalid" {
+  export MAX_RUNS="-1"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "MAX_RUNS must be a non-negative integer (got '-1')" ]] || false
 }
