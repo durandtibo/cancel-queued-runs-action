@@ -44,7 +44,8 @@
 #
 # GitHub Actions integration (optional, ignored when the variables are unset):
 #   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
-#                   skipped_count, failed_count and would_cancel_count are written
+#                   skipped_count, failed_count, would_cancel_count and
+#                   listing_truncated are written
 #   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
 #   GITHUB_SERVER_URL - Base URL of the links to the runs in the summary
 #                       (default: https://github.com)
@@ -75,6 +76,11 @@ WOULD_CANCEL_COUNT=0
 # The runs that were acted on, one "id|age|outcome" per line, listed in the
 # job summary. Filled by record_run, reset by reset_counters.
 RUN_RECORDS=""
+
+# Whether the listing of at least one status reached RUNS_LISTING_LIMIT, so that
+# older runs may be missing. Set to true by warn_if_listing_truncated, which
+# must not be called in a subshell, and reported by write_outputs.
+LISTING_TRUNCATED=false
 
 # Whether a cancel request was already sent, to wait before the next one. It
 # is set by throttle_requests, which must not be called in a subshell.
@@ -161,6 +167,8 @@ log_status() {
 # Args:
 #   $1 - Run status that was listed
 #   $2 - Number of runs listed for this status
+# Globals:
+#   LISTING_TRUNCATED - Set to true when the listing may be incomplete
 # Returns:
 #   Always 0. The warning is written on stderr.
 # ----------------------------
@@ -169,6 +177,7 @@ warn_if_listing_truncated() {
 	local count="$2"
 
 	if [ "$count" -ge "$RUNS_LISTING_LIMIT" ]; then
+		LISTING_TRUNCATED=true
 		echo "::warning::$count runs were listed for the status '$run_status', which is the maximum that GitHub returns for a query: older runs may be missing from the list and will not be considered until the runs listed now are cancelled. Run the action again to process them." >&2
 	fi
 }
@@ -212,7 +221,9 @@ dedupe_runs() {
 # is printed once (see dedupe_runs).
 #
 # A warning is written on stderr for a status when GitHub lists as many runs
-# as it is able to return (see warn_if_listing_truncated).
+# as it is able to return (see warn_if_listing_truncated), and
+# LISTING_TRUNCATED is set to true. As a global is set, it must not be called
+# in a subshell such as $(...): redirect its output to a file instead.
 #
 # Returns:
 #   0 on success, 1 as soon as a listing call fails (the runs already printed
@@ -229,6 +240,8 @@ fetch_runs() {
 
 	local run_status listed count
 	local all=""
+
+	LISTING_TRUNCATED=false
 	local seen=","
 	local -a status_list=()
 	IFS=',' read -r -a status_list <<<"${STATUSES// /}"
@@ -759,6 +772,7 @@ write_outputs() {
 		echo "skipped_count=$SKIPPED_COUNT"
 		echo "failed_count=$FAILED_COUNT"
 		echo "would_cancel_count=$WOULD_CANCEL_COUNT"
+		echo "listing_truncated=$LISTING_TRUNCATED"
 	} >>"$GITHUB_OUTPUT"
 }
 
@@ -858,6 +872,11 @@ write_summary() {
 		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
 		echo "| Skipped (no longer cancellable) | $SKIPPED_COUNT |"
 		echo "| Failed | $FAILED_COUNT |"
+		if [ "$LISTING_TRUNCATED" = "true" ]; then
+			echo
+			echo "> [!WARNING]"
+			echo "> The listing reached the maximum that GitHub returns for a query (${RUNS_LISTING_LIMIT} runs): older runs may be missing. Run the action again to process them."
+		fi
 		write_summary_runs
 	} >>"$GITHUB_STEP_SUMMARY"
 }
@@ -1137,15 +1156,24 @@ main() {
 
 	reset_counters
 	local exit_code=0
-	local runs run_count
+	local runs run_count runs_file
+
+	# fetch_runs sets LISTING_TRUNCATED, so it cannot run in a subshell: its
+	# output goes through a file
+	LISTING_TRUNCATED=false
+	runs_file=$(mktemp "${TMPDIR:-/tmp}/cancel-queued-runs.XXXXXX")
 
 	# The outputs are written even when the listing fails, so that the next
 	# steps do not read empty values
-	if ! runs=$(fetch_runs); then
+	if ! fetch_runs >"$runs_file"; then
+		rm -f "$runs_file"
 		echo "::error::Cannot list the workflow runs of ${REPO} (see the messages above)" >&2
+		LISTING_TRUNCATED=false
 		write_outputs 0
 		return 1
 	fi
+	runs=$(cat "$runs_file")
+	rm -f "$runs_file"
 
 	# Counting is guarded like the listing: with "set -e", a jq failure here
 	# would end the script before the outputs are written

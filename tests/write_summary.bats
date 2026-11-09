@@ -156,3 +156,29 @@ teardown() {
   [ -z "$(grep 'actions/runs' "$GITHUB_STEP_SUMMARY" || true)" ]
 }
 
+@test "write_summary has no truncation warning by default" {
+  run write_summary 10
+
+  [ "$(grep -c 'maximum that GitHub returns' "$GITHUB_STEP_SUMMARY" || true)" -eq 0 ]
+}
+
+@test "write_summary warns when the listing was truncated" {
+  LISTING_TRUNCATED=true
+  RUNS_LISTING_LIMIT=1000
+
+  run write_summary 1000
+
+  grep -q '^> \[!WARNING\]$' "$GITHUB_STEP_SUMMARY"
+  grep -q 'maximum that GitHub returns for a query (1000 runs)' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary puts the truncation warning before the list of runs" {
+  LISTING_TRUNCATED=true
+  RUN_RECORDS=$'101|30h00m|cancelled\n'
+
+  run write_summary 1000
+
+  warning_line=$(grep -n 'WARNING' "$GITHUB_STEP_SUMMARY" | head -n1 | cut -d: -f1)
+  runs_line=$(grep -n '#### Runs' "$GITHUB_STEP_SUMMARY" | head -n1 | cut -d: -f1)
+  [ "$warning_line" -lt "$runs_line" ]
+}

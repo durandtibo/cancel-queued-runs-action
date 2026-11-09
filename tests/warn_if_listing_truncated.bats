@@ -65,3 +65,32 @@ setup() {
 
   [[ "$output" =~ "Run the action again" ]]
 }
+
+@test "warn_if_listing_truncated is not truncated by default" {
+  [ "$LISTING_TRUNCATED" = "false" ]
+}
+
+@test "warn_if_listing_truncated sets LISTING_TRUNCATED when the limit is reached" {
+  RUNS_LISTING_LIMIT=1000
+
+  warn_if_listing_truncated queued 1000 2>/dev/null
+
+  [ "$LISTING_TRUNCATED" = "true" ]
+}
+
+@test "warn_if_listing_truncated does not set LISTING_TRUNCATED below the limit" {
+  RUNS_LISTING_LIMIT=1000
+
+  warn_if_listing_truncated queued 999
+
+  [ "$LISTING_TRUNCATED" = "false" ]
+}
+
+@test "warn_if_listing_truncated keeps LISTING_TRUNCATED true for a later status below the limit" {
+  RUNS_LISTING_LIMIT=1000
+
+  warn_if_listing_truncated queued 1000 2>/dev/null
+  warn_if_listing_truncated waiting 3
+
+  [ "$LISTING_TRUNCATED" = "true" ]
+}

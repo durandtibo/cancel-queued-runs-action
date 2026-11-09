@@ -100,6 +100,12 @@ outputs:
   would_cancel_count:
     description: Number of runs that would be cancelled (only set in dry run, otherwise 0).
     value: ${{ steps.cancel.outputs.would_cancel_count }}
+  listing_truncated:
+    description: >
+      "true" if GitHub listed as many runs as it can return for a status (1000), so that older
+      runs may be missing and were not considered; run the action again to process them. "false"
+      otherwise.
+    value: ${{ steps.cancel.outputs.listing_truncated }}
 
 runs:
   using: "composite"
