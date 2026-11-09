@@ -74,3 +74,20 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "write_summary mentions the workflow filter" {
+  WORKFLOW="ci.yaml"
+
+  run write_summary 10
+
+  grep -q 'Workflow: `ci.yaml`' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "write_summary does not mention a workflow without filter" {
+  WORKFLOW=""
+
+  run write_summary 10
+
+  run grep -q "Workflow:" "$GITHUB_STEP_SUMMARY"
+  [ "$status" -ne 0 ]
+}
