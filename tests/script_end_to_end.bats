@@ -26,7 +26,7 @@ JSON
   cat > "$MOCK_GH_RUNS_WAITING" << 'JSON'
 {
   "workflow_runs": [
-    {"id": 333, "created_at": "2020-01-01T00:00:00Z", "run_started_at": "2020-01-01T00:00:00Z"}
+    {"id": 333, "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z"}
   ]
 }
 JSON
