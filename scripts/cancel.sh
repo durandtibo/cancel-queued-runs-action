@@ -55,7 +55,8 @@
 # GitHub Actions integration (optional, ignored when the variables are unset):
 #   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
 #                   skipped_count, failed_count, would_cancel_count,
-#                   deferred_count and listing_truncated are written
+#                   deferred_count, cancelled_run_ids and listing_truncated
+#                   are written
 #   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
 #   GITHUB_SERVER_URL - Base URL of the links to the runs in the summary
 #                       (default: https://github.com)
@@ -971,6 +972,25 @@ process_all_runs() {
 }
 
 # ----------------------------
+# Print the IDs of the cancelled runs as a JSON array
+# Built from RUN_RECORDS: only the runs whose cancel request was accepted are
+# listed (not the ones that would be cancelled in a dry run, nor the skipped and
+# failed ones), in the order they were processed. The array is on a single line,
+# as an output of a step must be, and can be read with fromJSON() in a workflow.
+# Globals:
+#   RUN_RECORDS
+# Returns:
+#   The array on stdout, "[]" when no run was cancelled (for example "[101,102]")
+# ----------------------------
+cancelled_run_ids_json() {
+	local ids
+
+	ids=$(printf '%s' "$RUN_RECORDS" | awk -F'|' '$3 == "cancelled" && $1 ~ /^[0-9]+$/ {printf "%s%s", sep, $1; sep = ","}')
+
+	printf '[%s]\n' "$ids"
+}
+
+# ----------------------------
 # Write the action outputs to $GITHUB_OUTPUT (no-op when it is unset)
 # Args:
 #   $1 - Number of runs found, with any of the statuses considered
@@ -989,6 +1009,7 @@ write_outputs() {
 		echo "failed_count=$FAILED_COUNT"
 		echo "would_cancel_count=$WOULD_CANCEL_COUNT"
 		echo "deferred_count=$DEFERRED_COUNT"
+		echo "cancelled_run_ids=$(cancelled_run_ids_json)"
 		echo "listing_truncated=$LISTING_TRUNCATED"
 	} >>"$GITHUB_OUTPUT"
 }

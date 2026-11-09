@@ -75,6 +75,7 @@ jobs:
           FAILED_COUNT: ${{ steps.dry-run.outputs.failed_count }}
           WOULD_CANCEL_COUNT: ${{ steps.dry-run.outputs.would_cancel_count }}
           DEFERRED_COUNT: ${{ steps.dry-run.outputs.deferred_count }}
+          CANCELLED_RUN_IDS: ${{ steps.dry-run.outputs.cancelled_run_ids }}
           LISTING_TRUNCATED: ${{ steps.dry-run.outputs.listing_truncated }}
           # the value of max_cancellations of the step above
           MAX_CANCELLATIONS: 1

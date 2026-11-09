@@ -115,6 +115,7 @@ jobs:
 | `skipped_count`      | Number of runs skipped because they were no longer cancellable (404 or 409)                                                                                              |
 | `failed_count`       | Number of runs that could not be cancelled or processed (for example an invalid timestamp, or a list of runs that cannot be parsed)                                      |
 | `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)                                                                                                     |
+| `cancelled_run_ids`  | JSON array with the IDs of the cancelled runs, in the order they were processed (for example `[101,102]`), `[]` if none and in a dry run                                 |
 | `deferred_count`     | Number of runs that were old enough to be cancelled but were left alone because the `max_cancellations` limit was reached                                                |
 | `listing_truncated`  | `true` if the listing reached the 1000 runs that GitHub returns for a status, so older runs may be missing (see [Troubleshooting](#-troubleshooting)), otherwise `false` |
 
@@ -134,6 +135,19 @@ how many more are not shown, and all of them are in the logs of the step.
   with:
     max_age_hours: 24
 - run: echo "Cancelled ${{ steps.cancel.outputs.cancelled_count }} run(s)"
+```
+
+`cancelled_run_ids` is a JSON array on a single line: read it with `fromJSON()`, for example to
+build a matrix or to look at the runs afterwards. As any value that comes from a step, pass it to a
+script through `env:` rather than interpolating it in the `run:` line.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  id: cancel
+- if: steps.cancel.outputs.cancelled_count != '0'
+  env:
+    CANCELLED_RUN_IDS: ${{ steps.cancel.outputs.cancelled_run_ids }}
+  run: echo "$CANCELLED_RUN_IDS" | jq -r '.[]'
 ```
 
 ---
