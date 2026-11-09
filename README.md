@@ -114,7 +114,8 @@ jobs:
 | `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)        |
 
 The outputs are written even when some runs failed (the step then fails unless `fail_on_error` is
-`false`, so use `if: always()` on a following step to read them), and the action appends the same counts as a table to the
+`false`, so use `if: always()` on a following step to read them), and the action appends the same
+counts as a table to the
 [job summary](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary).
 
 ```yaml
