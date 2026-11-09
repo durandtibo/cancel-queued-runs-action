@@ -555,7 +555,8 @@ Yes, you can either:
 - Set up the action in each repository
 - Use a centralized workflow with a matrix strategy to target multiple repositories
 - Run `dev/run_for_repos.sh -u <username>` to process all the public, non-archived repositories
-  of a user
+  of a user (sorted by name); a summary table with the runs found and cancelled per repository
+  and in total is printed at the end
 
 ### Does this work with private repositories?
 
