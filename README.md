@@ -213,6 +213,15 @@ must be available (the `github_token` input, which must not be empty).
 
 **Solution**: Fix the input named in the error message.
 
+### Log shows `::warning::Rate limited on run ... giving up`
+
+**Cause**: GitHub rate limited the cancel requests and the quota did not come back within the
+retries (3 retries, at most 60 seconds each).
+
+**Solution**: Nothing to do in most cases: the affected runs are reported as failed and are retried
+the next time the action runs. For very large backlogs, use a lower frequency or a token with a
+higher rate limit (for example a GitHub App token).
+
 ### Permission denied error
 
 **Cause**: Insufficient permissions for the GitHub token.
@@ -274,7 +283,11 @@ processed, and the step exits with code `1`.
 - **Queue Status Only**: Only cancels runs in the `queued` state, not `in_progress` or other states
 - **Single Repository**: Each action invocation targets one repository (use multiple steps or matrix
   strategies for multiple repos)
-- **API Rate Limits**: Subject to GitHub API rate limits (generally not an issue for typical usage)
+- **API Rate Limits**: Subject to GitHub API rate limits. A cancel request rejected because of a
+  rate limit (HTTP `429`, or `403` with a rate limit header or message) is retried up to 3 times,
+  waiting for the delay requested by GitHub (`Retry-After` or `X-RateLimit-Reset`) or, if there is
+  none, 5, 10 and 20 seconds. A limit that requires waiting more than 60 seconds is not waited for:
+  the run is reported as failed and is retried by the next execution of the action
 - **Very Old Runs**: Runs that are extremely old (several months) may fail to cancel via the API
 - **Permissions Required**: Needs `actions:write` permission, which may not be available in some
   restricted environments
