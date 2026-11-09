@@ -1,0 +1,34 @@
+# CI integration.
+# Adds a cleanup job to an existing CI workflow: every time the CI runs, the runs of this
+# repository that have been queued for more than 24 hours are cancelled. The job is independent
+# of the other jobs, so it does not delay them.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cancel-stale-runs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write # required to cancel the runs
+      contents: read
+    steps:
+      - uses: durandtibo/cancel-queued-runs-action@v1.9
+        with:
+          max_age_hours: 24
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run the tests
+        run: echo "Replace this step with your own tests"
