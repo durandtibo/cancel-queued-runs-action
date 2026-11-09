@@ -102,3 +102,56 @@ setup() {
     [[ "$output" =~ "Status code: 202" ]]
     [ "$status" -eq 0 ]
 }
+
+# --------------------------------------------------------
+# Boundary ages (MAX_AGE_HOURS=2, so the force threshold is 5)
+# --------------------------------------------------------
+
+@test "process_run does nothing when age_hours equals MAX_AGE_HOURS" {
+  run process_run "123" 2
+
+  [ -z "$output" ]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run uses standard cancel when age_hours is MAX_AGE_HOURS + 1" {
+  run process_run "123" 3
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ ! "$output" =~ "Force-cancelling" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run uses standard cancel when age_hours equals MAX_AGE_HOURS + 3" {
+  run process_run "123" 5
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [[ ! "$output" =~ "Force-cancelling" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run uses force cancel when age_hours is MAX_AGE_HOURS + 4" {
+  run process_run "123" 6
+
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run does not call force cancel when regular cancel succeeds for old run" {
+  force_cancel_run() { echo "force_cancel_run called" >&2; echo "HTTP/2.0 202 Accepted"; }
+
+  run process_run "123" 24
+
+  [[ "$output" =~ "Force-cancelling run 123" ]]
+  [[ ! "$output" =~ "force_cancel_run called" ]]
+  [ "$status" -eq 0 ]
+}
+
+@test "process_run fails when both regular and force cancel fail for old run" {
+  run process_run "456" 24
+
+  [[ "$output" =~ "Force-cancelling run 456" ]]
+  [[ "$output" =~ "Status code: 500" ]]
+  [[ "$output" =~ "Cancellation failed for run 456" ]]
+  [ "$status" -eq 1 ]
+}
