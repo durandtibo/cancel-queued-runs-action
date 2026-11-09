@@ -518,6 +518,44 @@ setup_outputs() {
   [ -z "${run_count+x}" ]
 }
 
+@test "main fails with an ::error:: annotation when the list of runs cannot be counted" {
+  jq() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "::error::Cannot parse the list of workflow runs of myorg/myrepo" ]] || false
+}
+
+@test "main writes zero outputs when the list of runs cannot be counted" {
+  setup_outputs
+  jq() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "found_count=0" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "main does not process any run when the list of runs cannot be counted" {
+  jq() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main fails when the list of runs cannot be counted even if FAIL_ON_ERROR is false" {
+  export FAIL_ON_ERROR=false
+  jq() { return 1; }
+
+  run main
+
+  [ "$status" -eq 1 ]
+}
+
 @test "main does not leak its variables when the runs cannot be listed" {
   fetch_runs() { return 1; }
 
