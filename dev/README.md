@@ -22,8 +22,8 @@ Attempts to cancel these runs manually through the web interface also fail.
 **Example output:**
 
 ```text
-Run 12947114653 has been queued for 7558 hours.
-Force-cancelling run 12947114653 (age=7558)...
+Run 12947114653 has been queued for 7558h12m.
+Force-cancelling run 12947114653 (age=7558h12m)...
 ❌ Status code: 500 - Internal error for run 12947114653
 ```
 
@@ -40,7 +40,7 @@ This can be achieved by adding the following code snippet to the `scripts/cancel
 **Implementation:**
 
 ```shell
-if [ "$status" = "500" ] && [ "$age_hours" -gt 5000 ]; then
+if [ "$status" = "500" ] && [ "$age_seconds" -gt $((5000 * 3600)) ]; then
   echo "=== Deleting stale run $run_id ==="
   response=$(gh api \
     --method DELETE \
