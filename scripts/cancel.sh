@@ -848,6 +848,7 @@ main() {
 
 	reset_counters
 	local exit_code=0
+	local runs run_count
 
 	# The outputs are written even when the listing fails, so that the next
 	# steps do not read empty values

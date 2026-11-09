@@ -505,3 +505,32 @@ setup_outputs() {
   [ "$status" -eq 1 ]
   [ ! -s "$LOG_FILE" ]
 }
+
+# --------------------------------------------------------
+# Variables
+# --------------------------------------------------------
+
+@test "main does not leak its variables in the calling shell" {
+  # Called without run, so that the variables would be visible here
+  main >/dev/null
+
+  [ -z "${runs+x}" ]
+  [ -z "${run_count+x}" ]
+}
+
+@test "main does not leak its variables when the runs cannot be listed" {
+  fetch_runs() { return 1; }
+
+  main >/dev/null 2>&1 || true
+
+  [ -z "${runs+x}" ]
+  [ -z "${run_count+x}" ]
+}
+
+@test "main does not overwrite a runs variable of the calling shell" {
+  runs="caller value"
+
+  main >/dev/null
+
+  [ "$runs" = "caller value" ]
+}
