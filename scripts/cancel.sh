@@ -73,16 +73,17 @@ log_status() {
 #
 # Prints one JSON object per line with the fields:
 #   id        - workflow run ID
-#   queued_at - when the run started waiting: run_started_at (which is reset
-#               when a run is re-run), falling back to created_at. updated_at is
-#               not used because it changes whenever the run is touched.
+#   queued_at - the timestamp the age is measured from: updated_at. It is
+#               deliberately not created_at: updated_at moves forward when a
+#               run is re-run (for example after a failure), so a re-queued
+#               run is not cancelled because of its original creation date.
 # ----------------------------
 fetch_runs() {
 	gh api \
 		-H "Accept: application/vnd.github+json" \
 		"/repos/$REPO/actions/runs?status=queued&per_page=100" \
 		--paginate \
-		--jq '.workflow_runs[] | {id: .id, queued_at: (.run_started_at // .created_at)}'
+		--jq '.workflow_runs[] | {id: .id, queued_at: (.updated_at)}'
 }
 
 # ----------------------------
