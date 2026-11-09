@@ -93,7 +93,9 @@ outputs:
     description: Number of runs skipped because they were no longer cancellable (HTTP 404 or 409).
     value: ${{ steps.cancel.outputs.skipped_count }}
   failed_count:
-    description: Number of runs that could not be cancelled.
+    description: >
+      Number of runs that could not be cancelled or processed (for example an invalid timestamp,
+      or a list of runs that cannot be parsed).
     value: ${{ steps.cancel.outputs.failed_count }}
   would_cancel_count:
     description: Number of runs that would be cancelled (only set in dry run, otherwise 0).

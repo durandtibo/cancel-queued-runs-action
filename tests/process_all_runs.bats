@@ -260,6 +260,23 @@ MOCK
   [ ! -s "$LOG_FILE" ]
 }
 
+@test "process_all_runs counts the runs as failed when the stream is not valid JSON" {
+  status=0
+  process_all_runs "this is not json" > /dev/null 2>&1 || status=$?
+
+  [ "$status" -eq 1 ]
+  [ "$FAILED_COUNT" -eq 1 ]
+  [ "$CANCELLED_COUNT" -eq 0 ]
+}
+
+@test "process_all_runs counts every line of an invalid stream as a failed run" {
+  status=0
+  process_all_runs "$(printf '%s\n' '{"id": 1,' '{"id": 2,' 'garbage')" > /dev/null 2>&1 || status=$?
+
+  [ "$status" -eq 1 ]
+  [ "$FAILED_COUNT" -eq 3 ]
+}
+
 @test "process_all_runs processes every run even if process_run reads stdin" {
   process_run() {
     echo "process_run $1 $2" >> "$LOG_FILE"
