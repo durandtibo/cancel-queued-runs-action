@@ -318,6 +318,15 @@ must be available (the `github_token` input, which must not be empty).
 
 **Solution**: Fix the input named in the error message.
 
+### Log shows `::warning::1000 runs were listed for the status ...`
+
+**Cause**: GitHub does not return more than 1000 runs for a status, so the list is probably
+truncated and some runs are not considered by this execution.
+
+**Solution**: Nothing to do in most cases: the action cancels the runs it has, and the next
+execution lists the following ones. For a very large backlog, run the action more often or several
+times in a row.
+
 ### Log shows `::warning::Rate limited on run ... giving up`
 
 **Cause**: GitHub rate limited the cancel requests and the quota did not come back within the
@@ -396,6 +405,9 @@ processed, and the step exits with code `1`.
   waiting for the delay requested by GitHub (`Retry-After` or `X-RateLimit-Reset`) or, if there is
   none, 5, 10 and 20 seconds. A limit that requires waiting more than 60 seconds is not waited for:
   the run is reported as failed and is retried by the next execution of the action
+- **At most 1000 runs per status**: GitHub returns at most 1000 runs for a query that filters on the
+  status. If more runs are queued, the action warns and cancels the ones it was given; the others
+  are processed by the next executions of the action
 - **Very Old Runs**: Runs that are extremely old (several months) may fail to cancel via the API
   (see [Troubleshooting](#-troubleshooting))
 
