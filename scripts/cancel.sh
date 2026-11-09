@@ -1076,7 +1076,13 @@ main() {
 		return 1
 	fi
 
-	run_count=$(echo "$runs" | jq -s 'length')
+	# Counting is guarded like the listing: with "set -e", a jq failure here
+	# would end the script before the outputs are written
+	if ! run_count=$(printf '%s\n' "$runs" | jq -s 'length'); then
+		echo "::error::Cannot parse the list of workflow runs of ${REPO} (see the messages above)" >&2
+		write_outputs 0
+		return 1
+	fi
 	echo "Found $run_count workflow run(s)."
 
 	if [ "$run_count" -eq 0 ]; then

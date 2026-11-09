@@ -341,6 +341,15 @@ permission, a wrong `repo` or `workflow`, a network error or a GitHub outage. Th
 **Solution**: Fix the cause reported by `gh`. No run is cancelled in this case, the step fails, and
 the [outputs](#-outputs) are all set to `0` so that the next steps do not read empty values.
 
+### Log shows `::error::Cannot parse the list of workflow runs of ...`
+
+**Cause**: The runs were listed but the list could not be read as JSON (for example a corrupted
+output of `gh`), so the runs cannot even be counted.
+
+**Solution**: Like a failure to list the runs, no run is cancelled, the step fails (whatever
+`fail_on_error` is) and the [outputs](#-outputs) are all set to `0`. Run the action again, and open
+an issue if it keeps happening.
+
 ### Log shows `::error::Invalid timestamp ...`
 
 **Cause**: A run has a timestamp that is not in the `YYYY-MM-DDTHH:MM:SSZ` format returned by the
