@@ -674,7 +674,7 @@ process_all_runs() {
 # ----------------------------
 # Write the action outputs to $GITHUB_OUTPUT (no-op when it is unset)
 # Args:
-#   $1 - Number of queued runs found
+#   $1 - Number of runs found, with any of the statuses considered
 # ----------------------------
 write_outputs() {
 	local found_count="$1"
@@ -694,25 +694,29 @@ write_outputs() {
 
 # ----------------------------
 # Append a Markdown summary to $GITHUB_STEP_SUMMARY (no-op when it is unset)
+# The title and the table do not say "queued", because the statuses considered
+# can include waiting, pending and requested; they are listed under the title.
 # Args:
-#   $1 - Number of queued runs found
+#   $1 - Number of runs found, with any of the statuses considered
 # ----------------------------
 write_summary() {
 	local found_count="$1"
-	local mode="Cancel stale queued runs"
+	local mode="Cancel stale workflow runs"
 
 	if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
 		return 0
 	fi
 
 	if [ "$DRY_RUN" = "true" ]; then
-		mode="Cancel stale queued runs (dry run, nothing was cancelled)"
+		mode="Cancel stale workflow runs (dry run, nothing was cancelled)"
 	fi
 
 	{
 		echo "### $mode"
 		echo
 		echo "Repository: \`${REPO}\`, maximum queue age: ${MAX_AGE_HOURS} hours"
+		echo
+		echo "Statuses considered: \`${STATUSES// /}\`"
 		if [ -n "$WORKFLOW" ]; then
 			echo
 			echo "Workflow: \`${WORKFLOW}\`"
@@ -720,7 +724,7 @@ write_summary() {
 		echo
 		echo "| Result | Runs |"
 		echo "| --- | ---: |"
-		echo "| Queued runs found | $found_count |"
+		echo "| Runs found | $found_count |"
 		echo "| Cancelled | $CANCELLED_COUNT |"
 		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
 		echo "| Skipped (no longer cancellable) | $SKIPPED_COUNT |"
