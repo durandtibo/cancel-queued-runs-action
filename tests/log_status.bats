@@ -41,11 +41,11 @@ setup() {
 #----------------------------
 # Test empty status
 #----------------------------
-@test "log_status handles empty status gracefully" {
+@test "log_status explains that there was no HTTP response for an empty status" {
   run log_status "" 55555
 
   [ "$status" -eq 0 ]
-  [[ "$output" == "❌ Status code:  for run 55555" ]]
+  [[ "$output" == "❌ No HTTP response (the gh API call failed) for run 55555" ]]
 }
 
 #----------------------------
