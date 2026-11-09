@@ -219,3 +219,41 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" =~ "Configured max age: 1 hours" ]]
 }
+
+# --------------------------------------------------------
+# Dry run
+# --------------------------------------------------------
+
+@test "main fails when DRY_RUN is not true or false" {
+  export DRY_RUN="maybe"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "DRY_RUN must be 'true' or 'false' (got 'maybe')" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main announces the dry run" {
+  export DRY_RUN=true
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Dry run enabled: no run will be cancelled." ]]
+}
+
+@test "main still processes the runs in dry run" {
+  export DRY_RUN=true
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -q "process_all_runs called" "$LOG_FILE"
+}
+
+@test "main does not announce a dry run by default" {
+  run main
+
+  [[ ! "$output" =~ "Dry run" ]]
+}

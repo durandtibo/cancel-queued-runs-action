@@ -25,6 +25,19 @@ setup() {
     }
 }
 
+teardown() {
+  rm -rf "$BATS_TEST_DIRNAME/mocks"
+}
+
+# Record the calls to the cancel functions, to check that nothing is sent
+record_calls() {
+  mkdir -p "$BATS_TEST_DIRNAME/mocks"
+  export CALL_LOG="$BATS_TEST_DIRNAME/mocks/calls.log"
+  : > "$CALL_LOG"
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 202 Accepted"; }
+  force_cancel_run() { echo "force_cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 202 Accepted"; }
+}
+
 @test "process_run cancels run older than MAX_AGE_HOURS with 202 response" {
     run process_run "123" $((3 * 3600))
 
@@ -286,4 +299,72 @@ setup() {
 
   [[ "$output" =~ "Cancellation failed for run 123" ]]
   [ "$status" -eq 1 ]
+}
+
+# --------------------------------------------------------
+# Dry run
+# --------------------------------------------------------
+
+@test "process_run in dry run only logs the run that would be cancelled" {
+  record_calls
+  export DRY_RUN=true
+
+  run process_run "123" $((3 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == "🧪 [dry-run] Would cancel run 123 (age=3h00m)" ]]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run in dry run only logs the run that would be force-cancelled" {
+  record_calls
+  export DRY_RUN=true
+
+  run process_run "123" $((24 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == "🧪 [dry-run] Would force-cancel run 123 (age=24h00m)" ]]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run in dry run does nothing for a run below the threshold" {
+  record_calls
+  export DRY_RUN=true
+
+  run process_run "123" $((1 * 3600))
+
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run in dry run succeeds even if the API would fail" {
+  export DRY_RUN=true
+  # the default mocks return 500 for run 456
+  run process_run "456" $((3 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ ! "$output" =~ "Cancellation failed" ]]
+}
+
+@test "process_run cancels for real when DRY_RUN is false" {
+  record_calls
+  export DRY_RUN=false
+
+  run process_run "123" $((3 * 3600))
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
+}
+
+@test "process_run cancels for real by default" {
+  unset DRY_RUN
+  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  record_calls
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "Cancelling run 123" ]]
+  [ "$(cat "$CALL_LOG")" = "cancel_run 123" ]
 }
