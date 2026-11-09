@@ -4,8 +4,8 @@
     <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/ci.yaml">
         <img alt="CI" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/ci.yaml/badge.svg">
     </a>
-    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly-tests.yaml">
-        <img alt="Nightly Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly-tests.yaml/badge.svg">
+    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml">
+        <img alt="Nightly Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml/badge.svg">
     </a>
     <a href="https://github.com/durandtibo/cancel-queued-runs-action/blob/main/LICENSE">
         <img alt="License" src="https://img.shields.io/badge/License-BSD_3--Clause-blue.svg">
