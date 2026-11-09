@@ -14,7 +14,7 @@ setup() {
   PATH="$MOCK_DIR:$PATH"
 
   export REPO="myorg/myrepo"
-  unset WORKFLOW
+  unset WORKFLOW STATUSES
 
   # Create mock gh command
   # It applies the --jq filter to the JSON in $MOCK_GH_RESPONSE_FILE with the
@@ -170,4 +170,67 @@ teardown() {
 
   [ "$(echo "$output" | head -n1 | jq -r '.id')" = "111" ]
   [ "$(echo "$output" | head -n1 | jq -r '.queued_at')" = "2025-01-01T12:00:00Z" ]
+}
+
+@test "fetch_runs lists only the queued runs by default" {
+  run fetch_runs
+
+  [ "$(wc -l < "$MOCK_GH_CALL_LOG" | tr -d ' ')" -eq 1 ]
+  [[ "$(cat "$MOCK_GH_CALL_LOG")" =~ "status=queued&per_page=100" ]]
+}
+
+@test "fetch_runs makes one call per status" {
+  export STATUSES="queued,waiting"
+
+  run fetch_runs
+
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$MOCK_GH_CALL_LOG" | tr -d ' ')" -eq 2 ]
+  grep -q "status=queued&per_page=100" "$MOCK_GH_CALL_LOG"
+  grep -q "status=waiting&per_page=100" "$MOCK_GH_CALL_LOG"
+}
+
+@test "fetch_runs concatenates the runs of all the statuses" {
+  export STATUSES="queued,waiting"
+
+  run fetch_runs
+
+  # the mock returns two runs per call
+  [ "$(echo "$output" | wc -l | tr -d ' ')" -eq 4 ]
+}
+
+@test "fetch_runs ignores spaces around the commas" {
+  export STATUSES="queued, waiting"
+
+  run fetch_runs
+
+  grep -q "status=waiting&per_page=100" "$MOCK_GH_CALL_LOG"
+}
+
+@test "fetch_runs lists a duplicated status only once" {
+  export STATUSES="queued,queued"
+
+  run fetch_runs
+
+  [ "$(wc -l < "$MOCK_GH_CALL_LOG" | tr -d ' ')" -eq 1 ]
+}
+
+@test "fetch_runs combines the statuses with the workflow filter" {
+  export STATUSES="pending,requested"
+  export WORKFLOW="ci.yaml"
+
+  run fetch_runs
+
+  grep -q "/actions/workflows/ci.yaml/runs?status=pending&per_page=100" "$MOCK_GH_CALL_LOG"
+  grep -q "/actions/workflows/ci.yaml/runs?status=requested&per_page=100" "$MOCK_GH_CALL_LOG"
+}
+
+@test "fetch_runs makes no call and succeeds when STATUSES is empty" {
+  export STATUSES=""
+
+  run fetch_runs
+
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -s "$MOCK_GH_CALL_LOG" ]
 }

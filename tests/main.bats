@@ -10,7 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
-  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -393,4 +393,42 @@ setup_outputs() {
   run main
 
   [[ ! "$output" =~ "Only the runs of the workflow" ]]
+}
+
+# --------------------------------------------------------
+# Run statuses
+# --------------------------------------------------------
+
+@test "main fails when STATUSES contains in_progress" {
+  export STATUSES="queued,in_progress"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "unsupported status 'in_progress'" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main fails when STATUSES is empty" {
+  export STATUSES=""
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "STATUSES must not be empty" ]]
+}
+
+@test "main announces the statuses when they are not only queued" {
+  export STATUSES="queued, waiting"
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "Run statuses considered: queued,waiting" ]]
+}
+
+@test "main does not mention the statuses by default" {
+  run main
+
+  [[ ! "$output" =~ "Run statuses considered" ]]
 }

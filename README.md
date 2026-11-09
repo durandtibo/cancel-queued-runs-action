@@ -38,7 +38,8 @@ backlogs.
 
 ## 🚀 Features
 
-- Cancels workflow runs stuck in the **queued** state
+- Cancels workflow runs stuck in the **queued** state (optionally also `waiting`, `pending` and
+  `requested`)
 - Configurable maximum queue age (in hours)
 - Dry-run mode to preview which runs would be cancelled
 - Optional filter to only cancel the runs of one workflow
@@ -86,6 +87,7 @@ jobs:
 | `repo`                      | ❌ No    | `${{ github.repository }}` | Repository in `owner/name` format                                                       |
 | `max_age_hours`             | ❌ No    | `24`                       | Maximum number of hours a run is allowed to stay queued                                 |
 | `force_cancel_buffer_hours` | ❌ No    | `3`                        | Hours after `max_age_hours` from which force-cancel is used as a fallback (`0` allowed) |
+| `statuses`                  | ❌ No    | `queued`                   | Run statuses to consider: `queued`, `waiting`, `pending`, `requested` (comma-separated) |
 | `workflow`                  | ❌ No    | `""` (all workflows)       | Only cancel the runs of this workflow (file name such as `ci.yaml`, or numeric ID)      |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
@@ -144,6 +146,20 @@ The log then contains lines such as:
 ```text
 Run 12947114653 has been queued for 30h12m.
 🧪 [dry-run] Would force-cancel run 12947114653 (age=30h12m)
+```
+
+### Example: also cancel runs waiting for an approval or a concurrency slot
+
+By default only the runs with the status `queued` are cancelled. Runs that GitHub reports as
+`waiting` (for example for an environment approval), `pending` or `requested` are not. Use
+`statuses` to include them. Runs that are `in_progress` are never cancelled: they are rejected by
+the input validation.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@v1.9
+  with:
+    max_age_hours: 48
+    statuses: queued,waiting
 ```
 
 ### Example: only cancel the runs of one workflow
@@ -315,8 +331,9 @@ permissions:
 
 ### Can this action cancel running workflows?
 
-No, this action only cancels workflow runs in the **queued** state. Running or completed workflows
-are not affected.
+No, this action only cancels workflow runs that have not started: the **queued** state, and
+optionally `waiting`, `pending` and `requested` with the `statuses` input. Running (`in_progress`)
+or completed workflows are never affected.
 
 ### Will it cancel the workflow that calls this action?
 
@@ -347,7 +364,9 @@ processed, and the step exits with code `1`.
 
 ## ⚠️ Limitations
 
-- **Queue Status Only**: Only cancels runs in the `queued` state, not `in_progress` or other states
+- **Queue Status Only**: Only cancels runs in the `queued` state by default. The `statuses` input
+  can add `waiting`, `pending` and `requested`; runs that are `in_progress` or completed are never
+  cancelled
 - **Single Repository**: Each action invocation targets one repository (use multiple steps or matrix
   strategies for multiple repos)
 - **API Rate Limits**: Subject to GitHub API rate limits. A cancel request rejected because of a
