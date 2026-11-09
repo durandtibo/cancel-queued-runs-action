@@ -1,0 +1,29 @@
+# Mutation-style check of the shell tests.
+# Breaks scripts/cancel.sh on purpose (see dev/mutants.txt) and fails when the
+# bats tests do not notice, i.e. when a test does not check what its name says.
+
+name: Mutation Check
+on:
+  workflow_call:
+  workflow_dispatch: # to trigger manually
+
+permissions:
+  contents: read
+
+jobs:
+  mutation-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Install bats-core
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bats
+
+      - name: Check that the tests detect the mutations
+        run: |
+          make mutation-check

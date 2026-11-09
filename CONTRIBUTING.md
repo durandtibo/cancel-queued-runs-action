@@ -27,6 +27,8 @@ If you encounter a bug or have a feature request:
    - Run shellcheck on modified scripts: `shellcheck scripts/*.sh`
    - Run the unit tests: `bats tests/` (end `[[ ... ]]` and `! cmd` assertions with `|| false`, see
      [dev/README.md](dev/README.md#writing-bats-tests), and check them with `make lint-bats`)
+   - Check that the tests detect breakages of the script: `make mutation-check` (see
+     [dev/README.md](dev/README.md#checking-the-tests-with-mutations))
    - Test the action locally if possible
 4. **Commit your changes**:
    - Use clear and descriptive commit messages

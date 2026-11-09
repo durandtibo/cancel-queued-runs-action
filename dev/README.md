@@ -8,6 +8,7 @@ This document contains notes, known issues, and development guidance for contrib
 - [Testing Multiple Repositories](#testing-multiple-repositories)
 - [Debugging Tips](#debugging-tips)
 - [Writing Bats Tests](#writing-bats-tests)
+- [Checking the Tests with Mutations](#checking-the-tests-with-mutations)
 - [Architecture Notes](#architecture-notes)
 
 ---
@@ -151,6 +152,32 @@ not fail the test: the assertion looks like a check but never fails. End these a
 
 `make lint-bats` (also part of `make lint` and of the CI) runs `dev/check_bats_assertions.sh`,
 which lists the assertions that need `|| false`.
+
+---
+
+## Checking the Tests with Mutations
+
+Passing tests prove little if they would also pass with a broken script. `make mutation-check`
+(`dev/mutation_check.sh`, also run by the CI) breaks `scripts/cancel.sh` on purpose, one small
+change at a time (a `>` turned into `>=`, a status code, a regular expression, ...), and runs the
+tests of the function concerned: **every mutation must make a test fail**. The repository is not
+modified, the mutations are applied to a temporary copy.
+
+The mutations are listed in `dev/mutants.txt`, one per line:
+
+```text
+name@@test file in tests/@@sed -E expression
+```
+
+When you add or change a function, add a mutation for its most important behaviour. When the check
+reports:
+
+- `SURVIVED`: a test does not check what its name says. Fix the test, do not remove the mutation
+- `OUTDATED` or `INVALID`: the script changed and the `sed` expression no longer applies (or no
+  longer gives valid bash). Update the expression
+
+`make mutation-check` takes about a minute. To run one mutation, give a part of its name:
+`dev/mutation_check.sh process_run`.
 
 ---
 
