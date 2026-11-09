@@ -536,7 +536,8 @@ throttle_requests() {
 #    - Uses /cancel endpoint for recently queued runs
 # 2. Force cancel: age > MAX_AGE_HOURS + FORCE_BUFFER_HOURS
 #    - Tries /cancel first, then falls back to /force-cancel (which returns
-#      409 if no regular cancel was attempted) for very old, stuck runs
+#      409 if no regular cancel was attempted) for very old, stuck runs. There
+#      is no fallback when /cancel returns 404: the run no longer exists
 #
 # A final HTTP 404 (run not found) or 409 (run cannot be cancelled) means that
 # the run is gone or already finished, typically because it started or
@@ -592,7 +593,9 @@ process_run() {
 		# attempted first, so try the standard cancel and fall back to force.
 		throttle_requests
 		response=$(cancel_run "$run_id")
-		if [ "$(get_status_code "$response")" != "202" ]; then
+		status_code=$(get_status_code "$response")
+		# A 404 means that the run is gone: force-cancelling it is pointless
+		if [ "$status_code" != "202" ] && [ "$status_code" != "404" ]; then
 			throttle_requests
 			response=$(force_cancel_run "$run_id")
 		fi
