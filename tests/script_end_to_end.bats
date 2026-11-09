@@ -82,7 +82,7 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "Found 2 queued workflow run(s)." ]]
+  [[ "$output" =~ "Found 2 workflow run(s)." ]]
   [[ "$output" =~ "Force-cancelling run 111" ]]
   [[ ! "$output" =~ "Cancelling run 222" ]]
   [[ ! "$output" =~ "Force-cancelling run 222" ]]
@@ -168,7 +168,7 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "Run statuses considered: queued,waiting" ]]
-  [[ "$output" =~ "Found 3 queued workflow run(s)." ]]
+  [[ "$output" =~ "Found 3 workflow run(s)." ]]
   grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
   grep -q "/repos/myorg/myrepo/actions/runs/333/cancel" "$MOCK_GH_CALL_LOG"
 }

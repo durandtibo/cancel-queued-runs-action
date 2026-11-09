@@ -155,7 +155,7 @@ the first time you add the action to a repository.
 The log then contains lines such as:
 
 ```text
-Run 12947114653 has been queued for 30h12m.
+Run 12947114653 is 30h12m old.
 🧪 [dry-run] Would force-cancel run 12947114653 (age=30h12m)
 ```
 
@@ -254,8 +254,9 @@ For additional use cases and complete workflow examples, see the [examples/](exa
 
 ## 🧩 How It Works
 
-1. **Fetch Queued Runs**: Uses the GitHub API to list all workflow runs with status `queued`
-2. **Calculate Age**: Determines how long each run has been queued, measured from its last update
+1. **Fetch Runs**: Uses the GitHub API to list all workflow runs with each of the `statuses`
+   (`queued` by default)
+2. **Calculate Age**: Determines how old each run is, measured from its last update
    (`updated_at`), which moves forward when a run is re-run, for example after a failure
 3. **Filter**: Identifies runs older than the configured `max_age_hours`
 4. **Cancel**: Sends cancellation requests for eligible runs (or only logs them with `dry_run: true`)
@@ -385,7 +386,7 @@ permissions:
 
 **Check**:
 
-1. Verify you have queued runs older than `max_age_hours`
+1. Verify you have runs with the considered `statuses` older than `max_age_hours`
 2. Check the action logs to see what runs were found
 3. Ensure the repository name format is correct (`owner/name`)
 
