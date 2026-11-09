@@ -27,9 +27,17 @@ inputs:
     description: >
       Maximum number of hours a workflow run is allowed to stay queued before being
       cancelled. Must be a positive integer. Runs older than max_age_hours get a standard
-      cancel request. For runs older than max_age_hours+3 hours, the action falls back to
-      force-cancel when the standard cancel request is not accepted.
+      cancel request. For runs older than max_age_hours+force_cancel_buffer_hours hours, the
+      action falls back to force-cancel when the standard cancel request is not accepted.
     default: "24"
+    required: false
+
+  force_cancel_buffer_hours:
+    description: >
+      Number of hours after max_age_hours from which force-cancel is used as a fallback when
+      the standard cancel request is not accepted. Must be a non-negative integer; 0 means
+      force-cancel is allowed as soon as a run is older than max_age_hours.
+    default: "3"
     required: false
 
   dry_run:
@@ -49,4 +57,5 @@ runs:
         GH_TOKEN: ${{ inputs.github_token }}
         REPO: ${{ inputs.repo }}
         MAX_AGE_HOURS: ${{ inputs.max_age_hours }}
+        FORCE_BUFFER_HOURS: ${{ inputs.force_cancel_buffer_hours }}
         DRY_RUN: ${{ inputs.dry_run }}

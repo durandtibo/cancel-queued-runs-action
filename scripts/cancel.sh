@@ -10,6 +10,8 @@
 #              GITHUB_TOKEN is set or gh is logged in with "gh auth login")
 #   REPO - Repository in owner/name format (required)
 #   MAX_AGE_HOURS - Maximum queue age in hours (default: 24)
+#   FORCE_BUFFER_HOURS - Hours after MAX_AGE_HOURS from which force-cancel is
+#                        used as a fallback (non-negative integer, default: 3)
 #   DRY_RUN - "true" to only log the runs that would be cancelled, without
 #             calling the cancel endpoints; "false" otherwise (default: false)
 #
@@ -29,6 +31,7 @@
 set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
+FORCE_BUFFER_HOURS="${FORCE_BUFFER_HOURS:-3}"
 DRY_RUN="${DRY_RUN:-false}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
@@ -352,9 +355,9 @@ format_age() {
 # Cancels the run if needed and logs the result
 #
 # Uses a two-tier cancellation strategy:
-# 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + 3 hours
+# 1. Standard cancel: MAX_AGE_HOURS < age <= MAX_AGE_HOURS + FORCE_BUFFER_HOURS
 #    - Uses /cancel endpoint for recently queued runs
-# 2. Force cancel: age > MAX_AGE_HOURS + 3 hours
+# 2. Force cancel: age > MAX_AGE_HOURS + FORCE_BUFFER_HOURS
 #    - Tries /cancel first, then falls back to /force-cancel (which returns
 #      409 if no regular cancel was attempted) for very old, stuck runs
 #
@@ -371,6 +374,7 @@ format_age() {
 #   $2 - Age in seconds
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
+#   FORCE_BUFFER_HOURS - Extra hours before force-cancel is used
 #   DRY_RUN - "true" to log without cancelling
 # Returns:
 #   0 on success or if the run is no longer cancellable, 1 on failure
@@ -379,7 +383,7 @@ process_run() {
 	local run_id="$1"
 	local age_seconds="$2"
 	local max_age_seconds=$((MAX_AGE_HOURS * 3600))
-	local force_age_seconds=$(((MAX_AGE_HOURS + 3) * 3600))
+	local force_age_seconds=$(((MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600))
 	local age
 	age=$(format_age "$age_seconds")
 
@@ -391,8 +395,8 @@ process_run() {
 	local response=""
 	local status_code=""
 
-	# Force-cancel runs older than MAX_AGE_HOURS + 3 hours
-	# The 3-hour buffer ensures standard cancellation is tried first
+	# Force-cancel runs older than MAX_AGE_HOURS + FORCE_BUFFER_HOURS hours
+	# The buffer gives the standard cancellation time to work for recent runs
 	if [ "$age_seconds" -gt "$force_age_seconds" ]; then
 		if [ "$DRY_RUN" = "true" ]; then
 			echo "🧪 [dry-run] Would force-cancel run $run_id (age=$age)"
@@ -507,6 +511,22 @@ validate_max_age_hours() {
 }
 
 # ----------------------------
+# Validate the force-cancel buffer
+# Args:
+#   $1 - Buffer in hours
+# Returns:
+#   0 if it is a non-negative integer without leading zero, 1 otherwise
+# ----------------------------
+validate_force_buffer_hours() {
+	local force_buffer_hours="${1:-}"
+
+	if ! [[ "$force_buffer_hours" =~ ^(0|[1-9][0-9]*)$ ]]; then
+		echo "::error::FORCE_BUFFER_HOURS must be a non-negative integer (got '$force_buffer_hours')" >&2
+		return 1
+	fi
+}
+
+# ----------------------------
 # Validate the dry run flag
 # Args:
 #   $1 - "true" or "false"
@@ -571,6 +591,7 @@ validate_auth() {
 main() {
 	validate_max_age_hours "$MAX_AGE_HOURS" || return 1
 	validate_repo "${REPO:-}" || return 1
+	validate_force_buffer_hours "$FORCE_BUFFER_HOURS" || return 1
 	validate_dry_run "$DRY_RUN" || return 1
 	validate_auth || return 1
 

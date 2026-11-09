@@ -257,3 +257,25 @@ teardown() {
 
   [[ ! "$output" =~ "Dry run" ]]
 }
+
+# --------------------------------------------------------
+# Force-cancel buffer
+# --------------------------------------------------------
+
+@test "main fails when FORCE_BUFFER_HOURS is invalid" {
+  export FORCE_BUFFER_HOURS="-2"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "FORCE_BUFFER_HOURS must be a non-negative integer (got '-2')" ]]
+  [ ! -s "$LOG_FILE" ]
+}
+
+@test "main accepts a FORCE_BUFFER_HOURS value of 0" {
+  export FORCE_BUFFER_HOURS=0
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
