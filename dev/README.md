@@ -193,6 +193,11 @@ jobs only run in GitHub Actions: to try the check locally, export the six output
 variables (`FOUND_COUNT`, `CANCELLED_COUNT`, `SKIPPED_COUNT`, `FAILED_COUNT`, `WOULD_CANCEL_COUNT`,
 `LISTING_TRUNCATED`) and run the script.
 
+`tests/action_readme_sync.bats` checks, without any network, that `action.yaml`, `README.md` and
+`scripts/cancel.sh` describe the same inputs (names, defaults, required flags) and outputs, and
+that the inputs are passed to the script through `env:` and never interpolated in `run:`. When you
+add or rename an input or an output, update the three files, and the README tables.
+
 ---
 
 ## Architecture Notes
