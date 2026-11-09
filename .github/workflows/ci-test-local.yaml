@@ -45,3 +45,55 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
           max_age_hours: 48
+
+  # Check the wiring of action.yaml (inputs passed to the script, outputs exposed
+  # by the action), which the unit tests of the script cannot see
+  test-outputs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      # A dry run never cancels anything, whatever the runs of the repository are
+      - name: Dry run of the action with all the statuses
+        id: dry-run
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          max_age_hours: 1
+          statuses: queued,waiting,pending,requested
+          dry_run: true
+
+      - name: Check the outputs of the dry run
+        env:
+          FOUND_COUNT: ${{ steps.dry-run.outputs.found_count }}
+          CANCELLED_COUNT: ${{ steps.dry-run.outputs.cancelled_count }}
+          SKIPPED_COUNT: ${{ steps.dry-run.outputs.skipped_count }}
+          FAILED_COUNT: ${{ steps.dry-run.outputs.failed_count }}
+          WOULD_CANCEL_COUNT: ${{ steps.dry-run.outputs.would_cancel_count }}
+          LISTING_TRUNCATED: ${{ steps.dry-run.outputs.listing_truncated }}
+        run: |
+          ./dev/check_dry_run_outputs.sh
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run the action with an invalid input
+        id: invalid-input
+        continue-on-error: true
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          max_age_hours: not-a-number
+          dry_run: true
+
+      - name: Check that the invalid input failed the step
+        env:
+          OUTCOME: ${{ steps.invalid-input.outcome }}
+        run: |
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::An invalid max_age_hours must fail the action (outcome: '$OUTCOME')"
+            exit 1
+          fi
+          echo "✅ The invalid input failed the action"
