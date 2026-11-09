@@ -47,10 +47,28 @@ inputs:
     default: "false"
     required: false
 
+outputs:
+  found_count:
+    description: Number of queued workflow runs found in the repository.
+    value: ${{ steps.cancel.outputs.found_count }}
+  cancelled_count:
+    description: Number of runs for which a cancel request was accepted.
+    value: ${{ steps.cancel.outputs.cancelled_count }}
+  skipped_count:
+    description: Number of runs skipped because they were no longer cancellable (HTTP 404 or 409).
+    value: ${{ steps.cancel.outputs.skipped_count }}
+  failed_count:
+    description: Number of runs that could not be cancelled.
+    value: ${{ steps.cancel.outputs.failed_count }}
+  would_cancel_count:
+    description: Number of runs that would be cancelled (only set in dry run, otherwise 0).
+    value: ${{ steps.cancel.outputs.would_cancel_count }}
+
 runs:
   using: "composite"
   steps:
     - name: Run cancel script
+      id: cancel
       shell: bash
       run: ${{ github.action_path }}/scripts/cancel.sh
       env:

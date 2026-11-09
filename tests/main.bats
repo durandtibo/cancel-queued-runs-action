@@ -279,3 +279,88 @@ teardown() {
 
   [ "$status" -eq 0 ]
 }
+
+# --------------------------------------------------------
+# Outputs and summary
+# --------------------------------------------------------
+
+setup_outputs() {
+  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
+  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
+  : > "$GITHUB_OUTPUT"
+  : > "$GITHUB_STEP_SUMMARY"
+
+  # process_all_runs sets the counters like the real one
+  process_all_runs() {
+    CANCELLED_COUNT=2
+    SKIPPED_COUNT=1
+    FAILED_COUNT="${MOCK_FAILED:-0}"
+    WOULD_CANCEL_COUNT=0
+    return "${MOCK_PROCESS_STATUS:-0}"
+  }
+}
+
+@test "main writes the outputs" {
+  setup_outputs
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "found_count=2" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=2" "$GITHUB_OUTPUT"
+  grep -qx "skipped_count=1" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+  grep -qx "would_cancel_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "main writes the summary" {
+  setup_outputs
+
+  run main
+
+  grep -q "Queued runs found | 2 |" "$GITHUB_STEP_SUMMARY"
+  grep -q "Cancelled | 2 |" "$GITHUB_STEP_SUMMARY"
+}
+
+@test "main writes the outputs even when some runs failed" {
+  setup_outputs
+  export MOCK_PROCESS_STATUS=1
+  export MOCK_FAILED=3
+
+  run main
+
+  [ "$status" -eq 1 ]
+  grep -qx "failed_count=3" "$GITHUB_OUTPUT"
+  grep -q "Failed | 3 |" "$GITHUB_STEP_SUMMARY"
+}
+
+@test "main writes zeros when there are no queued runs" {
+  setup_outputs
+  fetch_runs() { :; }
+
+  run main
+
+  [ "$status" -eq 0 ]
+  grep -qx "found_count=0" "$GITHUB_OUTPUT"
+  grep -qx "cancelled_count=0" "$GITHUB_OUTPUT"
+  grep -qx "failed_count=0" "$GITHUB_OUTPUT"
+}
+
+@test "main does not write outputs when the inputs are invalid" {
+  setup_outputs
+  export REPO="bad"
+
+  run main
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$GITHUB_OUTPUT" ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
+
+@test "main works without GITHUB_OUTPUT and GITHUB_STEP_SUMMARY" {
+  unset GITHUB_OUTPUT GITHUB_STEP_SUMMARY
+
+  run main
+
+  [ "$status" -eq 0 ]
+}
