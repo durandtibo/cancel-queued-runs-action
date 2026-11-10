@@ -50,8 +50,8 @@ BSD/macOS) and is tested with [bats](https://github.com/bats-core/bats-core) in 
 
 Files are prefixed by role:
 
-- `ci.yaml`: entry point for pull requests, pushes to `main` and manual runs; also called nightly by
-  `nightly.yaml`. It holds no steps, only jobs that call the reusable `ci-*.yaml` workflows below.
+- `ci.yaml`: entry point for pull requests, pushes to `main`, a nightly schedule and manual runs. It
+  holds no steps, only jobs that call the reusable `ci-*.yaml` workflows below.
   - `ci-format.yaml`: Markdown, shell, YAML and bats-assertion lint/format checks.
   - `ci-test-shell.yaml`: bats tests on the OS matrix.
   - `ci-test-shell-bash32.yaml`: bats tests with the system bash 3.2 on macOS.
@@ -61,8 +61,8 @@ Files are prefixed by role:
     released yet.
 - `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is not
   called from `ci.yaml`, so it can be a required check.
-- `nightly.yaml`: scheduled entry point that calls `ci.yaml` (current code) and
-  `nightly-test-released.yaml`, which tests the latest released action. It is not part of `ci.yaml`.
+- `nightly.yaml`: scheduled entry point that calls `nightly-test-released.yaml`, which
+  tests the latest released action. It is not part of `ci.yaml`.
 - `lib-get-test-matrix.yaml`: reusable workflow that loads the shared OS matrix once; callers pass it
   down through the `test-matrix` input.
 - `bot-*.yaml`: scheduled automation that opens PRs or acts on runs (format files, pin actions, sync

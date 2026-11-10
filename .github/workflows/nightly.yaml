@@ -1,23 +1,15 @@
-# Nightly workflow. It runs the full CI (current repository code) and tests the
-# latest released action, to catch issues from external changes and regressions
-# in what consumers pick up.
+# Nightly workflow testing the latest released action, to catch regressions in
+# what consumers pick up. The current (unreleased) code is tested nightly by ci.yaml.
 #
 # Permissions are set at the job level, not the workflow level.
 
 name: Nightly Tests
 on:
   schedule:
-    - cron: "10 9 * * *" # run at 9:10 AM UTC
+    - cron: "30 10 * * *" # run at 10:30 AM UTC
   workflow_dispatch: # to trigger manually
 
 jobs:
-  # Run the full CI on the current repository code
-  ci:
-    uses: ./.github/workflows/ci.yaml
-    permissions:
-      actions: write
-      contents: read
-
   # Load the shared OS matrix from the default config of
   # durandtibo/workflow-config-action once.
   get-matrix:

@@ -1,6 +1,6 @@
 # Main CI workflow that orchestrates all quality checks and tests.
-# Runs on pull requests, pushes to main, manual dispatch, and nightly (called
-# by nightly.yaml). It tests the current repository code, including the action
+# Runs on pull requests, pushes to main, a nightly schedule, and manual dispatch.
+# It tests the current repository code, including the action
 # that is not released yet.
 #
 # Deliberately NOT called from here, with its own trigger:
@@ -18,7 +18,8 @@ on:
   push:
     branches:
       - main
-  workflow_call: # called by nightly.yaml
+  schedule:
+    - cron: "10 9 * * *" # Run nightly at 9:10 AM UTC to catch issues from external changes
   workflow_dispatch: # to trigger manually
 
 jobs:
