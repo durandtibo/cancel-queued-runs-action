@@ -46,6 +46,35 @@ BSD/macOS) and is tested with [bats](https://github.com/bats-core/bats-core) in 
 - Quote all variables; validate inputs early with clear `::error` messages.
 - Code must pass `shellcheck` and `shfmt` via `make lint` / `make format`.
 
+## Workflow structure (`.github/workflows/`)
+
+Files are prefixed by role:
+
+- `ci.yaml`: entry point for pull requests, pushes to `main`, a nightly schedule and manual runs. It
+  holds no steps, only jobs that call the reusable `ci-*.yaml` workflows below.
+  - `ci-format.yaml`: Markdown, shell, YAML and bats-assertion lint/format checks.
+  - `ci-test-shell.yaml`: bats tests on the OS matrix.
+  - `ci-test-shell-bash32.yaml`: bats tests with the system bash 3.2 on macOS.
+  - `ci-mutation-check.yaml`: breaks `scripts/cancel.sh` on purpose (`dev/mutants.txt`) and fails if
+    the tests do not notice.
+  - `ci-test-local.yaml`: runs the action from this checkout (`uses: ./`).
+- `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is not
+  called from `ci.yaml`, so it can be a required check.
+- `nightly.yaml`: scheduled entry point that calls `nightly-test-stable.yaml`, which tests the
+  published action. It is not part of `ci.yaml`.
+- `lib-get-test-matrix.yaml`: reusable workflow that loads the shared OS matrix once; callers pass it
+  down through the `test-matrix` input.
+- `bot-*.yaml`: scheduled automation that opens PRs or acts on runs (format files, pin actions, sync
+  `.make/`, cancel stale runs, report queued runs).
+- `security-*.yaml`: dependency review and OSSF Scorecard.
+
+Conventions:
+
+- Each `ci-*` check is a `workflow_call` workflow that also has `workflow_dispatch`, so it can be run
+  alone. Add a new check as a new `ci-<name>.yaml` plus a job in `ci.yaml`.
+- Put `make` targets in the steps rather than duplicating commands, so local runs and CI match.
+- Start each file with a comment saying what it does, and update it when the behaviour changes.
+
 ## Tests
 
 - Each function in `scripts/cancel.sh` has its own `tests/<function_name>.bats` file.
