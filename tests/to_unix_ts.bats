@@ -182,3 +182,37 @@ mock_gnu_date() {
   [ ! -s "$DATE_CALLS" ]
   rm -rf "$MOCK_DIR"
 }
+
+# Emulates BSD date, which rejects -d: it answers a fixed timestamp only to -j
+# and logs its arguments, one line per call
+mock_bsd_date() {
+  MOCK_DIR="$BATS_TEST_DIRNAME/mocks"
+  mkdir -p "$MOCK_DIR"
+  export DATE_CALLS="$MOCK_DIR/date_calls.log"
+  : > "$DATE_CALLS"
+  date() {
+    echo "$*" >> "$DATE_CALLS"
+    if [[ " $* " == *" -d "* ]]; then
+      return 1
+    fi
+    echo 1736937000
+  }
+}
+
+@test "to_unix_ts prints what BSD date answers" {
+  mock_bsd_date
+
+  result=$(to_unix_ts "2025-01-15T10:30:00Z")
+
+  [ "$result" = "1736937000" ]
+  rm -rf "$MOCK_DIR"
+}
+
+@test "to_unix_ts asks BSD date for UTC" {
+  mock_bsd_date
+
+  to_unix_ts "2025-01-15T10:30:00Z" > /dev/null
+
+  [[ "$(tail -n 1 "$DATE_CALLS")" == "-j -u -f %Y-%m-%dT%H:%M:%SZ 2025-01-15T10:30:00Z +%s" ]] || false
+  rm -rf "$MOCK_DIR"
+}

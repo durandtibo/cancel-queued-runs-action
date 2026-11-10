@@ -82,8 +82,8 @@ cancellation_limit_reached: limit reached one run too late@@cancellation_limit_r
 cancellation_limit_reached: no limit not honoured@@cancellation_limit_reached.bats@@s/\[ "\$MAX_CANCELLATIONS" -gt 0 \] &&/true \&\&/
 cancellation_limit_reached: dry run not counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT))/
 cancellation_limit_reached: skipped runs counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT + WOULD_CANCEL_COUNT + SKIPPED_COUNT))/
-process_all_runs: runs not old enough left alone too@@process_all_runs.bats@@s/if cancellation_limit_reached && is_old_enough "\$age_seconds"; then/if cancellation_limit_reached; then/
-process_all_runs: limit ignored@@process_all_runs.bats@@s/if cancellation_limit_reached && is_old_enough "\$age_seconds"; then/if false; then/
+process_all_runs: runs not old enough left alone too@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if cancellation_limit_reached; then/
+process_all_runs: limit ignored@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if false; then/
 process_all_runs: left-alone runs not counted@@process_all_runs.bats@@s/DEFERRED_COUNT=\$\(\(DEFERRED_COUNT \+ 1\)\)/DEFERRED_COUNT=$DEFERRED_COUNT/
 process_all_runs: no warning for the runs left alone@@process_all_runs.bats@@s/^\tif \[ "\$DEFERRED_COUNT" -gt 0 \]; then$/\tif false; then/
 reset_counters: runs left alone not reset@@reset_counters.bats@@s/^\tDEFERRED_COUNT=0$/\t:/
