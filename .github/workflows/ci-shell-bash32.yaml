@@ -7,17 +7,14 @@
 name: Shell Unit Tests (system bash 3.2)
 on:
   workflow_call:
-  workflow_dispatch: # to trigger manually
+    inputs:
+      test-matrix:
+        description: "JSON test matrix from lib-get-test-matrix.yaml, loaded once by the caller"
+        required: true
+        type: string
 
 jobs:
-  # Load the shared matrix (including the macOS runners) once.
-  get-matrix:
-    uses: ./.github/workflows/lib-get-test-matrix.yaml
-    permissions:
-      contents: read
-
   test:
-    needs: get-matrix
     permissions:
       contents: read
     runs-on: ${{ matrix.os }}
@@ -26,7 +23,7 @@ jobs:
       max-parallel: 8
       fail-fast: false
       matrix:
-        os: ${{ fromJson(needs.get-matrix.outputs.test_matrix).os_macos }}
+        os: ${{ fromJson(inputs.test-matrix).os_macos }}
 
     steps:
       - name: Checkout
