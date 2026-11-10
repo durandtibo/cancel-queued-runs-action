@@ -20,6 +20,7 @@ permissions: {}
 
 jobs:
   report:
+    permissions: {} # the token comes from the GitHub App
     runs-on: ubuntu-slim
     timeout-minutes: 10
     env:

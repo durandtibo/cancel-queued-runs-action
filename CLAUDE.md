@@ -71,8 +71,8 @@ Files are prefixed by role:
 
 Conventions:
 
-- Set `permissions` at the job level (including jobs that call a reusable workflow), not at the
-  workflow level.
+- Set `permissions` on every job (including jobs that call a reusable workflow). The workflow
+  level has no `permissions`, or only `permissions: {}` (it grants nothing), never a grant.
 - Each `ci-*` check is a `workflow_call` workflow that also has `workflow_dispatch`, so it can be run
   alone. Add a new check as a new `ci-<name>.yaml` plus a job in `ci.yaml`.
 - Put `make` targets in the steps rather than duplicating commands, so local runs and CI match.
