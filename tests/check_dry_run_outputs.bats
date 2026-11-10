@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
 # Tests of dev/check_dry_run_outputs.sh, which checks the outputs of a dry run
-# of the action in ci-test-local.yaml.
+# of the action in ci-action.yaml.
 
 setup() {
   CHECK="$BATS_TEST_DIRNAME/../dev/check_dry_run_outputs.sh"

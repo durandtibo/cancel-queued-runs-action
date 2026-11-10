@@ -38,17 +38,17 @@ jobs:
       contents: read
 
   # Run the bats unit tests of the shell scripts on multiple OS
-  test-shell:
+  shell:
     needs: get-matrix
-    uses: ./.github/workflows/ci-test-shell.yaml
+    uses: ./.github/workflows/ci-shell.yaml
     with:
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
     permissions:
       contents: read
 
   # Run the bats unit tests of the shell scripts with the system bash 3.2 of macOS
-  test-shell-bash32:
-    uses: ./.github/workflows/ci-test-shell-bash32.yaml
+  shell-bash32:
+    uses: ./.github/workflows/ci-shell-bash32.yaml
     permissions:
       contents: read
 
@@ -59,9 +59,9 @@ jobs:
       contents: read
 
   # Test the action from the current repository code (not released yet) on multiple OS
-  test-action:
+  action:
     needs: get-matrix
-    uses: ./.github/workflows/ci-test-action.yaml
+    uses: ./.github/workflows/ci-action.yaml
     with:
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
     permissions:

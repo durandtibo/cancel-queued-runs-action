@@ -53,11 +53,11 @@ Files are prefixed by role:
 - `ci.yaml`: entry point for pull requests, pushes to `main`, a nightly schedule and manual runs. It
   holds no steps, only jobs that call the reusable `ci-*.yaml` workflows below.
   - `ci-format.yaml`: Markdown, shell, YAML and bats-assertion lint/format checks.
-  - `ci-test-shell.yaml`: bats tests on the OS matrix.
-  - `ci-test-shell-bash32.yaml`: bats tests with the system bash 3.2 on macOS.
+  - `ci-shell.yaml`: bats tests on the OS matrix.
+  - `ci-shell-bash32.yaml`: bats tests with the system bash 3.2 on macOS.
   - `ci-mutation-check.yaml`: breaks `scripts/cancel.sh` on purpose (`dev/mutants.txt`) and fails if
     the tests do not notice.
-  - `ci-test-action.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
+  - `ci-action.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
     released yet.
 - `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is not
   called from `ci.yaml`, so it can be a required check.
