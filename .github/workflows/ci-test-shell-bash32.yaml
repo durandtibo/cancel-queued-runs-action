@@ -9,13 +9,12 @@ on:
   workflow_call:
   workflow_dispatch: # to trigger manually
 
-permissions:
-  contents: read
-
 jobs:
   # Load the list of macOS runners from the default config of
   # durandtibo/workflow-config-action.
   get-matrix:
+    permissions:
+      contents: read
     runs-on: ubuntu-slim
     timeout-minutes: 2
     outputs:
@@ -27,6 +26,8 @@ jobs:
 
   test:
     needs: get-matrix
+    permissions:
+      contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:

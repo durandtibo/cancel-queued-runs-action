@@ -7,11 +7,10 @@ on:
   workflow_call:
   workflow_dispatch: # to trigger manually
 
-permissions:
-  contents: read
-
 jobs:
   mutation-check:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

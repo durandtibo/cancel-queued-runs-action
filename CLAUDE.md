@@ -57,11 +57,12 @@ Files are prefixed by role:
   - `ci-test-shell-bash32.yaml`: bats tests with the system bash 3.2 on macOS.
   - `ci-mutation-check.yaml`: breaks `scripts/cancel.sh` on purpose (`dev/mutants.txt`) and fails if
     the tests do not notice.
-  - `ci-test-local.yaml`: runs the action from this checkout (`uses: ./`).
+  - `ci-test-action.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
+    released yet.
 - `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is not
   called from `ci.yaml`, so it can be a required check.
-- `nightly.yaml`: scheduled entry point that calls `nightly-test-stable.yaml`, which tests the
-  published action. It is not part of `ci.yaml`.
+- `nightly.yaml`: scheduled entry point that calls `nightly-test-released.yaml`, which
+  tests the latest released action. It is not part of `ci.yaml`.
 - `lib-get-test-matrix.yaml`: reusable workflow that loads the shared OS matrix once; callers pass it
   down through the `test-matrix` input.
 - `bot-*.yaml`: scheduled automation that opens PRs or acts on runs (format files, pin actions, sync
@@ -70,6 +71,8 @@ Files are prefixed by role:
 
 Conventions:
 
+- Set `permissions` at the job level (including jobs that call a reusable workflow), not at the
+  workflow level.
 - Each `ci-*` check is a `workflow_call` workflow that also has `workflow_dispatch`, so it can be run
   alone. Add a new check as a new `ci-<name>.yaml` plus a job in `ci.yaml`.
 - Put `make` targets in the steps rather than duplicating commands, so local runs and CI match.

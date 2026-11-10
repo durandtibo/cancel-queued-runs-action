@@ -1,7 +1,7 @@
-# Workflow testing the published stable action, to catch regressions in what consumers pick up
+# Workflow testing the latest released action, to catch regressions in what consumers pick up
 # on multiple operating systems.
 
-name: Test Stable Action
+name: Test Released Action
 on:
   workflow_call:
     inputs:
@@ -10,12 +10,11 @@ on:
         required: true
         type: string
 
-permissions:
-  actions: write
-  contents: read
-
 jobs:
   test:
+    permissions:
+      actions: write
+      contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     strategy:
@@ -32,6 +31,9 @@ jobs:
           repo: ${{ github.repository }}
 
   test-48h:
+    permissions:
+      actions: write
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

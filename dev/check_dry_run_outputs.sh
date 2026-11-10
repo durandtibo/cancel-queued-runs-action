@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Check the outputs of a dry run of the action (used by ci-test-local.yaml).
+# Check the outputs of a dry run of the action (used by ci-test-action.yaml).
 #
 # Unit tests run scripts/cancel.sh directly: they cannot see a wrong wiring in
 # action.yaml (an input that is not passed, an output that is not exposed, a
