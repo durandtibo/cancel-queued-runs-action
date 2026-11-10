@@ -1,7 +1,7 @@
 # Workflow testing the action from the current repository code (uses: ./)
 # on multiple operating systems.
 
-name: Test Local Action
+name: Test Action
 on:
   workflow_call:
     inputs:
@@ -10,12 +10,11 @@ on:
         required: true
         type: string
 
-permissions:
-  actions: write
-  contents: read
-
 jobs:
   test:
+    permissions:
+      actions: write
+      contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     strategy:
@@ -34,6 +33,9 @@ jobs:
           repo: ${{ github.repository }}
 
   test-48h:
+    permissions:
+      actions: write
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -49,6 +51,9 @@ jobs:
   # Check the wiring of action.yaml (inputs passed to the script, outputs exposed
   # by the action), which the unit tests of the script cannot see
   test-outputs:
+    permissions:
+      actions: write
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
