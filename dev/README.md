@@ -185,7 +185,7 @@ reports:
 
 The bats tests run `scripts/cancel.sh` directly: they cannot see a wrong wiring in `action.yaml` (an
 input that is not passed to the script, an output that is not exposed). The `test-outputs` job of
-`.github/workflows/ci-test-action.yaml` runs the action from the repository code in dry run and
+`.github/workflows/ci-action.yaml` runs the action from the repository code in dry run and
 checks its outputs with `dev/check_dry_run_outputs.sh` (the checks are unit tested in
 `tests/check_dry_run_outputs.bats`). It also checks that an invalid input fails the step. These
 jobs only run in GitHub Actions: to try the check locally, export the eight outputs as environment

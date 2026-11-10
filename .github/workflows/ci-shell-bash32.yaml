@@ -7,25 +7,14 @@
 name: Shell Unit Tests (system bash 3.2)
 on:
   workflow_call:
-  workflow_dispatch: # to trigger manually
+    inputs:
+      test-matrix:
+        description: "JSON test matrix from lib-get-test-matrix.yaml, loaded once by the caller"
+        required: true
+        type: string
 
 jobs:
-  # Load the list of macOS runners from the default config of
-  # durandtibo/workflow-config-action.
-  get-matrix:
-    permissions:
-      contents: read
-    runs-on: ubuntu-slim
-    timeout-minutes: 2
-    outputs:
-      os_macos: ${{ steps.cfg.outputs.os_macos }}
-    steps:
-      - name: Load workflow config
-        id: cfg
-        uses: durandtibo/workflow-config-action@293a1c5eff18a9c485359d32d3035fdaaddcb955 # ratchet:durandtibo/workflow-config-action@v0.3.0
-
   test:
-    needs: get-matrix
     permissions:
       contents: read
     runs-on: ${{ matrix.os }}
@@ -34,7 +23,7 @@ jobs:
       max-parallel: 8
       fail-fast: false
       matrix:
-        os: ${{ fromJson(needs.get-matrix.outputs.os_macos) }}
+        os: ${{ fromJson(inputs.test-matrix).os_macos }}
 
     steps:
       - name: Checkout
