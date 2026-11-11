@@ -293,6 +293,14 @@ record_calls() {
   [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
 }
 
+@test "process_run includes the message of the 409 response in the warning" {
+  cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{\"message\":\"Cannot cancel a workflow run that is completed.\"}"; }
+
+  run process_run "123" $((3 * 3600))
+
+  [[ "$output" =~ "(HTTP 409: Cannot cancel a workflow run that is completed.)" ]] || false
+}
+
 @test "process_run still force-cancels an old run when the cancel request returns 409" {
   record_calls
   cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo -e "HTTP/2.0 409 Conflict\n\n{}"; }

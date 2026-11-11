@@ -414,7 +414,9 @@ annotation. Typical reasons are an invalid or expired token (`HTTP 401`), a miss
 **Solution**: Read the message after the colon, it is the error reported by `gh`.
 
 A run that no longer exists (`HTTP 404`) or that cannot be cancelled anymore (`HTTP 409`) is not
-reported this way: it gives a single `::warning::Run ... could not be cancelled` and is skipped.
+reported this way: it gives a single `::warning::Run ... could not be cancelled (HTTP ...: <message>)`
+and is skipped. A run that stays queued with a `409` often has no jobs (a stuck run on the GitHub
+side): the message after the status code tells why GitHub refused.
 
 ### Log shows `::error::Cannot list the workflow runs of ...`
 
