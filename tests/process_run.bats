@@ -106,7 +106,7 @@ record_calls() {
 }
 
 @test "process_run falls back to force cancel when regular cancel fails for old run" {
-    cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+    cancel_run() { echo -e "HTTP/2.0 500 Internal Server Error\n\n{}"; }
     force_cancel_run() { echo -e "HTTP/2.0 202 Accepted\n\n{}"; }
 
     run process_run "789" $((24 * 3600))
@@ -293,21 +293,22 @@ record_calls() {
   [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
 }
 
+@test "process_run does not force-cancel an old run when the cancel request returns 409" {
+  record_calls
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
+
+  run process_run "123" $((24 * 3600))
+
+  ! grep -q "force_cancel_run" "$CALL_LOG" || false
+  [ "$status" -eq 0 ]
+}
+
 @test "process_run includes the message of the 409 response in the warning" {
   cancel_run() { echo -e "HTTP/2.0 409 Conflict\n\n{\"message\":\"Cannot cancel a workflow run that is completed.\"}"; }
 
   run process_run "123" $((3 * 3600))
 
   [[ "$output" =~ "(HTTP 409: Cannot cancel a workflow run that is completed.)" ]] || false
-}
-
-@test "process_run still force-cancels an old run when the cancel request returns 409" {
-  record_calls
-  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo -e "HTTP/2.0 409 Conflict\n\n{}"; }
-
-  run process_run "123" $((24 * 3600))
-
-  grep -q "force_cancel_run 123" "$CALL_LOG"
 }
 
 @test "process_run still force-cancels an old run when the cancel request returns 500" {
@@ -576,7 +577,7 @@ record_sleeps() {
 @test "process_run waits between the cancel and the force-cancel requests of one run" {
   record_sleeps
   CANCEL_DELAY_SECONDS=4
-  cancel_run() { echo "HTTP/2.0 409 Conflict"; }
+  cancel_run() { echo "HTTP/2.0 500 Internal Server Error"; }
   force_cancel_run() { echo "HTTP/2.0 202 Accepted"; }
 
   process_run "123" $((10 * 3600)) >/dev/null
@@ -756,7 +757,7 @@ fixture() { cat "$BATS_TEST_DIRNAME/fixtures/$1"; }
   CALL_LOG="$BATS_TEST_DIRNAME/mocks/calls.log"
   : > "$CALL_LOG"
   MAX_AGE_HOURS=1
-  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 409 Conflict"; }
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 500 Internal Server Error"; }
   force_cancel_run() { echo "force_cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 202 Accepted"; }
 
   run process_run "123" $((4 * 3600 + 1))
@@ -817,7 +818,7 @@ record_ordered_calls() {
 
 @test "process_run sends the standard cancel before the force-cancel for an old run" {
   record_ordered_calls
-  CANCEL_CODE=409
+  CANCEL_CODE=500
 
   run process_run "123" $((24 * 3600))
 
@@ -836,7 +837,7 @@ record_ordered_calls() {
 
 @test "process_run never sends a force-cancel first, even one second after the force-cancel boundary" {
   record_ordered_calls
-  CANCEL_CODE=409
+  CANCEL_CODE=500
 
   run process_run "123" $((5 * 3600 + 1))
 
@@ -846,7 +847,7 @@ record_ordered_calls() {
 @test "process_run never sends a force-cancel first when the buffer is 0" {
   record_ordered_calls
   FORCE_BUFFER_HOURS=0
-  CANCEL_CODE=409
+  CANCEL_CODE=500
 
   run process_run "123" $((2 * 3600 + 1))
 
@@ -864,7 +865,7 @@ record_ordered_calls() {
 
 @test "process_run sends no force-cancel for a run in the standard tier" {
   record_ordered_calls
-  CANCEL_CODE=409
+  CANCEL_CODE=500
 
   run process_run "123" $((3 * 3600))
 
@@ -873,7 +874,7 @@ record_ordered_calls() {
 
 @test "process_run sends a force-cancel for the same run as the standard cancel" {
   record_ordered_calls
-  CANCEL_CODE=409
+  CANCEL_CODE=500
 
   run process_run "777" $((24 * 3600))
 
