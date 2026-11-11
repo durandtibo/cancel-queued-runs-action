@@ -9,6 +9,8 @@ on:
     - cron: "30 10 * * *" # run at 10:30 AM UTC
   workflow_dispatch: # to trigger manually
 
+permissions: {}
+
 jobs:
   # Load the shared OS matrix from the default config of
   # durandtibo/workflow-config-action once.
