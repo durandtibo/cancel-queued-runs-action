@@ -222,6 +222,16 @@ teardown() {
   [[ "$output" =~ "All eligible runs processed successfully." ]] || false
 }
 
+@test "main does not claim full success when runs were skipped" {
+  process_all_runs() { SKIPPED_COUNT=2; return 0; }
+
+  run main
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "2 run(s) could not be cancelled (HTTP 404 or 409) and may still be queued" ]] || false
+  [[ ! "$output" =~ "All eligible runs processed successfully." ]] || false
+}
+
 @test "main fails when process_all_runs reports a failure" {
   export MOCK_PROCESS_STATUS=1
 

@@ -1636,7 +1636,11 @@ main() {
 	if [ "$run_count" -eq 0 ]; then
 		echo "✅ No workflow runs found."
 	elif process_all_runs "$runs"; then
-		echo "✅ All eligible runs processed successfully."
+		if [ "$SKIPPED_COUNT" -gt 0 ]; then
+			echo "⚠️ Eligible runs processed, but $SKIPPED_COUNT run(s) could not be cancelled (HTTP 404 or 409) and may still be queued."
+		else
+			echo "✅ All eligible runs processed successfully."
+		fi
 	elif [ "$FAIL_ON_ERROR" = "true" ]; then
 		exit_code=1
 	else
