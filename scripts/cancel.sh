@@ -818,8 +818,9 @@ process_run() {
 		throttle_requests
 		response=$(cancel_run "$run_id")
 		status_code=$(get_status_code "$response")
-		# A 404 means that the run is gone: force-cancelling it is pointless
-		if [ "$status_code" != "202" ] && [ "$status_code" != "404" ]; then
+		# A 404 or a 409 means that the run is gone or cannot be cancelled
+		# (e.g., a zombie run without jobs): force-cancelling it is pointless
+		if [ "$status_code" != "202" ] && ! is_skippable_status "$status_code"; then
 			throttle_requests
 			response=$(force_cancel_run "$run_id")
 		fi

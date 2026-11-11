@@ -415,7 +415,7 @@ JSON
   grep -qx "failed_count=0" "$GITHUB_OUTPUT"
 }
 
-@test "end-to-end: a recorded 409 response skips the run after the force-cancel request" {
+@test "end-to-end: a recorded 409 response skips the run without a force-cancel request" {
   export MOCK_GH_POST_FIXTURE=response_409.http
   export GITHUB_OUTPUT="$MOCK_DIR/github_output"
   : > "$GITHUB_OUTPUT"
@@ -423,7 +423,7 @@ JSON
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [ "$(posts)" -eq 2 ]
+  [ "$(posts)" -eq 1 ]
   grep -qx "skipped_count=1" "$GITHUB_OUTPUT"
 }
 
@@ -497,11 +497,11 @@ force_cancel_without_cancel() {
 }
 
 @test "end-to-end: the regular cancel is sent before the force-cancel" {
-  export MOCK_GH_POST_FIXTURE=response_409.http
+  export MOCK_GH_POST_FIXTURE=response_500.http
 
   run "$SCRIPT"
 
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
   [ "$(post_endpoints)" = "$(printf '111/cancel\n111/force-cancel')" ]
 }
 
@@ -523,7 +523,7 @@ JSON
 }
 
 @test "end-to-end: the requests of a run are not interleaved with those of another run" {
-  export MOCK_GH_POST_FIXTURE=response_409.http
+  export MOCK_GH_POST_FIXTURE=response_500.http
   cat > "$MOCK_GH_RUNS" << 'JSON'
 {"workflow_runs": [
   {"id": 111, "updated_at": "2020-01-01T00:00:00Z"},

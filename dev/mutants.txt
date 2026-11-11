@@ -9,8 +9,9 @@
 
 process_run: force-cancel threshold >= instead of >@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$force_age_seconds" \]/[ "$age_seconds" -ge "$force_age_seconds" ]/
 process_run: cancel threshold >= instead of >@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$max_age_seconds" \]/[ "$age_seconds" -ge "$max_age_seconds" ]/
-process_run: force-cancel fallback also after a 404@@process_run.bats@@s/\[ "\$status_code" != "404" \]; then/[ "$status_code" != "999" ]; then/
-process_run: no force-cancel fallback@@process_run.bats@@s/\[ "\$status_code" != "202" \] && \[ "\$status_code" != "404" \]; then/false; then/
+process_run: force-cancel fallback also after a 404@@process_run.bats@@s/! is_skippable_status "\$status_code"; then/[ "$status_code" != "409" ]; then/
+process_run: force-cancel fallback also after a 409@@process_run.bats@@s/! is_skippable_status "\$status_code"; then/[ "$status_code" != "404" ]; then/
+process_run: no force-cancel fallback@@process_run.bats@@s/\[ "\$status_code" != "202" \] && ! is_skippable_status "\$status_code"; then/false; then/
 process_run: failure when the status is 202@@process_run.bats@@s/^(\t+)if \[ "\$status_code" != "202" \]; then$/\1if [ "$status_code" = "202" ]; then/
 process_run: dry run ignored@@process_run.bats@@s/\[ "\$DRY_RUN" = "true" \]; then$/[ "$DRY_RUN" = "never" ]; then/
 is_skippable_status: 404 not skippable@@is_skippable_status.bats@@s/\[ "\$status_code" = "404" \] \|\|/[ "$status_code" = "405" ] ||/
