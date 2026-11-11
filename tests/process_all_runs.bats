@@ -187,7 +187,7 @@ teardown() {
   if grep -q "process_run 222" "$LOG_FILE"; then false; fi
 }
 
-@test "process_all_runs calls jq once whatever the number of runs" {
+@test "process_all_runs calls jq a fixed number of times (twice without a run limit) whatever the number of runs" {
   real_jq=$(command -v jq)
   export JQ_CALL_LOG="$MOCK_DIR/jq_calls.log"
   : > "$JQ_CALL_LOG"
@@ -210,7 +210,7 @@ MOCK
   run process_all_runs "$runs_stream"
 
   [ "$status" -eq 0 ]
-  [ "$(wc -l < "$JQ_CALL_LOG" | tr -d ' ')" -eq 1 ]
+  [ "$(wc -l < "$JQ_CALL_LOG" | tr -d ' ')" -eq 2 ]
   [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 4 ]
 }
 

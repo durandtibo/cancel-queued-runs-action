@@ -943,6 +943,23 @@ record_run() {
 }
 
 # ----------------------------
+# Count the runs of a stream that could not be parsed
+# Counts the non-empty lines of the stream (at least 1), so that failed_count
+# and the FAIL_ON_ERROR handling of the caller see every run that was not
+# processed.
+# Args:
+#   $1 - Stream of runs (line-delimited objects)
+# ----------------------------
+count_unparsed_runs() {
+	local count
+	count=$(printf '%s\n' "$1" | grep -c . || true)
+	if [ "$count" -lt 1 ]; then
+		count=1
+	fi
+	echo "$count"
+}
+
+# ----------------------------
 # Process all workflow runs
 # Updates the counters CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT,
 # WOULD_CANCEL_COUNT and DEFERRED_COUNT (reset at the start of the call), and
@@ -962,6 +979,7 @@ record_run() {
 # ----------------------------
 process_all_runs() {
 	local runs_stream="$1"
+	local input_stream="$1"
 	local parsed run_id queued_at age_seconds now excess_ids over_limit
 	# The unit separator is not whitespace, so read keeps empty fields
 	# (a tab would be collapsed and shift the fields)
@@ -981,14 +999,14 @@ process_all_runs() {
 	# most recent runs first). The sort is stable: ties keep the given order.
 	if ! runs_stream=$(printf '%s\n' "$runs_stream" | jq -c -s 'sort_by(.queued_at)[]'); then
 		echo "::error::Cannot parse the list of runs" >&2
-		FAILED_COUNT=1
+		FAILED_COUNT=$(count_unparsed_runs "$input_stream")
 		return 1
 	fi
 
 	# IDs of the runs older than the MAX_RUNS most recent ones
 	if ! excess_ids=$(select_excess_run_ids "$runs_stream"); then
 		echo "::error::Cannot parse the list of runs" >&2
-		FAILED_COUNT=1
+		FAILED_COUNT=$(count_unparsed_runs "$input_stream")
 		return 1
 	fi
 
@@ -996,12 +1014,8 @@ process_all_runs() {
 	# jq processes per run
 	if ! parsed=$(printf '%s\n' "$runs_stream" | jq -r '[.id, .queued_at] | map(tostring) | join("\u001f")'); then
 		echo "::error::Cannot parse the list of runs" >&2
-		# None of the runs could be processed: count them (at least one) so
-		# that failed_count and the FAIL_ON_ERROR handling of the caller see it
-		FAILED_COUNT=$(printf '%s\n' "$runs_stream" | grep -c . || true)
-		if [ "$FAILED_COUNT" -lt 1 ]; then
-			FAILED_COUNT=1
-		fi
+		# None of the runs could be processed
+		FAILED_COUNT=$(count_unparsed_runs "$input_stream")
 		return 1
 	fi
 
