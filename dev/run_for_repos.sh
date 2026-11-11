@@ -25,22 +25,22 @@ read_output() {
 	echo "${value:-0}"
 }
 
-# Print the summary table. Args: total found, total cancelled, then "repo|found|cancelled" rows
+# Print the summary table. Args: total found, cancelled, skipped, then "repo|found|cancelled|skipped" rows
 print_summary() {
-	local total_found="$1" total_cancelled="$2" row
-	shift 2
+	local total_found="$1" total_cancelled="$2" total_skipped="$3" row
+	shift 3
 	echo "=== Summary ==="
 	{
-		printf '%s|%s|%s\n' "Repository" "Running" "Cancelled"
+		printf '%s|%s|%s|%s\n' "Repository" "Running" "Cancelled" "Skipped"
 		for row in "$@"; do printf '%s\n' "$row"; done
-		printf '%s|%s|%s\n' "Total" "$total_found" "$total_cancelled"
+		printf '%s|%s|%s|%s\n' "Total" "$total_found" "$total_cancelled" "$total_skipped"
 	} | awk -F'|' '
-		{ for (i = 1; i <= 3; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
+		{ for (i = 1; i <= 4; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
 		END {
 			for (r = 1; r <= NR; r++) {
-				printf "%-*s  %*s  %*s\n", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3]
+				printf "%-*s  %*s  %*s  %*s\n", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3], w[4], c[r, 4]
 				if (r == 1 || r == NR - 1) {
-					printf "%s\n", sep(w[1] + w[2] + w[3] + 4)
+					printf "%s\n", sep(w[1] + w[2] + w[3] + w[4] + 6)
 				}
 			}
 		}
@@ -96,8 +96,8 @@ main() {
 	# shellcheck disable=SC2064 # expand now: out_file is local to main
 	trap "rm -f '$out_file'" EXIT
 
-	local failed=() summary=() repo found cancelled
-	local total_found=0 total_cancelled=0
+	local failed=() summary=() repo found cancelled skipped
+	local total_found=0 total_cancelled=0 total_skipped=0
 	while read -r repo; do
 		[ -z "$repo" ] && continue
 		echo "=== Running cancel script for $repo ==="
@@ -106,17 +106,19 @@ main() {
 			found=$(read_output "$out_file" found_count)
 			cancelled=$(read_output "$out_file" cancelled_count)
 			total_found=$((total_found + found))
+			skipped=$(read_output "$out_file" skipped_count)
 			total_cancelled=$((total_cancelled + cancelled))
-			summary+=("$repo|$found|$cancelled")
+			total_skipped=$((total_skipped + skipped))
+			summary+=("$repo|$found|$cancelled|$skipped")
 		else
 			echo "!!! Failed for $repo, continuing" >&2
 			failed+=("$repo")
-			summary+=("$repo|-|-")
+			summary+=("$repo|-|-|-")
 		fi
 		echo
 	done <<<"$repos"
 
-	print_summary "$total_found" "$total_cancelled" "${summary[@]}"
+	print_summary "$total_found" "$total_cancelled" "$total_skipped" "${summary[@]}"
 
 	if [ "${#failed[@]}" -gt 0 ]; then
 		echo "Failed repos: ${failed[*]}" >&2
