@@ -933,9 +933,9 @@ record_run() {
 #
 # Once MAX_CANCELLATIONS runs are cancelled (see cancellation_limit_reached),
 # the next runs that are old enough are not touched and are counted in
-# DEFERRED_COUNT, with a warning at the end. The runs are processed in the order
-# they are given. The runs that are not old enough are still looked at: they
-# are not affected by the limit.
+# DEFERRED_COUNT, with a warning at the end. The runs are processed oldest
+# first (by queued_at; ties keep the given order). The runs that are not old
+# enough are still looked at: they are not affected by the limit.
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
@@ -957,6 +957,15 @@ process_all_runs() {
 	# read it. An age computed from it is never larger than the real one, so a
 	# run that is younger than the threshold is never cancelled.
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+	# Process the oldest runs first, so that MAX_CANCELLATIONS cancels the
+	# oldest runs and leaves the most recent ones for later (GitHub lists the
+	# most recent runs first). The sort is stable: ties keep the given order.
+	if ! runs_stream=$(printf '%s\n' "$runs_stream" | jq -c -s 'sort_by(.queued_at)[]'); then
+		echo "::error::Cannot parse the list of runs" >&2
+		FAILED_COUNT=1
+		return 1
+	fi
 
 	# IDs of the runs older than the MAX_RUNS most recent ones
 	if ! excess_ids=$(select_excess_run_ids "$runs_stream"); then

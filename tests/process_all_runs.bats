@@ -601,6 +601,21 @@ five_old_runs() {
   [ "$(cat "$LOG_FILE")" = $'process_run 1\nprocess_run 2' ]
 }
 
+@test "process_all_runs cancels the oldest runs first when there is a limit" {
+  mock_limit
+  MAX_CANCELLATIONS=2
+
+  # listed most recent first, as GitHub does
+  process_all_runs "$(printf '%s\n' \
+    '{"id": 1, "queued_at": "2025-01-01T01:05:00Z"}' \
+    '{"id": 2, "queued_at": "2025-01-01T01:04:00Z"}' \
+    '{"id": 3, "queued_at": "2025-01-01T01:03:00Z"}' \
+    '{"id": 4, "queued_at": "2025-01-01T01:02:00Z"}')" > /dev/null
+
+  [ "$(cat "$LOG_FILE")" = $'process_run 4\nprocess_run 3' ]
+  [ "$DEFERRED_COUNT" -eq 2 ]
+}
+
 @test "process_all_runs counts the runs left alone after the limit" {
   mock_limit
   MAX_CANCELLATIONS=2
