@@ -480,6 +480,21 @@ is_skippable_status() {
 }
 
 # ----------------------------
+# Print the message of an HTTP response
+# Reads the "message" field of the JSON body (the part after the first blank
+# line) and prints it on one line. Prints nothing if there is none.
+# Args:
+#   $1 - Full HTTP response (headers and body)
+# ----------------------------
+get_response_message() {
+	local response="${1:-}"
+
+	printf '%s\n' "$response" | tr -d '\r' |
+		awk 'body {print} /^$/ {body=1}' |
+		jq -r '.message // empty' 2>/dev/null | tr '\n' ' ' | sed -E 's/ +$//' || true
+}
+
+# ----------------------------
 # POST to a cancel endpoint of a workflow run
 # Prints the full HTTP response (headers and body) on stdout. If gh writes
 # anything on stderr (network error, bad credentials, missing gh, HTTP error
@@ -825,7 +840,9 @@ process_run() {
 	status_code=$(get_status_code "$response")
 
 	if is_skippable_status "$status_code"; then
-		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code): it no longer exists or cannot be cancelled anymore, skipping."
+		local message
+		message=$(get_response_message "$response")
+		echo "::warning::Run $run_id could not be cancelled (HTTP $status_code${message:+: $message}): it no longer exists or cannot be cancelled anymore, skipping."
 		PROCESS_RUN_OUTCOME="skipped"
 		return 0
 	fi
