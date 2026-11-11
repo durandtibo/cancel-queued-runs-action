@@ -249,7 +249,7 @@ delayed, and nothing is waited for in a dry run.
 
 `max_cancellations` is a safety valve against a misconfiguration: with a `max_age_hours` that is
 much too small, a single execution could cancel hundreds of runs. The action cancels at most this
-number of runs (the first ones of the list returned by GitHub, most recent first), leaves the other
+number of runs (the oldest ones first), leaves the other
 runs that are old enough alone, and reports them in the `deferred_count` output, in a warning and in
 the job summary. The next execution processes them. In a dry run, the runs that would be cancelled
 count, so that the preview shows what a real run would do. Runs that are skipped (`404`, `409`) or
@@ -486,8 +486,8 @@ this happens, so that a following step can decide to run the action again:
 
 ### Log shows `::warning::MAX_CANCELLATIONS (...) reached`
 
-**Cause**: More runs than `max_cancellations` are old enough to be cancelled. The first runs were
-cancelled, the others were left alone on purpose.
+**Cause**: More runs than `max_cancellations` are old enough to be cancelled. The oldest runs were
+cancelled first, the others were left alone on purpose.
 
 **Solution**: Nothing to do if the limit is intended: the next execution processes the remaining
 runs. If it is not, raise `max_cancellations` (or set it to `0` for no limit). If you did not expect
