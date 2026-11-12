@@ -1,19 +1,10 @@
 # 🧹 Cancel Queued Runs Action
 
-<p align="center">
-    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/ci.yaml">
-        <img alt="CI" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/ci.yaml/badge.svg">
-    </a>
-    <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml">
-        <img alt="Nightly Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml/badge.svg">
-    </a>
-    <a href="https://scorecard.dev/viewer/?uri=github.com/durandtibo/cancel-queued-runs-action">
-        <img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/durandtibo/cancel-queued-runs-action/badge">
-    </a>
-    <a href="https://github.com/durandtibo/cancel-queued-runs-action/blob/main/LICENSE">
-        <img alt="License" src="https://img.shields.io/badge/License-BSD_3--Clause-blue.svg">
-    </a>
-</p>
+[![CI](https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/ci.yaml/badge.svg)](https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/ci.yaml)
+[![Nightly](https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml/badge.svg)](https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/durandtibo/cancel-queued-runs-action/badge)](https://scorecard.dev/viewer/?uri=github.com/durandtibo/cancel-queued-runs-action)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/tag/durandtibo/cancel-queued-runs-action?label=release)](https://github.com/durandtibo/cancel-queued-runs-action/tags)
 
 Automatically cancel GitHub Actions workflow runs that have been **queued longer than a configurable
 number of hours**. This helps keep your repository’s workflow queue clean and prevents long-running
