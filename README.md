@@ -65,9 +65,13 @@ This action requires:
 ## 📦 Usage
 
 Add the following job to any workflow where you want stale queued runs to be automatically
-cancelled. Releases are published as exact version tags (`v1.9`, ...); there is no floating `v1`
-tag. For the best supply-chain safety, pin the action to the commit SHA of a release
-(`uses: durandtibo/cancel-queued-runs-action@<sha> # v1.9`).
+cancelled.
+
+This repository does **not** use floating versions: there is no `v1` or `v1.9` tag that moves to
+the latest release, and `main` is not a release. Every release is an immutable, exact version tag
+(`v1.9`, ...) that is never moved or re-pointed once published. To upgrade, change the version in
+your workflow explicitly. For the best supply-chain safety, pin the action to the commit SHA of a
+release (`uses: durandtibo/cancel-queued-runs-action@<sha> # v1.9`).
 
 ```yaml
 jobs:

@@ -27,6 +27,8 @@ BSD/macOS) and is tested with [bats](https://github.com/bats-core/bats-core) in 
 - PR descriptions cover what changed, what was deliberately left alone, and any behaviour change.
 - On conflicts with `main`, merge `origin/main` into the branch; do not rebase and force-push.
 - Update `README.md` when inputs, behaviour, or workflows change.
+- Releases are immutable exact version tags (`v1.9`, ...). Do not create or move floating tags
+  (`v1`, `latest`) and do not document them as an option.
 
 ## Action rules (`action.yaml`)
 
