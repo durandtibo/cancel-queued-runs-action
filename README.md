@@ -7,6 +7,9 @@
     <a href="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml">
         <img alt="Nightly Tests" src="https://github.com/durandtibo/cancel-queued-runs-action/actions/workflows/nightly.yaml/badge.svg">
     </a>
+    <a href="https://scorecard.dev/viewer/?uri=github.com/durandtibo/cancel-queued-runs-action">
+        <img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/durandtibo/cancel-queued-runs-action/badge">
+    </a>
     <a href="https://github.com/durandtibo/cancel-queued-runs-action/blob/main/LICENSE">
         <img alt="License" src="https://img.shields.io/badge/License-BSD_3--Clause-blue.svg">
     </a>
