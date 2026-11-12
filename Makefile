@@ -1,9 +1,5 @@
 SHELL = /bin/bash
 
-# Lint the Markdown files of the root too: the shell does not expand "**" without
-# globstar, so an unquoted pattern would skip them (it is expanded by markdownlint)
-MARKDOWN_LINT_GLOB := '**/*.md'
-
 include .make/help.mk
 include .make/makefile.mk
 include .make/markdown.mk
