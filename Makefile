@@ -4,10 +4,6 @@ SHELL = /bin/bash
 # globstar, so an unquoted pattern would skip them (it is expanded by markdownlint)
 MARKDOWN_LINT_GLOB := '**/*.md'
 
-# There is no *.mk file in the root: the unmatched glob made checkmake fail
-MAKEFILE_FORMAT_FILES := Makefile
-MAKEFILE_LINT_FILES := Makefile
-
 include .make/help.mk
 include .make/makefile.mk
 include .make/markdown.mk
