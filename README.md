@@ -53,7 +53,7 @@ Then `include` the files you need from `.make/` in your project's `Makefile`, e.
 `include .make/yaml.mk`.
 
 To pull in upstream changes later, `include .make/self.mk` and run `make update-subtree` — see
-[`self.mk`](#self-mk) below. It fetches the latest commits and runs `git subtree pull`, so you
+[`self.mk`](#selfmk) below. It fetches the latest commits and runs `git subtree pull`, so you
 don't need to remember the raw `git subtree`/`git remote` invocations yourself.
 
 ## Available files
@@ -173,8 +173,8 @@ include uv.mk
 PYTHON_VERSION = 3.12
 ```
 
-`install-invoke` installs `uv` on demand and then `invoke>=3.0` and `invoke-tasklib>=0.0.8` via `uv pip install` into the
-active virtual environment (create one first, e.g. with `uv venv`).
+`install-invoke` installs `uv` on demand and then `invoke>=3.0` and `invoke-tasklib>=0.0.8` via
+`uv pip install` into the active virtual environment (create one first, e.g. with `uv venv`).
 `update-uv` runs `uv self update`. `setup-venv` updates `uv`, creates a fresh `.venv`
 (`uv venv --python $(PYTHON_VERSION) --clear`), installs `invoke` into it, and runs
 `uv run inv env.create-venv` and `uv run inv env.install` — it assumes the project's
@@ -234,11 +234,13 @@ of them and running `make help` lists them for free.
 
 ## Testing
 
-[`.github/workflows/ci-test.yml`](.github/workflows/ci-test.yml) exercises every file against the
-Unix OS matrix (Ubuntu and macOS runners) resolved dynamically via
-[`durandtibo/workflow-config-action`](https://github.com/durandtibo/workflow-config-action) on
-every push/PR to `main`, running both the lint and format targets (including on-demand tool
-installation) to make sure the rules stay portable across platforms.
+[`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) exercises every module (one reusable
+`ci-<module>.yaml` workflow each) against the Unix OS matrix (Ubuntu and macOS runners) and, for
+`uv.mk`, the Python versions, resolved dynamically via
+[`durandtibo/workflow-config-action`](https://github.com/durandtibo/workflow-config-action) in
+[`lib-get-test-matrix.yaml`](.github/workflows/lib-get-test-matrix.yaml). It runs on every push/PR
+to `main`, nightly and on demand, running both the lint and format targets (including on-demand
+tool installation) to make sure the rules stay portable across platforms.
 
 ## License
 
