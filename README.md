@@ -97,11 +97,12 @@ jobs:
 | `max_cancellations`         | ❌ No    | `0`                        | Maximum number of runs cancelled by one execution (`0` means no limit)                  |
 | `max_runs`                  | ❌ No    | `0`                        | Number of most recent runs to keep, the older ones are cancelled (`0` means no limit)   |
 | `fail_on_error`             | ❌ No    | `true`                     | If `false`, a run that could not be cancelled does not fail the step                    |
+| `delete_stuck_runs`         | ❌ No    | `false`                    | If `true`, delete the zombie runs that have no job and cannot be cancelled              |
 | `dry_run`                   | ❌ No    | `false`                    | If `true`, only log the runs that would be cancelled                                    |
 
 > **Note**: `force_cancel_buffer_hours`, `statuses`, `workflow`, `branch`, `event`,
-> `cancel_delay_seconds`, `max_cancellations`, `max_runs`, `fail_on_error`, `dry_run` and all the
-> [outputs](#-outputs) were added after `v1.9`. Use a later
+> `cancel_delay_seconds`, `max_cancellations`, `max_runs`, `fail_on_error`, `delete_stuck_runs`,
+> `dry_run` and all the [outputs](#-outputs) were added after `v1.9`. Use a later
 > release (or a commit of `main`) to get them; the examples below that use them need such a
 > release.
 
@@ -113,6 +114,7 @@ jobs:
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `found_count`        | Number of workflow runs found with the considered `statuses` (`queued` by default)                                                                                       |
 | `cancelled_count`    | Number of runs for which a cancel request was accepted                                                                                                                   |
+| `deleted_count`      | Number of zombie runs that were deleted (see `delete_stuck_runs`), otherwise `0`                                                                                         |
 | `skipped_count`      | Number of runs skipped because they were no longer cancellable (404 or 409)                                                                                              |
 | `failed_count`       | Number of runs that could not be cancelled or processed (for example an invalid timestamp, or a list of runs that cannot be parsed)                                      |
 | `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)                                                                                                     |
@@ -276,6 +278,32 @@ time) are kept, and the older ones are cancelled even if they are not older than
   with:
     max_age_hours: 24
     max_runs: 100
+```
+
+### Example: delete the runs that cannot be cancelled
+
+Some runs stay `queued` for months with no job at all (for example after a GitHub incident). GitHub
+cancels a run by cancelling its jobs, so the cancel and force-cancel requests answer
+`409 Cannot cancel a workflow run that has not been queued yet`, and the run is only skipped at every
+execution. The action escalates with the age of the run, which is measured from its last update:
+
+1. older than `max_age_hours`: cancel;
+2. older than `max_age_hours` + `force_cancel_buffer_hours`: cancel, then force-cancel if the cancel
+   was not accepted;
+3. older than `max_age_hours` + 2 × `force_cancel_buffer_hours`: with `delete_stuck_runs: true`, delete
+   the run if it still cannot be cancelled (`409`) and GitHub reports no job for it.
+
+The extra buffer gives the force-cancel time to work before the last resort. A run that has jobs is
+never deleted. **The deleted run and its history are lost**, and GitHub applies the deletion a few
+seconds later. With `force_cancel_buffer_hours: 0` the three steps start at `max_age_hours`. Deleted
+runs count toward `max_cancellations` and are reported in the `deleted_count` output. A dry run does
+not delete anything.
+
+```yaml
+- uses: durandtibo/cancel-queued-runs-action@main
+  with:
+    max_age_hours: 24
+    delete_stuck_runs: true
 ```
 
 ### Example: do not fail the job when a run cannot be cancelled

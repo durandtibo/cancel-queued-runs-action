@@ -81,8 +81,8 @@ is_old_enough: age equal to the threshold accepted@@is_old_enough.bats@@s/\[ "\$
 is_old_enough: threshold in minutes@@is_old_enough.bats@@s/\$\(\(MAX_AGE_HOURS \* 3600\)\) \]$/$((MAX_AGE_HOURS * 60)) ]/
 cancellation_limit_reached: limit reached one run too late@@cancellation_limit_reached.bats@@s/-ge "\$MAX_CANCELLATIONS" \]/-gt "$MAX_CANCELLATIONS" ]/
 cancellation_limit_reached: no limit not honoured@@cancellation_limit_reached.bats@@s/\[ "\$MAX_CANCELLATIONS" -gt 0 \] &&/true \&\&/
-cancellation_limit_reached: dry run not counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT))/
-cancellation_limit_reached: skipped runs counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT + WOULD_CANCEL_COUNT + SKIPPED_COUNT))/
+cancellation_limit_reached: dry run not counted@@cancellation_limit_reached.bats@@s/DELETED_COUNT \+ WOULD_CANCEL_COUNT\)\)/DELETED_COUNT))/
+cancellation_limit_reached: skipped runs counted@@cancellation_limit_reached.bats@@s/DELETED_COUNT \+ WOULD_CANCEL_COUNT\)\)/DELETED_COUNT + WOULD_CANCEL_COUNT + SKIPPED_COUNT))/
 process_all_runs: runs not old enough left alone too@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if cancellation_limit_reached; then/
 process_all_runs: limit ignored@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if false; then/
 process_all_runs: left-alone runs not counted@@process_all_runs.bats@@s/DEFERRED_COUNT=\$\(\(DEFERRED_COUNT \+ 1\)\)/DEFERRED_COUNT=$DEFERRED_COUNT/
@@ -115,3 +115,12 @@ write_summary: branch not shown@@write_summary.bats@@s/echo "Branch: /echo "Igno
 process_run: over-limit run ignored@@process_run.bats@@s/ \|\| \[ "\$over_limit" = "true" \]; then/; then/
 select_excess_run_ids: keeps the oldest runs instead of the newest@@select_excess_run_ids.bats@@s/sort_by\(\.queued_at\) \| reverse/sort_by(.queued_at)/
 select_excess_run_ids: keeps one run too few@@select_excess_run_ids.bats@@s/\.\[\$keep:\]\[\]/.[$keep + 1:][]/
+delete_zombie_run: deletes even when DELETE_STUCK_RUNS is false@@delete_zombie_run.bats process_run.bats@@s/\[ "\$DELETE_STUCK_RUNS" != "true" \] \|\| ! run_has_no_jobs/false || ! run_has_no_jobs/
+delete_zombie_run: deletes a run that has jobs@@delete_zombie_run.bats process_run.bats@@s/\|\| ! run_has_no_jobs "\$run_id"; then/|| false; then/
+delete_zombie_run: a 404 is a failure@@delete_zombie_run.bats@@s/ \|\| \[ "\$status_code" = "404" \]; then$/; then/
+run_has_no_jobs: any answer is accepted@@run_has_no_jobs.bats@@s/\[ "\$total" = "0" \]/[ -n "$total" ]/
+process_run: zombie deleted without a 409@@process_run.bats@@s/if \[ "\$status_code" = "409" \] && \[ "\$age_seconds" -gt "\$delete_age_seconds" \] &&$/if [ "$age_seconds" -gt "$delete_age_seconds" ] \&\&/
+cancellation_limit_reached: deleted runs not counted@@process_all_runs.bats@@s/CANCELLED_COUNT \+ DELETED_COUNT \+ WOULD/CANCELLED_COUNT + WOULD/
+process_run: delete threshold ignored@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$delete_age_seconds" \]/true/
+process_run: delete threshold without the second buffer@@process_run.bats@@s/MAX_AGE_HOURS \+ 2 \* FORCE_BUFFER_HOURS/MAX_AGE_HOURS + FORCE_BUFFER_HOURS/
+process_run: delete threshold >= instead of >@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$delete_age_seconds" \]/[ "$age_seconds" -ge "$delete_age_seconds" ]/

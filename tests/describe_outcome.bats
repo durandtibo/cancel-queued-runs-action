@@ -40,3 +40,9 @@ setup() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "describe_outcome describes a deleted run" {
+  run describe_outcome deleted
+
+  [ "$output" = "Deleted (zombie run without job)" ]
+}

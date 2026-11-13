@@ -108,6 +108,15 @@ inputs:
     default: "true"
     required: false
 
+  delete_stuck_runs:
+    description: >
+      If "true", delete a run that is older than max_age_hours+2*force_cancel_buffer_hours, that
+      GitHub still refuses to cancel (HTTP 409) and that has no job. Such a zombie run stays queued
+      forever and deleting it is the only way to remove it. The run and its history are lost. A
+      run with jobs is never deleted. Must be "true" or "false".
+    default: "false"
+    required: false
+
   dry_run:
     description: >
       If "true", only log the runs that would be cancelled, without cancelling anything.
@@ -124,6 +133,11 @@ outputs:
   cancelled_count:
     description: Number of runs for which a cancel request was accepted.
     value: ${{ steps.cancel.outputs.cancelled_count }}
+  deleted_count:
+    description: >
+      Number of zombie runs (no job, cannot be cancelled) that were deleted, see the
+      delete_stuck_runs input (0 when it is false).
+    value: ${{ steps.cancel.outputs.deleted_count }}
   skipped_count:
     description: Number of runs skipped because they were no longer cancellable (HTTP 404 or 409).
     value: ${{ steps.cancel.outputs.skipped_count }}
@@ -173,4 +187,5 @@ runs:
         MAX_CANCELLATIONS: ${{ inputs.max_cancellations }}
         MAX_RUNS: ${{ inputs.max_runs }}
         FAIL_ON_ERROR: ${{ inputs.fail_on_error }}
+        DELETE_STUCK_RUNS: ${{ inputs.delete_stuck_runs }}
         DRY_RUN: ${{ inputs.dry_run }}
