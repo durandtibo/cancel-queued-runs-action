@@ -8,14 +8,24 @@ setup() {
   DELETE_RESPONSE="HTTP/2.0 204 No Content"
 
   run_has_no_jobs() { [ "$NO_JOBS" = "true" ]; }
-  delete_run() { echo "$1" >> "$BATS_TEST_TMPDIR/deleted"; echo "$DELETE_RESPONSE"; }
+  # A directory of the test directory, as BATS_TEST_TMPDIR is missing from old
+  # bats (1.2.x, installed by apt on Ubuntu 22.04)
+  MOCK_DIR="$BATS_TEST_DIRNAME/mocks"
+  mkdir -p "$MOCK_DIR"
+  DELETED_FILE="$MOCK_DIR/deleted"
+  rm -f "$DELETED_FILE"
+  delete_run() { echo "$1" >> "$DELETED_FILE"; echo "$DELETE_RESPONSE"; }
+}
+
+teardown() {
+  rm -rf "$MOCK_DIR"
 }
 
 @test "delete_zombie_run deletes a run without job" {
   delete_zombie_run 123 "30h00m" >/dev/null
 
   [ "$PROCESS_RUN_OUTCOME" = "deleted" ]
-  [ "$(cat "$BATS_TEST_TMPDIR/deleted")" = "123" ]
+  [ "$(cat "$DELETED_FILE")" = "123" ]
 }
 
 @test "delete_zombie_run returns 0 when the run is deleted" {
@@ -31,7 +41,7 @@ setup() {
   run delete_zombie_run 123 "30h00m"
 
   [ "$status" -eq 1 ]
-  [ ! -e "$BATS_TEST_TMPDIR/deleted" ]
+  [ ! -e "$DELETED_FILE" ]
 }
 
 @test "delete_zombie_run never deletes a run that has jobs" {
@@ -40,7 +50,7 @@ setup() {
   run delete_zombie_run 123 "30h00m"
 
   [ "$status" -eq 1 ]
-  [ ! -e "$BATS_TEST_TMPDIR/deleted" ]
+  [ ! -e "$DELETED_FILE" ]
 }
 
 @test "delete_zombie_run treats a 404 as deleted" {
