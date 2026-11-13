@@ -1811,7 +1811,7 @@ main() {
 		echo "✅ No workflow runs found."
 	elif process_all_runs "$runs"; then
 		if [ "$SKIPPED_COUNT" -gt 0 ]; then
-			echo "⚠️ Eligible runs processed, but $SKIPPED_COUNT run(s) could not be cancelled (HTTP 404 or 409) and may still be queued."
+			echo "⚠️ Eligible runs processed, but $SKIPPED_COUNT run(s) were skipped because they could not be cancelled or deleted (HTTP 403, 404 or 409) and may still exist."
 		else
 			echo "✅ All eligible runs processed successfully."
 		fi
