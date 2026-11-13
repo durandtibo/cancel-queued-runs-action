@@ -81,8 +81,8 @@ is_old_enough: age equal to the threshold accepted@@is_old_enough.bats@@s/\[ "\$
 is_old_enough: threshold in minutes@@is_old_enough.bats@@s/\$\(\(MAX_AGE_HOURS \* 3600\)\) \]$/$((MAX_AGE_HOURS * 60)) ]/
 cancellation_limit_reached: limit reached one run too late@@cancellation_limit_reached.bats@@s/-ge "\$MAX_CANCELLATIONS" \]/-gt "$MAX_CANCELLATIONS" ]/
 cancellation_limit_reached: no limit not honoured@@cancellation_limit_reached.bats@@s/\[ "\$MAX_CANCELLATIONS" -gt 0 \] &&/true \&\&/
-cancellation_limit_reached: dry run not counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT))/
-cancellation_limit_reached: skipped runs counted@@cancellation_limit_reached.bats@@s/CANCELLED_COUNT \+ WOULD_CANCEL_COUNT\)\)/CANCELLED_COUNT + WOULD_CANCEL_COUNT + SKIPPED_COUNT))/
+cancellation_limit_reached: dry run not counted@@cancellation_limit_reached.bats@@s/DELETED_COUNT \+ WOULD_CANCEL_COUNT\)\)/DELETED_COUNT))/
+cancellation_limit_reached: skipped runs counted@@cancellation_limit_reached.bats@@s/DELETED_COUNT \+ WOULD_CANCEL_COUNT\)\)/DELETED_COUNT + WOULD_CANCEL_COUNT + SKIPPED_COUNT))/
 process_all_runs: runs not old enough left alone too@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if cancellation_limit_reached; then/
 process_all_runs: limit ignored@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if false; then/
 process_all_runs: left-alone runs not counted@@process_all_runs.bats@@s/DEFERRED_COUNT=\$\(\(DEFERRED_COUNT \+ 1\)\)/DEFERRED_COUNT=$DEFERRED_COUNT/
