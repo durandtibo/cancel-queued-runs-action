@@ -285,11 +285,19 @@ time) are kept, and the older ones are cancelled even if they are not older than
 Some runs stay `queued` for months with no job at all (for example after a GitHub incident). GitHub
 cancels a run by cancelling its jobs, so the cancel and force-cancel requests answer
 `409 Cannot cancel a workflow run that has not been queued yet`, and the run is only skipped at every
-execution. With `delete_stuck_runs: true`, such a run is deleted instead, when it is older than
-`max_age_hours` + `force_cancel_buffer_hours`, the cancel request got a 409 and GitHub reports no job
-for it. A run that has jobs is never deleted. **The deleted run and its history are lost**, and the
-deletion is applied by GitHub a few seconds later. Deleted runs count toward `max_cancellations`
-and are reported in the `deleted_count` output. A dry run does not delete anything.
+execution. The action escalates with the age of the run, which is measured from its last update:
+
+1. older than `max_age_hours`: cancel;
+2. older than `max_age_hours` + `force_cancel_buffer_hours`: cancel, then force-cancel if the cancel
+   was not accepted;
+3. older than `max_age_hours` + 2 × `force_cancel_buffer_hours`: with `delete_stuck_runs: true`, delete
+   the run if it still cannot be cancelled (`409`) and GitHub reports no job for it.
+
+The extra buffer gives the force-cancel time to work before the last resort. A run that has jobs is
+never deleted. **The deleted run and its history are lost**, and GitHub applies the deletion a few
+seconds later. With `force_cancel_buffer_hours: 0` the three steps start at `max_age_hours`. Deleted
+runs count toward `max_cancellations` and are reported in the `deleted_count` output. A dry run does
+not delete anything.
 
 ```yaml
 - uses: durandtibo/cancel-queued-runs-action@main

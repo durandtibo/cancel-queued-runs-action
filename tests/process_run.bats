@@ -1008,14 +1008,60 @@ zombie_mocks() {
     [ ! -s "$CALL_LOG" ]
 }
 
-@test "process_run does not delete a run without job when the cancel request fails with another error" {
+@test "process_run does not delete a run without job when the cancel and the force-cancel fail with another error" {
     record_calls
     zombie_mocks
     cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 500 Internal Server Error"; }
+    force_cancel_run() { echo "force_cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 500 Internal Server Error"; }
     DELETE_STUCK_RUNS=true
 
     process_run "123" $((30 * 3600)) >/dev/null || true
 
     ! grep -q delete_run "$CALL_LOG" || false
     grep -q force_cancel_run "$CALL_LOG"
+}
+
+# MAX_AGE_HOURS=2 and a buffer of 3 hours: force-cancel after 5h, delete after 8h
+@test "process_run does not delete a zombie run in the force-cancel tier" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+
+    process_run "123" $((6 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+    ! grep -q delete_run "$CALL_LOG" || false
+}
+
+@test "process_run does not delete a zombie run exactly at the delete threshold" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+
+    process_run "123" $((8 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+    ! grep -q delete_run "$CALL_LOG" || false
+}
+
+@test "process_run deletes a zombie run just after the delete threshold" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+
+    process_run "123" $((8 * 3600 + 1)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "deleted" ]
+}
+
+@test "process_run deletes a run that still answers 409 to the force-cancel after a failed cancel" {
+    record_calls
+    zombie_mocks
+    cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 500 Internal Server Error"; }
+    DELETE_STUCK_RUNS=true
+
+    process_run "123" $((30 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "deleted" ]
+    [ "$(cat "$CALL_LOG")" = "$(printf 'cancel_run 123\nforce_cancel_run 123\ndelete_run 123')" ]
 }

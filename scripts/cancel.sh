@@ -42,9 +42,9 @@
 #                       would be cancelled count. Runs that are skipped or fail
 #                       do not count. Non-negative integer, 0 means no limit
 #                       (default: 0)
-#   DELETE_STUCK_RUNS - "true" to delete a run that is old enough for a force
-#                       cancel, that cannot be cancelled (HTTP 409) and that has
-#                       no job: such a zombie run stays queued forever and
+#   DELETE_STUCK_RUNS - "true" to delete a run that is older than MAX_AGE_HOURS +
+#                       2 * FORCE_BUFFER_HOURS, that cannot be cancelled (HTTP
+#                       409) and that has no job: such a zombie run stays queued forever and
 #                       deleting it is the only way to remove it. The run and
 #                       its history are lost. "false" otherwise (default: false)
 #   MAX_RUNS - Maximum number of runs to keep: only the MAX_RUNS most recent
@@ -820,8 +820,8 @@ delete_run() {
 
 # ----------------------------
 # Delete a zombie run that cannot be cancelled
-# Called by process_run after a 409 on the cancel request of a run that is old
-# enough for a force cancel. Nothing is done unless DELETE_STUCK_RUNS is "true"
+# Called by process_run after a 409 on the cancel request of a run that is older
+# than MAX_AGE_HOURS + 2 * FORCE_BUFFER_HOURS. Nothing is done unless DELETE_STUCK_RUNS is "true"
 # and the run has no job (see run_has_no_jobs). A 404 means that the run is
 # already gone, which is what is wanted. PROCESS_RUN_OUTCOME is set to deleted
 # or failed when the run was handled.
@@ -868,8 +868,11 @@ delete_zombie_run() {
 #    - Tries /cancel first, then falls back to /force-cancel (which returns
 #      409 if no regular cancel was attempted) for very old, stuck runs. There
 #      is no fallback when /cancel returns 404: the run no longer exists
-#    - When /cancel returns 409, DELETE_STUCK_RUNS is "true" and the run has no
-#      job (a zombie), the run is deleted (see delete_zombie_run)
+# 3. Delete: age > MAX_AGE_HOURS + 2 * FORCE_BUFFER_HOURS
+#    - When the cancel (and the force-cancel, if it was tried) still answers 409,
+#      DELETE_STUCK_RUNS is "true" and the run has no job (a zombie), the run is
+#      deleted (see delete_zombie_run). The force-cancel tier gets a whole
+#      buffer before this last resort
 #
 # A final HTTP 404 (run not found) or 409 (run cannot be cancelled) means that
 # the run is gone or already finished, typically because it started or
@@ -902,6 +905,7 @@ process_run() {
 	local over_limit="${3:-false}"
 	local max_age_seconds=$((MAX_AGE_HOURS * 3600))
 	local force_age_seconds=$(((MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600))
+	local delete_age_seconds=$(((MAX_AGE_HOURS + 2 * FORCE_BUFFER_HOURS) * 3600))
 	local age
 	age=$(format_age "$age_seconds")
 
@@ -929,13 +933,6 @@ process_run() {
 		throttle_requests
 		response=$(cancel_run "$run_id")
 		status_code=$(get_status_code "$response")
-		# A zombie run (409 and no job) cannot be cancelled in any way: delete it
-		if [ "$status_code" = "409" ] && delete_zombie_run "$run_id" "$age"; then
-			if [ "$PROCESS_RUN_OUTCOME" = "deleted" ]; then
-				return 0
-			fi
-			return 1
-		fi
 		# A 404 or a 409 means that the run is gone or cannot be cancelled
 		# (e.g., a zombie run without jobs): force-cancelling it is pointless
 		if [ "$status_code" != "202" ] && ! is_skippable_status "$status_code"; then
@@ -957,6 +954,16 @@ process_run() {
 	fi
 
 	status_code=$(get_status_code "$response")
+
+	# A run that is still not cancellable (409) after the force-cancel tier began,
+	# and that is older than the delete threshold, is a zombie if it has no job
+	if [ "$status_code" = "409" ] && [ "$age_seconds" -gt "$delete_age_seconds" ] &&
+		delete_zombie_run "$run_id" "$age"; then
+		if [ "$PROCESS_RUN_OUTCOME" = "deleted" ]; then
+			return 0
+		fi
+		return 1
+	fi
 
 	if is_skippable_status "$status_code"; then
 		local message

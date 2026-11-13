@@ -110,8 +110,8 @@ inputs:
 
   delete_stuck_runs:
     description: >
-      If "true", delete a run that is older than max_age_hours+force_cancel_buffer_hours, that
-      GitHub refuses to cancel (HTTP 409) and that has no job. Such a zombie run stays queued
+      If "true", delete a run that is older than max_age_hours+2*force_cancel_buffer_hours, that
+      GitHub still refuses to cancel (HTTP 409) and that has no job. Such a zombie run stays queued
       forever and deleting it is the only way to remove it. The run and its history are lost. A
       run with jobs is never deleted. Must be "true" or "false".
     default: "false"
