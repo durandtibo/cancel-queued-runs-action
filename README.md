@@ -115,7 +115,7 @@ jobs:
 | `found_count`        | Number of workflow runs found with the considered `statuses` (`queued` by default)                                                                                       |
 | `cancelled_count`    | Number of runs for which a cancel request was accepted                                                                                                                   |
 | `deleted_count`      | Number of zombie runs that were deleted (see `delete_stuck_runs`), otherwise `0`                                                                                         |
-| `skipped_count`      | Number of runs skipped because they were no longer cancellable (404 or 409)                                                                                              |
+| `skipped_count`      | Number of runs skipped: no longer cancellable (404 or 409), or refused deletion (403)                                                                                    |
 | `failed_count`       | Number of runs that could not be cancelled or processed (for example an invalid timestamp, or a list of runs that cannot be parsed)                                      |
 | `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)                                                                                                     |
 | `cancelled_run_ids`  | JSON array with the IDs of the cancelled runs, in the order they were processed (for example `[101,102]`), `[]` if none and in a dry run                                 |
@@ -294,7 +294,10 @@ execution. The action escalates with the age of the run, which is measured from 
    the run if it still cannot be cancelled (`409`) and GitHub reports no job for it.
 
 The extra buffer gives the force-cancel time to work before the last resort. A run that has jobs is
-never deleted. **The deleted run and its history are lost**, and GitHub applies the deletion a few
+never deleted. If GitHub refuses to delete a run (`403 Could not delete the workflow run`), the run
+is skipped with a warning and counted in `skipped_count`: this was seen on runs stuck by a GitHub
+incident, and such a run may not be removable through the API (only GitHub Support can then remove
+it). **The deleted run and its history are lost**, and GitHub applies the deletion a few
 seconds later. With `force_cancel_buffer_hours: 0` the three steps start at `max_age_hours`. Deleted
 runs count toward `max_cancellations` and are reported in the `deleted_count` output. A dry run does
 not delete anything.

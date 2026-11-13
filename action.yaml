@@ -139,7 +139,9 @@ outputs:
       delete_stuck_runs input (0 when it is false).
     value: ${{ steps.cancel.outputs.deleted_count }}
   skipped_count:
-    description: Number of runs skipped because they were no longer cancellable (HTTP 404 or 409).
+    description: >
+      Number of runs skipped because they were no longer cancellable (HTTP 404 or 409), or
+      because GitHub refused to delete them (HTTP 403, see delete_stuck_runs).
     value: ${{ steps.cancel.outputs.skipped_count }}
   failed_count:
     description: >

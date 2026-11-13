@@ -37,7 +37,7 @@ teardown() {
   grep -q '^| Runs found | 10 |$' "$GITHUB_STEP_SUMMARY"
   grep -q '^| Cancelled | 3 |$' "$GITHUB_STEP_SUMMARY"
   grep -q '^| Would be cancelled (dry run) | 4 |$' "$GITHUB_STEP_SUMMARY"
-  grep -q '^| Skipped (no longer cancellable) | 2 |$' "$GITHUB_STEP_SUMMARY"
+  grep -q '^| Skipped (cannot be cancelled or deleted) | 2 |$' "$GITHUB_STEP_SUMMARY"
   grep -q '^| Failed | 1 |$' "$GITHUB_STEP_SUMMARY"
 }
 

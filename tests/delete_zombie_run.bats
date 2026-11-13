@@ -62,7 +62,7 @@ teardown() {
 }
 
 @test "delete_zombie_run reports a failed deletion" {
-  DELETE_RESPONSE="HTTP/2.0 403 Forbidden"
+  DELETE_RESPONSE="HTTP/2.0 500 Internal Server Error"
 
   run delete_zombie_run 123 "30h00m"
 
@@ -71,6 +71,33 @@ teardown() {
 }
 
 @test "delete_zombie_run sets the outcome failed when the deletion fails" {
+  DELETE_RESPONSE="HTTP/2.0 500 Internal Server Error"
+
+  delete_zombie_run 123 "30h00m" >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "failed" ]
+}
+
+@test "delete_zombie_run skips a run that GitHub refuses to delete (403)" {
+  DELETE_RESPONSE="$(printf 'HTTP/2.0 403 Forbidden\n\n{"message":"Could not delete the workflow run"}')"
+
+  delete_zombie_run 123 "30h00m" >/dev/null
+
+  [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+}
+
+@test "delete_zombie_run explains a 403 with a single warning" {
+  DELETE_RESPONSE="$(printf 'HTTP/2.0 403 Forbidden\n\n{"message":"Could not delete the workflow run"}')"
+
+  run delete_zombie_run 123 "30h00m"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "::warning::Run 123 could not be deleted (HTTP 403: Could not delete the workflow run)" ]] || false
+  [[ "$output" =~ "GitHub Support" ]] || false
+  [[ ! "$output" =~ "Deletion failed" ]] || false
+}
+
+@test "delete_zombie_run still fails on a 500 error" {
   DELETE_RESPONSE="HTTP/2.0 500 Internal Server Error"
 
   delete_zombie_run 123 "30h00m" >/dev/null

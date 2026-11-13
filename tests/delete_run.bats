@@ -64,3 +64,9 @@ teardown() {
 
   [[ ! "$output" =~ "::warning::" ]] || false
 }
+
+@test "delete_run does not warn for a 403 response, delete_zombie_run reports it" {
+  MOCK_STDOUT="HTTP/2.0 403 Forbidden" MOCK_STDERR="gh: Could not delete the workflow run (HTTP 403)" MOCK_EXIT=1 run delete_run 123
+
+  [[ ! "$output" =~ "::warning::" ]] || false
+}

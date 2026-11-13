@@ -19,7 +19,7 @@ setup() {
 @test "describe_outcome describes a skipped run" {
   run describe_outcome skipped
 
-  [ "$output" = "Skipped (no longer cancellable)" ]
+  [ "$output" = "Skipped (cannot be cancelled or deleted)" ]
 }
 
 @test "describe_outcome describes a failed run" {
