@@ -125,3 +125,11 @@ teardown() {
 
   [ "$(grep -c '^cancelled_run_ids=' "$GITHUB_OUTPUT")" -eq 1 ]
 }
+
+@test "write_outputs writes deleted_count" {
+  DELETED_COUNT=7
+
+  run write_outputs 10
+
+  grep -qx "deleted_count=7" "$GITHUB_OUTPUT"
+}

@@ -918,3 +918,104 @@ record_ordered_calls() {
   [ "$status" -eq 0 ]
   [[ "$output" =~ "Would cancel run 7" ]] || false
 }
+
+# A zombie run: queued without job, GitHub answers 409 to the cancel request
+zombie_mocks() {
+  cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 409 Conflict"; }
+  force_cancel_run() { echo "force_cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 409 Conflict"; }
+  run_has_no_jobs() { [ "$NO_JOBS" = "true" ]; }
+  delete_run() { echo "delete_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 ${DELETE_CODE:-204} X"; }
+  NO_JOBS=true
+}
+
+@test "process_run deletes a zombie run when DELETE_STUCK_RUNS is true" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+
+    run process_run "123" $((30 * 3600))
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "deleting it" ]] || false
+    [ "$(cat "$CALL_LOG")" = "$(printf 'cancel_run 123\ndelete_run 123')" ]
+}
+
+@test "process_run sets the outcome deleted for a zombie run" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+
+    process_run "123" $((30 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "deleted" ]
+}
+
+@test "process_run skips a zombie run when DELETE_STUCK_RUNS is false" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=false
+
+    process_run "123" $((30 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+    ! grep -q delete_run "$CALL_LOG" || false
+}
+
+@test "process_run does not delete a stuck run that has jobs" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+    NO_JOBS=false
+
+    process_run "123" $((30 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+    ! grep -q delete_run "$CALL_LOG" || false
+}
+
+@test "process_run does not delete a run that is not old enough to be force-cancelled" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+
+    process_run "123" $((4 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
+    ! grep -q delete_run "$CALL_LOG" || false
+}
+
+@test "process_run fails when the deletion of a zombie run fails" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+    DELETE_CODE=403
+
+    run process_run "123" $((30 * 3600))
+
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Deletion failed for run 123" ]] || false
+}
+
+@test "process_run does not delete a zombie run in a dry run" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+    DRY_RUN=true
+
+    process_run "123" $((30 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "would-cancel" ]
+    [ ! -s "$CALL_LOG" ]
+}
+
+@test "process_run does not delete a run without job when the cancel request fails with another error" {
+    record_calls
+    zombie_mocks
+    cancel_run() { echo "cancel_run $1" >> "$CALL_LOG"; echo "HTTP/2.0 500 Internal Server Error"; }
+    DELETE_STUCK_RUNS=true
+
+    process_run "123" $((30 * 3600)) >/dev/null || true
+
+    ! grep -q delete_run "$CALL_LOG" || false
+    grep -q force_cancel_run "$CALL_LOG"
+}

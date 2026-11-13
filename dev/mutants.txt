@@ -115,3 +115,9 @@ write_summary: branch not shown@@write_summary.bats@@s/echo "Branch: /echo "Igno
 process_run: over-limit run ignored@@process_run.bats@@s/ \|\| \[ "\$over_limit" = "true" \]; then/; then/
 select_excess_run_ids: keeps the oldest runs instead of the newest@@select_excess_run_ids.bats@@s/sort_by\(\.queued_at\) \| reverse/sort_by(.queued_at)/
 select_excess_run_ids: keeps one run too few@@select_excess_run_ids.bats@@s/\.\[\$keep:\]\[\]/.[$keep + 1:][]/
+delete_zombie_run: deletes even when DELETE_STUCK_RUNS is false@@delete_zombie_run.bats process_run.bats@@s/\[ "\$DELETE_STUCK_RUNS" != "true" \] \|\| ! run_has_no_jobs/false || ! run_has_no_jobs/
+delete_zombie_run: deletes a run that has jobs@@delete_zombie_run.bats process_run.bats@@s/\|\| ! run_has_no_jobs "\$run_id"; then/|| false; then/
+delete_zombie_run: a 404 is a failure@@delete_zombie_run.bats@@s/ \|\| \[ "\$status_code" = "404" \]; then$/; then/
+run_has_no_jobs: any answer is accepted@@run_has_no_jobs.bats@@s/\[ "\$total" = "0" \]/[ -n "$total" ]/
+process_run: zombie deleted without a 409@@process_run.bats@@s/\[ "\$status_code" = "409" \] && delete_zombie_run/true \&\& delete_zombie_run/
+cancellation_limit_reached: deleted runs not counted@@process_all_runs.bats@@s/CANCELLED_COUNT \+ DELETED_COUNT \+ WOULD/CANCELLED_COUNT + WOULD/

@@ -840,3 +840,26 @@ five_old_runs() {
   [ "$CANCELLED_COUNT" -eq 1 ]
   [ "$DEFERRED_COUNT" -eq 1 ]
 }
+
+@test "process_all_runs counts and records a deleted run" {
+  process_run() { PROCESS_RUN_OUTCOME="deleted"; return 0; }
+
+  process_all_runs '{"id": 601, "queued_at": "2025-01-01T01:00:00Z"}' > /dev/null
+
+  [ "$DELETED_COUNT" -eq 1 ]
+  [ "$CANCELLED_COUNT" -eq 0 ]
+  [[ "$RUN_RECORDS" == "601|5h00m|deleted"* ]] || false
+}
+
+@test "process_all_runs counts the deleted runs toward MAX_CANCELLATIONS" {
+  process_run() { PROCESS_RUN_OUTCOME="deleted"; return 0; }
+  MAX_AGE_HOURS=1
+  MAX_CANCELLATIONS=1
+
+  process_all_runs "$(printf '%s\n' \
+    '{"id": 601, "queued_at": "2025-01-01T01:00:00Z"}' \
+    '{"id": 602, "queued_at": "2025-01-01T02:00:00Z"}')" > /dev/null
+
+  [ "$DELETED_COUNT" -eq 1 ]
+  [ "$DEFERRED_COUNT" -eq 1 ]
+}
