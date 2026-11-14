@@ -808,7 +808,9 @@ delete_run() {
 			-i 2>"$stderr_file"
 	) || true
 
-	if [ -s "$stderr_file" ] && [ "$(get_status_code "$response")" != "404" ]; then
+	# The 404 and 403 responses are reported by delete_zombie_run
+	if [ -s "$stderr_file" ] && [ "$(get_status_code "$response")" != "404" ] &&
+		[ "$(get_status_code "$response")" != "403" ]; then
 		echo "::warning::gh api (delete) failed for run $run_id: $(tr '\n' ' ' <"$stderr_file")" >&2
 	fi
 	rm -f "$stderr_file"
@@ -823,13 +825,16 @@ delete_run() {
 # Called by process_run after a 409 on the cancel request of a run that is older
 # than MAX_AGE_HOURS + 2 * FORCE_BUFFER_HOURS. Nothing is done unless DELETE_STUCK_RUNS is "true"
 # and the run has no job (see run_has_no_jobs). A 404 means that the run is
-# already gone, which is what is wanted. PROCESS_RUN_OUTCOME is set to deleted
-# or failed when the run was handled.
+# already gone, which is what is wanted. A 403 means that GitHub refuses to
+# delete this run (seen on runs stuck by a GitHub incident): it is permanent, so
+# the run is skipped with an explanation and not counted as a failure that every
+# execution would repeat. PROCESS_RUN_OUTCOME is set to deleted, skipped or
+# failed when the run was handled.
 # Args:
 #   $1 - Run ID
 #   $2 - Age of the run, as text
 # Returns:
-#   0 if the run was handled (deleted or deletion failed, see
+#   0 if the run was handled (deleted, skipped or deletion failed, see
 #   PROCESS_RUN_OUTCOME), 1 if it is not eligible and nothing was done
 # ----------------------------
 delete_zombie_run() {
@@ -849,6 +854,11 @@ delete_zombie_run() {
 	if [ "$status_code" = "204" ] || [ "$status_code" = "404" ]; then
 		echo "🗑️ Status code: $status_code - Run $run_id deleted"
 		PROCESS_RUN_OUTCOME="deleted"
+	elif [ "$status_code" = "403" ]; then
+		local message
+		message=$(get_response_message "$response")
+		echo "::warning::Run $run_id could not be deleted (HTTP 403${message:+: $message}): GitHub refuses to delete this run, which may not be removable through the API (contact GitHub Support if it has to go), skipping."
+		PROCESS_RUN_OUTCOME="skipped"
 	else
 		log_status "$status_code" "$run_id"
 		echo "❌ Deletion failed for run $run_id"
@@ -959,7 +969,7 @@ process_run() {
 	# and that is older than the delete threshold, is a zombie if it has no job
 	if [ "$status_code" = "409" ] && [ "$age_seconds" -gt "$delete_age_seconds" ] &&
 		delete_zombie_run "$run_id" "$age"; then
-		if [ "$PROCESS_RUN_OUTCOME" = "deleted" ]; then
+		if [ "$PROCESS_RUN_OUTCOME" = "deleted" ] || [ "$PROCESS_RUN_OUTCOME" = "skipped" ]; then
 			return 0
 		fi
 		return 1
@@ -1265,7 +1275,7 @@ describe_outcome() {
 	cancelled) echo "Cancelled" ;;
 	deleted) echo "Deleted (zombie run without job)" ;;
 	would-cancel) echo "Would be cancelled (dry run)" ;;
-	skipped) echo "Skipped (no longer cancellable)" ;;
+	skipped) echo "Skipped (cannot be cancelled or deleted)" ;;
 	failed) echo "Failed" ;;
 	*) echo "${1:-}" ;;
 	esac
@@ -1357,7 +1367,7 @@ write_summary() {
 		echo "| Cancelled | $CANCELLED_COUNT |"
 		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
 		echo "| Deleted (zombie runs) | $DELETED_COUNT |"
-		echo "| Skipped (no longer cancellable) | $SKIPPED_COUNT |"
+		echo "| Skipped (cannot be cancelled or deleted) | $SKIPPED_COUNT |"
 		echo "| Failed | $FAILED_COUNT |"
 		echo "| Left alone (\`max_cancellations\` reached) | $DEFERRED_COUNT |"
 		if [ "$LISTING_TRUNCATED" = "true" ]; then
@@ -1801,7 +1811,7 @@ main() {
 		echo "✅ No workflow runs found."
 	elif process_all_runs "$runs"; then
 		if [ "$SKIPPED_COUNT" -gt 0 ]; then
-			echo "⚠️ Eligible runs processed, but $SKIPPED_COUNT run(s) could not be cancelled (HTTP 404 or 409) and may still be queued."
+			echo "⚠️ Eligible runs processed, but $SKIPPED_COUNT run(s) were skipped because they could not be cancelled or deleted (HTTP 403, 404 or 409) and may still exist."
 		else
 			echo "✅ All eligible runs processed successfully."
 		fi

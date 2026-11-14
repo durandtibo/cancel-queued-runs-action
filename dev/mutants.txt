@@ -124,3 +124,5 @@ cancellation_limit_reached: deleted runs not counted@@process_all_runs.bats@@s/C
 process_run: delete threshold ignored@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$delete_age_seconds" \]/true/
 process_run: delete threshold without the second buffer@@process_run.bats@@s/MAX_AGE_HOURS \+ 2 \* FORCE_BUFFER_HOURS/MAX_AGE_HOURS + FORCE_BUFFER_HOURS/
 process_run: delete threshold >= instead of >@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$delete_age_seconds" \]/[ "$age_seconds" -ge "$delete_age_seconds" ]/
+delete_zombie_run: a 403 is a failure@@delete_zombie_run.bats process_run.bats@@s/elif \[ "\$status_code" = "403" \]; then/elif false; then/
+process_run: a skipped deletion fails the run@@process_run.bats@@s/ \|\| \[ "\$PROCESS_RUN_OUTCOME" = "skipped" \]; then$/; then/

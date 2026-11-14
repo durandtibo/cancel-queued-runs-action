@@ -228,7 +228,7 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "2 run(s) could not be cancelled (HTTP 404 or 409) and may still be queued" ]] || false
+  [[ "$output" =~ "2 run(s) were skipped because they could not be cancelled or deleted (HTTP 403, 404 or 409) and may still exist" ]] || false
   [[ ! "$output" =~ "All eligible runs processed successfully." ]] || false
 }
 

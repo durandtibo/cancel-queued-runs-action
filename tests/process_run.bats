@@ -988,7 +988,7 @@ zombie_mocks() {
     record_calls
     zombie_mocks
     DELETE_STUCK_RUNS=true
-    DELETE_CODE=403
+    DELETE_CODE=500
 
     run process_run "123" $((30 * 3600))
 
@@ -1064,4 +1064,27 @@ zombie_mocks() {
 
     [ "$PROCESS_RUN_OUTCOME" = "deleted" ]
     [ "$(cat "$CALL_LOG")" = "$(printf 'cancel_run 123\nforce_cancel_run 123\ndelete_run 123')" ]
+}
+
+@test "process_run succeeds and skips a zombie run that GitHub refuses to delete" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+    DELETE_CODE=403
+
+    run process_run "123" $((30 * 3600))
+
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "could not be deleted (HTTP 403" ]] || false
+}
+
+@test "process_run sets the outcome skipped when the deletion is refused" {
+    record_calls
+    zombie_mocks
+    DELETE_STUCK_RUNS=true
+    DELETE_CODE=403
+
+    process_run "123" $((30 * 3600)) >/dev/null
+
+    [ "$PROCESS_RUN_OUTCOME" = "skipped" ]
 }

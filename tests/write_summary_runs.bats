@@ -62,7 +62,7 @@ setup() {
 
   echo "$output" | grep -q '| 5h00m | Cancelled |'
   echo "$output" | grep -q '| 5h00m | Would be cancelled (dry run) |'
-  echo "$output" | grep -q '| 5h00m | Skipped (no longer cancellable) |'
+  echo "$output" | grep -q '| 5h00m | Skipped (cannot be cancelled or deleted) |'
   echo "$output" | grep -q '| unknown | Failed |'
 }
 
