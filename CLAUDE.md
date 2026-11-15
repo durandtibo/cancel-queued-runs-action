@@ -24,6 +24,10 @@ BSD/macOS) and is tested with [bats](https://github.com/bats-core/bats-core) in 
   push to `main`.
 - Name branches `<type>/<short-description>` in kebab-case, with type one of: `feat`, `bugfix`,
   `hotfix`, `docs`, `refactor`, `perf`, `test`, `chore`, `ci`.
+- Write commit messages and PR titles as a short imperative sentence starting with a verb such as
+  `Add`, `Fix`, `Update`, `Remove` or `Improve`. Do not use conventional-commit prefixes like
+  `docs:` or `feat:` (the type prefix is only for branch names). The squash-merge appends the PR
+  number, so do not add one.
 - PR descriptions cover what changed, what was deliberately left alone, and any behaviour change.
 - On conflicts with `main`, merge `origin/main` into the branch; do not rebase and force-push.
 - Update `README.md` when inputs, behaviour, or workflows change.
