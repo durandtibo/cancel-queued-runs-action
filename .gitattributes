@@ -1,3 +1,23 @@
 # The HTTP responses are stored with the CRLF line endings that gh api -i prints
 # (RFC 9112): git must not normalize them.
 tests/fixtures/*.http -text
+
+# Ship only what the action needs at runtime (action.yaml, LICENSE, scripts/cancel.sh).
+# Everything else is excluded from `git archive`. When the action starts using a new file,
+# un-ignore it here.
+/.github/ export-ignore
+/.make/ export-ignore
+/dev/ export-ignore
+/examples/ export-ignore
+/tests/ export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/.markdownlint.json export-ignore
+/.yamllint.yaml export-ignore
+/CLAUDE.md export-ignore
+/CODEOWNERS export-ignore
+/CODE_OF_CONDUCT.md export-ignore
+/CONTRIBUTING.md export-ignore
+/Makefile export-ignore
+/README.md export-ignore
+/SECURITY.md export-ignore
