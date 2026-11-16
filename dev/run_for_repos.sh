@@ -119,6 +119,8 @@ main() {
 	done <<<"$repos"
 
 	print_summary "$total_found" "$total_cancelled" "$total_skipped" "${summary[@]}"
+	echo
+	echo "Repositories found: ${#summary[@]}"
 
 	if [ "${#failed[@]}" -gt 0 ]; then
 		echo "Failed repos: ${failed[*]}" >&2
