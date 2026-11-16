@@ -43,6 +43,11 @@ BSD/macOS) and is tested with [bats](https://github.com/bats-core/bats-core) in 
 - Pin third-party actions in workflows to commit SHAs with a `# ratchet:<owner>/<repo>@<tag>`
   comment, never to tags or branches.
 - Workflows use least-privilege `permissions` and set `timeout-minutes` on jobs.
+- Only ship what the action needs at runtime: files the action itself uses (`action.yaml`,
+  `LICENSE`, the scripts it calls) are exported, and `.gitattributes` marks everything else
+  `export-ignore`. When the action starts using a new file, un-ignore it there. Never make the
+  action read tests, fixtures or other repo files that are not exported. Check the exported set
+  with `git archive --worktree-attributes HEAD | tar t`.
 
 ## Shell script rules (`scripts/cancel.sh`)
 
