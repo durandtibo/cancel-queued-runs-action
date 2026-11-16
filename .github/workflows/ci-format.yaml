@@ -14,28 +14,27 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
-
-      - name: Lint Markdown files
+      - name: Format
         run: |
-          make lint-markdown
-
-      - name: Check shell formatting
+          make format
+      - name: Check for changes
         run: |
-          make check-format-shell
+          git diff --exit-code
 
-      - name: Lint shell scripts
-        run: |
-          make lint-shell
+  lint:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
-      - name: Lint YAML files
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+      - name: Lint
         run: |
-          make lint-yaml
-
-      - name: Check the bats assertions
-        run: |
-          make lint-bats
+          make lint
