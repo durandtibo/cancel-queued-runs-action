@@ -11,32 +11,41 @@ We release patches for security vulnerabilities. The following versions are curr
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please report it responsibly:
+The `cancel-queued-runs-action` team takes security bugs seriously. We appreciate your efforts to
+responsibly disclose your findings.
 
-### How to Report
+### Where to Report
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to: **<durand.tibo+gh@gmail.com>**
-
-Include the following information:
-
-- Type of issue (e.g., token exposure, injection vulnerability, etc.)
-- Full paths of affected source files
-- Location of the affected code (tag/branch/commit or direct URL)
-- Step-by-step instructions to reproduce the issue
-- Proof-of-concept or exploit code (if possible)
-- Impact of the issue, including how an attacker might exploit it
+Instead, please report security vulnerabilities privately using
+[GitHub Security Advisories](https://github.com/durandtibo/cancel-queued-runs-action/security/advisories/new).
 
 ### What to Expect
 
-After submitting a vulnerability report:
+- We will acknowledge receipt of your report within **5 business days**.
+- We will provide an initial assessment (including whether the report is accepted, and an
+  estimated timeline for a fix) within **10 business days** of acknowledgment.
 
-1. **Acknowledgment**: You'll receive a response within 48 hours acknowledging your report
-2. **Assessment**: We'll investigate and assess the vulnerability
-3. **Timeline**: We'll keep you informed about our progress
-4. **Resolution**: Once fixed, we'll coordinate disclosure timing with you
-5. **Credit**: With your permission, we'll credit you in the security advisory
+### What to Include
+
+Please include the following information in your report:
+
+- Type of issue (e.g., token exposure, injection vulnerability, etc.)
+- Full paths of source file(s) related to the manifestation of the issue
+- The location of the affected source code (tag/branch/commit or direct URL)
+- Any special configuration required to reproduce the issue
+- Step-by-step instructions to reproduce the issue
+- Proof-of-concept or exploit code (if possible)
+- Impact of the issue, including how an attacker might exploit the issue
+
+This information will help us triage your report more quickly.
+
+### Security Update Policy
+
+- Security updates will be released as soon as possible
+- Security updates will be clearly marked in release notes
+- We will notify users through GitHub releases and other appropriate channels
 
 ## Security Best Practices
 
