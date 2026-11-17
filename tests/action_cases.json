@@ -27,25 +27,6 @@
     "released": false
   },
   {
-    "id": "workflow-filter",
-    "inputs": {
-      "workflow": "ci.yaml",
-      "dry-run": "true"
-    },
-    "expect": "success",
-    "released": false
-  },
-  {
-    "id": "branch-event-filter",
-    "inputs": {
-      "branch": "main",
-      "event": "push",
-      "dry-run": "true"
-    },
-    "expect": "success",
-    "released": false
-  },
-  {
     "id": "invalid-age",
     "inputs": {
       "max-age-hours": "not-a-number"
@@ -55,18 +36,9 @@
     "outputs": "unset"
   },
   {
-    "id": "invalid-force-buffer",
+    "id": "invalid-age-bound",
     "inputs": {
-      "force-cancel-buffer-hours": "-1"
-    },
-    "expect": "failure",
-    "released": false,
-    "outputs": "unset"
-  },
-  {
-    "id": "invalid-bool",
-    "inputs": {
-      "dry-run": "yes"
+      "max-age-hours": "87601"
     },
     "expect": "failure",
     "released": false,
@@ -82,29 +54,9 @@
     "outputs": "unset"
   },
   {
-    "id": "invalid-fail-on-error",
-    "inputs": {
-      "fail-on-error": "maybe",
-      "dry-run": "true"
-    },
-    "expect": "failure",
-    "released": false,
-    "outputs": "unset"
-  },
-  {
     "id": "invalid-workflow",
     "inputs": {
-      "workflow": "a/b.yaml",
-      "dry-run": "true"
-    },
-    "expect": "failure",
-    "released": false,
-    "outputs": "unset"
-  },
-  {
-    "id": "invalid-repo",
-    "inputs": {
-      "repo": "not-valid",
+      "workflow": "a/b",
       "dry-run": "true"
     },
     "expect": "failure",
@@ -132,9 +84,68 @@
     "outputs": "unset"
   },
   {
+    "id": "invalid-force-buffer",
+    "inputs": {
+      "force-cancel-buffer-hours": "-1"
+    },
+    "expect": "failure",
+    "released": false,
+    "outputs": "unset"
+  },
+  {
+    "id": "invalid-fail-on-error",
+    "inputs": {
+      "fail-on-error": "yes",
+      "dry-run": "true"
+    },
+    "expect": "failure",
+    "released": false,
+    "outputs": "unset"
+  },
+  {
+    "id": "invalid-bool",
+    "inputs": {
+      "dry-run": "yes"
+    },
+    "expect": "failure",
+    "released": false,
+    "outputs": "unset"
+  },
+  {
+    "id": "invalid-repo",
+    "inputs": {
+      "repo": "not-a-repo",
+      "dry-run": "true"
+    },
+    "expect": "failure",
+    "released": false,
+    "outputs": "unset"
+  },
+  {
+    "id": "unknown-repo",
+    "inputs": {
+      "repo": "durandtibo/no-such-repository",
+      "dry-run": "true"
+    },
+    "expect": "failure",
+    "released": false,
+    "outputs": "zero"
+  },
+  {
     "id": "unknown-workflow",
     "inputs": {
-      "workflow": "no-such-file.yaml"
+      "workflow": "no-such-file.yaml",
+      "dry-run": "true"
+    },
+    "expect": "failure",
+    "released": false,
+    "outputs": "zero"
+  },
+  {
+    "id": "bad-token",
+    "inputs": {
+      "github-token": "invalid",
+      "dry-run": "true"
     },
     "expect": "failure",
     "released": false,
@@ -144,7 +155,8 @@
     "id": "fail-on-error-false",
     "inputs": {
       "workflow": "no-such-file.yaml",
-      "fail-on-error": "false"
+      "fail-on-error": "false",
+      "dry-run": "true"
     },
     "expect": "failure",
     "released": false,

@@ -8,6 +8,10 @@
 # dev/check_action_case.sh, so the two runs cannot drift apart. A step that was skipped has no
 # outputs: the verify steps read `steps.local.outputs.x || steps.released.outputs.x`.
 #
+# The jobs use the real gh and the real API with the job's token, never a fake. The wiring of an
+# input is proven by a row with an invalid value: it can only fail if the input reached the
+# script. The effect of an input (a filter, a real cancel) is a unit test (tests/, fake gh).
+#
 # No job cancels a real run: every run of the action here is a dry run, or fails in its
 # validation or its listing before cancelling anything. A real cancel changes the repository, so
 # it is covered by the unit tests (the fake gh, tests/) and, in production, by
@@ -72,7 +76,7 @@ jobs:
     needs: get-matrix
     if: ${{ !cancelled() && (needs.get-matrix.result == 'success' || needs.get-matrix.result == 'skipped') }}
     permissions:
-      actions: write
+      actions: read
       contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
@@ -85,13 +89,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+      - name: Show the bash that runs the action
+        run: bash --version | head -n 1
+        shell: bash
       - name: Dry run of the action (local)
         id: local
         if: ${{ !inputs.use-released }}
         uses: ./
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repo: ${{ github.repository }}
           dry-run: true
       # The pinned release still has the v2 names (snake_case inputs and outputs). Once the
       # pinned release is v3.0.0, use the kebab-case names here and in the verify step.
@@ -119,7 +124,7 @@ jobs:
   test-cases:
     needs: get-cases
     permissions:
-      actions: write
+      actions: read
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -156,7 +161,7 @@ jobs:
         continue-on-error: true
         uses: ./
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ matrix.case.inputs['github-token'] || secrets.GITHUB_TOKEN }}
           repo: ${{ matrix.case.inputs.repo || github.repository }}
           max-age-hours: ${{ matrix.case.inputs['max-age-hours'] || '24' }}
           statuses: ${{ matrix.case.inputs.statuses || 'queued' }}
@@ -172,7 +177,7 @@ jobs:
         continue-on-error: true
         uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ matrix.case.inputs['github-token'] || secrets.GITHUB_TOKEN }}
           repo: ${{ matrix.case.inputs.repo || github.repository }}
           max-age-hours: ${{ matrix.case.inputs['max-age-hours'] || '24' }}
           statuses: ${{ matrix.case.inputs.statuses || 'queued' }}

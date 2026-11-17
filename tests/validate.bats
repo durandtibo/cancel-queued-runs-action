@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
 # The validation of the inputs: every rule has valid and invalid values, and an
-# invalid value fails before the first API call (see also characterization.bats).
+# invalid value fails before the first API call.
 
 load helpers/common
 

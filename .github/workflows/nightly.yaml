@@ -27,5 +27,5 @@ jobs:
       use-released: true
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
     permissions:
-      actions: write
+      actions: read
       contents: read
