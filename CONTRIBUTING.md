@@ -89,6 +89,10 @@ bats tests/cancel_run.bats
   mutation must make a test fail. The mutations are in `dev/mutants.txt`
   (`name@@test files@@sed -E expression`): add one when you add a decision, anchored on a short
   token, not on a whole line. `SURVIVED` means a test does not check what its name says.
+- The action tests (`ci-action.yaml`) use the real `gh` and never cancel a run. Their cases are the
+  rows of `tests/action_cases.json` (`id`, `inputs`, `expect`, `outputs`, `released`), checked by
+  `dev/check_action_case.sh`: add a row, not a job. A row with an invalid value proves that an input
+  reaches the script. The effect of an input is a unit test with the fake `gh`.
 - `tests/action_readme_sync.bats` keeps the inputs and outputs of `action.yaml` and `README.md`
   identical (names, defaults and descriptions): update both.
 
@@ -106,8 +110,8 @@ bats tests/cancel_run.bats
 When making changes, please update relevant documentation:
 
 - Update [README.md](README.md) for user-facing changes
-- Update [CHANGELOG.md](../CHANGELOG.md) with your changes
-- Add examples to [examples/](../examples/) for new use cases
+- Add examples to [examples/](examples/) for new use cases (the history is in the
+  [release notes](https://github.com/durandtibo/cancel-queued-runs-action/releases))
 
 ## Code of Conduct
 

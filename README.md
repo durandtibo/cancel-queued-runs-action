@@ -56,9 +56,11 @@ before the first API call.
 | `cancelled-run-ids` | JSON array of the cancelled run IDs, "[]" if none. Read it with fromJSON()        |
 
 `cancelled-count + skipped-count + failed-count = eligible-count`, except in a dry run. All the
-outputs are set on every path, including a failure, so a step with `continue-on-error` can read
-them. The action also writes a summary table with the first 50 runs: the cancelled ones, or in a
-dry run the ones that would be cancelled.
+outputs are set once the inputs are valid, including after a failure to list the runs (counts `0`,
+ids `[]`), so a step with `continue-on-error` can read them. An invalid input sets no output.
+
+The action also writes a summary table with the first 50 runs: the cancelled ones, or in a dry run
+the ones that would be cancelled.
 
 ## ⏱ Examples
 
@@ -111,8 +113,8 @@ in [examples/](examples/).
    same instant.
 3. **List** the runs of each status (and `workflow`, `branch`, `event` when set) created before the
    cutoff, one paginated request per status.
-4. **Select** the runs whose last update (`updated_at`) is strictly older than the cutoff, oldest
-   first. This is the only rule. The age is measured from `updated_at`, so a run that was created
+4. **Select** the runs whose last update (`updated_at`) is strictly older than the cutoff, sorted
+   oldest first. This is the only rule. The age is measured from `updated_at`, so a run that was created
    long ago but re-run recently (for example after a failure) is **not** cancelled.
 5. **Cancel** each run with `POST /actions/runs/{id}/cancel`, one second apart (nothing is sent in a
    dry run). If `/cancel` fails with an unexpected error and the run is older than
@@ -127,8 +129,9 @@ a warning, not a failure. Running the action twice gives the same end state.
 
 - Runs that have not started only (`queued`, and optionally `waiting`, `pending`, `requested`), in
   one repository.
-- GitHub lists at most 1000 runs per status and per execution. The oldest are asked for first and
-  the cancelled runs leave the queue, so the next execution continues (the action warns).
+- GitHub lists at most 1000 runs per status and per execution. GitHub does not
+  document the order, so the 1000 listed may not be the oldest. The cancelled runs leave the queue,
+  so the next execution continues (the action warns).
 - A run that GitHub refuses to cancel stays in the queue and shows up in `skipped-count`. A run
   with no job (HTTP 409 at every execution) can only be removed by deleting it, which the action
   does not do:
@@ -136,20 +139,6 @@ a warning, not a failure. Running the action twice gives the same end state.
 - Nothing is retried. A rate limit stops the execution and the runs left are counted in
   `failed-count`; a failure to list the runs fails the step. The next scheduled execution continues.
   Set `timeout-minutes` for a big backlog: one second is waited per cancelled run.
-
-## 🔄 Migrating from v2
-
-| v2                                                               | v3                                                                    |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Inputs in `snake_case` (`max_age_hours`, `dry_run`, ...)         | Rename the keys to `kebab-case` (`max-age-hours`, `dry-run`, ...)     |
-| `delete_stuck_runs`                                              | Removed. Delete a zombie run by hand with the `gh api` command above  |
-| `max_runs`                                                       | Removed. Use `concurrency: { group: ..., cancel-in-progress: true }`  |
-| `max_cancellations` and the `deferred_count` output              | Removed. Use `dry-run` first; the schedule bounds the work of one run |
-| `cancel_delay_seconds`                                           | Removed. A fixed pause of one second separates two requests           |
-| Outputs `found_count`, `would_cancel_count`, `listing_truncated` | Removed. Read `eligible-count` for the old `would_cancel_count`       |
-| Outputs `*_count` and `cancelled_run_ids`                        | Renamed to `*-count` and `cancelled-run-ids`                          |
-| Retries on rate limits and on listing errors                     | None: the next execution is the retry                                 |
-| `scripts/cancel.sh` called directly                              | Use the action; for several repositories, the matrix example          |
 
 ## 🤝 Contributing
 
