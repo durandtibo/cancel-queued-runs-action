@@ -5,10 +5,11 @@ Guidance for coding agents working in this repository.
 ## Repository purpose
 
 A GitHub composite action (`action.yaml`) that cancels workflow runs queued longer than
-`max_age_hours`. The logic lives in `scripts/cancel.sh` (bash, must work on GNU/Linux and
+`max-age-hours`. The logic lives in `scripts/cancel.sh` (bash, must work on GNU/Linux and
 BSD/macOS; Windows is not supported and not tested) and is tested with
 [bats](https://github.com/bats-core/bats-core) in `tests/`.
-`dev/` holds maintainer helpers (`run_for_repos.sh`), not part of the action.
+`dev/` holds maintainer helpers (`check_bats_assertions.sh`, `check_dry_run_outputs.sh`,
+`check_export.sh`, `mutation_check.sh`, `mutants.txt`), not part of the action.
 
 ## Environment
 
@@ -140,7 +141,7 @@ Rules:
 - Failure paths use `continue-on-error: true`, an `id`, and a step that asserts `steps.<id>.outcome`.
   Assert an id or an exact output, not a message. A negative test needs a positive run on the same
   runner before it, so it cannot pass for the wrong reason.
-- Tests have no side effects outside the runner: `dry_run`, mocks, throwaway files. If something
+- Tests have no side effects outside the runner: `dry-run`, mocks, throwaway files. If something
   cannot be tested in CI, write down which check covers it.
 - Check what is shipped: the exported set (`git archive --worktree-attributes HEAD | tar t`) must
   contain every file the action needs, because `uses: ./` runs the whole checkout and hides a

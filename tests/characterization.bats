@@ -22,7 +22,7 @@ setup() {
 
   [ "$status" -eq 0 ]
   [ "$(posted_to 101)" -eq 1 ]
-  [ "$(output_of cancelled_count)" = "1" ]
+  [ "$(output_of cancelled-count)" = "1" ]
 }
 
 @test "threshold: a run younger than max age is not touched" {
@@ -33,7 +33,7 @@ setup() {
 
   [ "$status" -eq 0 ]
   [ "$(posted)" -eq 0 ]
-  [ "$(output_of cancelled_count)" = "0" ]
+  [ "$(output_of cancelled-count)" = "0" ]
 }
 
 @test "threshold: only the old runs of a mixed list are cancelled" {
@@ -47,8 +47,8 @@ setup() {
   [ "$(posted_to 101)" -eq 1 ]
   [ "$(posted_to 102)" -eq 0 ]
   [ "$(posted_to 103)" -eq 1 ]
-  [ "$(output_of eligible_count)" = "2" ]
-  [ "$(output_of cancelled_count)" = "2" ]
+  [ "$(output_of eligible-count)" = "2" ]
+  [ "$(output_of cancelled-count)" = "2" ]
 }
 
 @test "threshold: max_age_hours changes the cutoff" {
@@ -71,7 +71,7 @@ setup() {
 
   [ "$status" -eq 0 ]
   [ "$(posted)" -eq 0 ]
-  [ "$(output_of eligible_count)" = "0" ]
+  [ "$(output_of eligible-count)" = "0" ]
 }
 
 @test "threshold: only the statuses that were asked for are listed" {
@@ -105,8 +105,8 @@ setup() {
 
   run "$SCRIPT"
 
-  [ "$(output_of eligible_count)" = "1" ]
-  [ "$(output_of cancelled_count)" = "0" ]
+  [ "$(output_of eligible-count)" = "1" ]
+  [ "$(output_of cancelled-count)" = "0" ]
 }
 
 # --- 404 and 409 -------------------------------------------------------------
@@ -118,9 +118,9 @@ setup() {
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [ "$(output_of skipped_count)" = "1" ]
-  [ "$(output_of failed_count)" = "0" ]
-  [ "$(output_of cancelled_count)" = "0" ]
+  [ "$(output_of skipped-count)" = "1" ]
+  [ "$(output_of failed-count)" = "0" ]
+  [ "$(output_of cancelled-count)" = "0" ]
 }
 
 @test "409: a run that cannot be cancelled is skipped, not a failure" {
@@ -130,8 +130,8 @@ setup() {
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [ "$(output_of skipped_count)" = "1" ]
-  [ "$(output_of failed_count)" = "0" ]
+  [ "$(output_of skipped-count)" = "1" ]
+  [ "$(output_of failed-count)" = "0" ]
 }
 
 @test "404: the next runs are still processed" {
@@ -143,8 +143,8 @@ setup() {
 
   [ "$status" -eq 0 ]
   [ "$(posted_to 102)" -eq 1 ]
-  [ "$(output_of cancelled_count)" = "1" ]
-  [ "$(output_of skipped_count)" = "1" ]
+  [ "$(output_of cancelled-count)" = "1" ]
+  [ "$(output_of skipped-count)" = "1" ]
 }
 
 # --- fail_on_error -----------------------------------------------------------
@@ -156,7 +156,7 @@ setup() {
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
-  [ "$(output_of failed_count)" = "1" ]
+  [ "$(output_of failed-count)" = "1" ]
 }
 
 @test "fail_on_error: false turns the failure into a success, the count stays" {
@@ -167,7 +167,7 @@ setup() {
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
-  [ "$(output_of failed_count)" = "1" ]
+  [ "$(output_of failed-count)" = "1" ]
 }
 
 @test "fail_on_error: false does not hide a failure to list the runs" {
@@ -178,7 +178,7 @@ setup() {
 
   [ "$status" -eq 1 ]
   [ "$(posted)" -eq 0 ]
-  [ "$(output_of eligible_count)" = "0" ]
+  [ "$(output_of eligible-count)" = "0" ]
 }
 
 # --- the validation ----------------------------------------------------------

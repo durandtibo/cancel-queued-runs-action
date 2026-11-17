@@ -25,12 +25,12 @@ teardown() {
 
 # The names of the inputs of action.yaml, one per line
 action_inputs() {
-  awk '/^inputs:/ {f=1; next} /^[a-z]+:/ {f=0} f && /^  [a-z_]+:$/ {gsub(/[: ]/, ""); print}' "$ACTION_FILE"
+  awk '/^inputs:/ {f=1; next} /^[a-z]+:/ {f=0} f && /^  [a-z-]+:$/ {gsub(/[: ]/, ""); print}' "$ACTION_FILE"
 }
 
 # The names of the outputs of action.yaml, one per line
 action_outputs() {
-  awk '/^outputs:/ {f=1; next} /^[a-z]+:/ {f=0} f && /^  [a-z_]+:$/ {gsub(/[: ]/, ""); print}' "$ACTION_FILE"
+  awk '/^outputs:/ {f=1; next} /^[a-z]+:/ {f=0} f && /^  [a-z-]+:$/ {gsub(/[: ]/, ""); print}' "$ACTION_FILE"
 }
 
 # The default of an input of action.yaml, without quotes ("" gives an empty string)
@@ -39,20 +39,35 @@ action_default() {
   awk -v name="$1" '
     /^inputs:/ {f=1; next}
     /^[a-z]+:/ {f=0}
-    f && /^  [a-z_]+:$/ {gsub(/[: ]/, ""); cur=$0; next}
+    f && /^  [a-z-]+:$/ {gsub(/[: ]/, ""); cur=$0; next}
     f && cur == name && /^    default:/ {sub(/^    default: */, ""); print; exit}
   ' "$ACTION_FILE" | sed -E 's/^"(.*)"$/\1/'
 }
 
-# Whether an input of action.yaml is required (true or false)
-# Args: $1 - input name
-action_required() {
-  awk -v name="$1" '
-    /^inputs:/ {f=1; next}
+# The description of an input or an output of action.yaml, on one line, without quotes
+# Args: $1 - section ("inputs" or "outputs"), $2 - name
+action_description() {
+  awk -v section="$1" -v name="$2" '
+    $0 ~ "^" section ":" {f=1; next}
     /^[a-z]+:/ {f=0}
-    f && /^  [a-z_]+:$/ {gsub(/[: ]/, ""); cur=$0; next}
-    f && cur == name && /^    required:/ {print $2; exit}
-  ' "$ACTION_FILE"
+    f && /^  [a-z-]+:$/ {gsub(/[: ]/, ""); cur=$0; d=0; next}
+    f && cur == name && /^    description:/ {
+      sub(/^    description: */, "")
+      if ($0 == ">") {d=1; next}
+      print; exit
+    }
+    f && cur == name && d && /^      / {sub(/^ +/, ""); text = text (text == "" ? "" : " ") $0; next}
+    f && cur == name && d && !/^      / {print text; exit}
+  ' "$ACTION_FILE" | sed -E "s/^\"(.*)\"\$/\1/; s/^'(.*)'\$/\1/"
+}
+
+# The description documented in the README for an input or an output
+# Args: $1 - section title, $2 - name
+readme_description() {
+  readme_rows "$1" | awk -F'|' -v name="$2" -v last="$([ "$1" = Inputs ] && echo 4 || echo 3)" '
+    {n = $2; gsub(/[ `]/, "", n)}
+    n == name {d = $last; sub(/^ +/, "", d); sub(/ +$/, "", d); print d; exit}
+  '
 }
 
 # The rows of the table of a section of the README ("Inputs" or "Outputs")
@@ -75,17 +90,8 @@ readme_names() {
 readme_default() {
   readme_rows Inputs | awk -F'|' -v name="$1" '
     {n = $2; gsub(/[ `]/, "", n)}
-    n == name {print $4; exit}
+    n == name {print $3; exit}
   ' | sed -E 's/^ *`([^`]*)`.*/\1/; s/^"(.*)"$/\1/'
-}
-
-# Whether the README says that an input is required (true or false)
-# Args: $1 - input name
-readme_required() {
-  readme_rows Inputs | awk -F'|' -v name="$1" '
-    {n = $2; gsub(/[ `]/, "", n)}
-    n == name {print ($3 ~ /No/ ? "false" : "true"); exit}
-  '
 }
 
 # The names present in the first list and not in the second one
@@ -126,17 +132,24 @@ only_in_first() {
     awk -v name="$name" '
       /^inputs:/ {f=1; next}
       /^[a-z]+:/ {f=0}
-      f && /^  [a-z_]+:$/ {gsub(/[: ]/, ""); cur=$0; next}
+      f && /^  [a-z-]+:$/ {gsub(/[: ]/, ""); cur=$0; next}
       f && cur == name && /^    default:/ {found=1}
       END {exit !found}
     ' "$ACTION_FILE" || { echo "no default for $name"; false; }
   done
 }
 
-@test "sync: the required flag of every input is the same in action.yaml and in the README" {
+@test "sync: the description of every input is the same in action.yaml and in the README" {
   for name in $(action_inputs); do
-    [ "$(action_required "$name")" = "$(readme_required "$name")" ] ||
-      { echo "required of $name: action.yaml='$(action_required "$name")' README='$(readme_required "$name")'"; false; }
+    [ "$(action_description inputs "$name")" = "$(readme_description Inputs "$name")" ] ||
+      { echo "description of $name: action.yaml='$(action_description inputs "$name")' README='$(readme_description Inputs "$name")'"; false; }
+  done
+}
+
+@test "sync: the description of every output is the same in action.yaml and in the README" {
+  for name in $(action_outputs); do
+    [ "$(action_description outputs "$name")" = "$(readme_description Outputs "$name")" ] ||
+      { echo "description of $name: action.yaml='$(action_description outputs "$name")' README='$(readme_description Outputs "$name")'"; false; }
   done
 }
 
@@ -145,7 +158,7 @@ only_in_first() {
     awk -v name="$name" '
       /^inputs:/ {f=1; next}
       /^[a-z]+:/ {f=0}
-      f && /^  [a-z_]+:$/ {gsub(/[: ]/, ""); cur=$0; next}
+      f && /^  [a-z-]+:$/ {gsub(/[: ]/, ""); cur=$0; next}
       f && cur == name && /^    description:/ {found=1}
       END {exit !found}
     ' "$ACTION_FILE" || { echo "no description for $name"; false; }
@@ -184,7 +197,7 @@ only_in_first() {
 
 @test "sync: every output written by the script is exposed by action.yaml" {
   # only write_outputs writes the outputs
-  in_function=$(awk '/^write_outputs\(\)/ {f=1} f {print} f && /^}/ {exit}' "$SCRIPT_FILE" | sed 's/\\n/ /g' | grep -oE '[a-z_]+_(count|ids)=' | sed -E 's/=$//')
+  in_function=$(awk '/^write_outputs\(\)/ {f=1} f {print} f && /^}/ {exit}' "$SCRIPT_FILE" | sed 's/\\n/ /g' | grep -oE '[a-z-]+-(count|ids)=' | sed -E 's/=$//')
   [ -n "$in_function" ]
 
   missing=$(only_in_first "$in_function" "$(action_outputs)")
@@ -256,18 +269,18 @@ use_copies() {
 
 @test "sync helpers: an input renamed in action.yaml is reported on both sides" {
   use_copies
-  sed -i.bak 's/^  dry_run:$/  dryrun:/' "$ACTION_FILE"
+  sed -i.bak 's/^  dry-run:$/  dryrun:/' "$ACTION_FILE"
 
   [ "$(only_in_first "$(action_inputs)" "$(readme_names Inputs)")" = "dryrun" ]
-  [ "$(only_in_first "$(readme_names Inputs)" "$(action_inputs)")" = "dry_run" ]
+  [ "$(only_in_first "$(readme_names Inputs)" "$(action_inputs)")" = "dry-run" ]
 }
 
 @test "sync helpers: a changed default is reported" {
   use_copies
   sed -i.bak 's/^    default: "24"$/    default: "48"/' "$ACTION_FILE"
 
-  [ "$(action_default max_age_hours)" = "48" ]
-  [ "$(readme_default max_age_hours)" = "24" ]
+  [ "$(action_default max-age-hours)" = "48" ]
+  [ "$(readme_default max-age-hours)" = "24" ]
 }
 
 @test "sync helpers: the default of an empty string input is read as empty on both sides" {
@@ -278,15 +291,19 @@ use_copies() {
 
 @test "sync helpers: an output removed from the README is reported" {
   use_copies
-  grep -v '^| `cancelled_run_ids`' "$README_FILE" > "$README_FILE.new" && mv "$README_FILE.new" "$README_FILE"
+  grep -v '^| `cancelled-run-ids`' "$README_FILE" > "$README_FILE.new" && mv "$README_FILE.new" "$README_FILE"
 
-  [ "$(only_in_first "$(action_outputs)" "$(readme_names Outputs)")" = "cancelled_run_ids" ]
+  [ "$(only_in_first "$(action_outputs)" "$(readme_names Outputs)")" = "cancelled-run-ids" ]
 }
 
-@test "sync helpers: an input that becomes required is reported" {
+@test "sync helpers: a changed description is reported" {
   use_copies
-  sed -i.bak '/^  repo:$/,/^  max_age_hours:$/ s/required: false/required: true/' "$ACTION_FILE"
+  sed -i.bak 's/Target repository, owner\/name/Another repository/' "$ACTION_FILE"
 
-  [ "$(action_required repo)" = "true" ]
-  [ "$(readme_required repo)" = "false" ]
+  [ "$(action_description inputs repo)" = "Another repository" ]
+  [ "$(readme_description Inputs repo)" = "Target repository, owner/name" ]
+}
+
+@test "sync helpers: a folded description is read on one line" {
+  [[ "$(action_description inputs max-age-hours)" == "Runs older than this many hours"*"so a re-run restarts it" ]] || false
 }

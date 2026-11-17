@@ -18,11 +18,11 @@ setup() {
   list_queued
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$(output_of eligible_count)" = "0" ]
-  [ "$(output_of cancelled_count)" = "0" ]
-  [ "$(output_of skipped_count)" = "0" ]
-  [ "$(output_of failed_count)" = "0" ]
-  [ "$(output_of cancelled_run_ids)" = "[]" ]
+  [ "$(output_of eligible-count)" = "0" ]
+  [ "$(output_of cancelled-count)" = "0" ]
+  [ "$(output_of skipped-count)" = "0" ]
+  [ "$(output_of failed-count)" = "0" ]
+  [ "$(output_of cancelled-run-ids)" = "[]" ]
 }
 
 @test "outputs of a real run: the counts add up and the ids are listed oldest first" {
@@ -30,22 +30,22 @@ setup() {
   answer_post 1 202; answer_post 2 202; answer_post 3 404 "Not Found"; answer_post 4 500 "Server Error"
   FAIL_ON_ERROR=false run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$(output_of eligible_count)" = "4" ]
-  [ "$(output_of cancelled_count)" = "2" ]
-  [ "$(output_of skipped_count)" = "1" ]
-  [ "$(output_of failed_count)" = "1" ]
-  [ "$(output_of cancelled_run_ids)" = "[2,1]" ]
+  [ "$(output_of eligible-count)" = "4" ]
+  [ "$(output_of cancelled-count)" = "2" ]
+  [ "$(output_of skipped-count)" = "1" ]
+  [ "$(output_of failed-count)" = "1" ]
+  [ "$(output_of cancelled-run-ids)" = "[2,1]" ]
 }
 
 @test "outputs are all set, with zeros, when the listing fails" {
   add_rule GET '*' 500 '{"message":"Server Error"}'
   run "$SCRIPT"
   [ "$status" -eq 1 ]
-  [ "$(output_of eligible_count)" = "0" ]
-  [ "$(output_of cancelled_count)" = "0" ]
-  [ "$(output_of skipped_count)" = "0" ]
-  [ "$(output_of failed_count)" = "0" ]
-  [ "$(output_of cancelled_run_ids)" = "[]" ]
+  [ "$(output_of eligible-count)" = "0" ]
+  [ "$(output_of cancelled-count)" = "0" ]
+  [ "$(output_of skipped-count)" = "0" ]
+  [ "$(output_of failed-count)" = "0" ]
+  [ "$(output_of cancelled-run-ids)" = "[]" ]
   [[ "$output" == *"::error::Cannot list the workflow runs of myorg/myrepo"* ]] || false
 }
 
@@ -76,7 +76,7 @@ setup() {
   answer_post 1 202
   run "$SCRIPT"
   [ "$(posted_to 1)" -eq 1 ]
-  [ "$(output_of eligible_count)" = "1" ]
+  [ "$(output_of eligible-count)" = "1" ]
 }
 
 @test "a failure is a non-zero exit with an error, and the outputs are written first" {
@@ -85,7 +85,7 @@ setup() {
   run "$SCRIPT"
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::1 run(s) could not be cancelled"* ]] || false
-  [ "$(output_of failed_count)" = "1" ]
+  [ "$(output_of failed-count)" = "1" ]
 }
 
 @test "fail_on_error false: a warning and a success" {
@@ -101,8 +101,8 @@ setup() {
   answer_post 1 202; answer_post 2 429 "Too Many Requests"; answer_post 3 202
   run "$SCRIPT"
   [ "$status" -eq 1 ]
-  [ "$(output_of cancelled_count)" = "1" ]
-  [ "$(output_of failed_count)" = "2" ]
+  [ "$(output_of cancelled-count)" = "1" ]
+  [ "$(output_of failed-count)" = "2" ]
   [ "$(posted_to 3)" -eq 0 ]
 }
 

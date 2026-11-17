@@ -32,4 +32,4 @@ list_stale: a status listed twice is requested twice@@list_stale.bats@@s/case "\
 list_stale: the branch and event filters are dropped@@list_stale.bats main.bats@@s/extra\+=\(-f "(branch|event)=\$(BRANCH|EVENT)"\)/:/
 list_stale: the created filter is dropped@@list_stale.bats main.bats@@s/-f "created=<\$1"//
 cancel_all: no pause between two requests@@cancel_all.bats@@s/then sleep 1; fi/then :; fi/
-write_outputs: the cancelled run ids are not written@@outputs.bats main.bats@@s/cancelled_run_ids=%s\\n/cancelled_run_ids=\\n/
+write_outputs: the cancelled run ids are not written@@outputs.bats main.bats@@s/cancelled-run-ids=%s\\n/cancelled-run-ids=\\n/
