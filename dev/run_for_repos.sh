@@ -24,13 +24,13 @@ read_output() {
 	echo "${value:-0}"
 }
 
-# Print the summary table. Args: total found, cancelled, skipped, then "repo|found|cancelled|skipped" rows
+# Print the summary table. Args: total eligible, cancelled, skipped, then "repo|eligible|cancelled|skipped" rows
 print_summary() {
 	local total_found="$1" total_cancelled="$2" total_skipped="$3" row
 	shift 3
 	echo "=== Summary ==="
 	{
-		printf '%s|%s|%s|%s\n' "Repository" "Running" "Cancelled" "Skipped"
+		printf '%s|%s|%s|%s\n' "Repository" "Eligible" "Cancelled" "Skipped"
 		for row in "$@"; do printf '%s\n' "$row"; done
 		printf '%s|%s|%s|%s\n' "Total" "$total_found" "$total_cancelled" "$total_skipped"
 	} | awk -F'|' '
@@ -100,10 +100,10 @@ main() {
 		echo "=== Running cancel script for $repo ==="
 		: >"$out_file"
 		if GITHUB_OUTPUT="$out_file" REPO="$repo" scripts/cancel.sh; then
-			found=$(read_output "$out_file" found_count)
-			cancelled=$(read_output "$out_file" cancelled_count)
+			found=$(read_output "$out_file" eligible-count)
+			cancelled=$(read_output "$out_file" cancelled-count)
 			total_found=$((total_found + found))
-			skipped=$(read_output "$out_file" skipped_count)
+			skipped=$(read_output "$out_file" skipped-count)
 			total_cancelled=$((total_cancelled + cancelled))
 			total_skipped=$((total_skipped + skipped))
 			summary+=("$repo|$found|$cancelled|$skipped")
@@ -117,7 +117,7 @@ main() {
 
 	print_summary "$total_found" "$total_cancelled" "$total_skipped" "${summary[@]}"
 	echo
-	echo "Repositories found: ${#summary[@]}"
+	echo "Repositories processed: ${#summary[@]}"
 
 	if [ "${#failed[@]}" -gt 0 ]; then
 		echo "Failed repos: ${failed[*]}" >&2
