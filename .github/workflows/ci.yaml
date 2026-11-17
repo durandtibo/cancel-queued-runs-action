@@ -63,6 +63,12 @@ jobs:
     permissions:
       contents: read
 
+  # Check that the files shipped to the consumers are the files the action needs
+  export:
+    uses: ./.github/workflows/ci-export.yaml
+    permissions:
+      contents: read
+
   # Test the action from the current repository code (not released yet) on multiple OS
   action:
     needs: get-matrix

@@ -10,6 +10,10 @@ lint-bats: ## Check that the bats assertions do not pass vacuously on bash 3.2
 mutation-check: ## Check that the bats tests detect deliberate breakages of the script
 	./dev/mutation_check.sh
 
+.PHONY: check-export
+check-export: ## Check that the exported files are the files the action needs
+	./dev/check_export.sh
+
 .PHONY: test
 test: ## Run the bats tests
 	bats --recursive tests
