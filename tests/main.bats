@@ -172,3 +172,20 @@ only_gh_path() {
   [ "$(posted)" -eq 0 ]
   [ "$(output_of eligible-count)" = "0" ]
 }
+
+@test "a dry run lists the eligible runs in the summary, oldest first, and cancels none" {
+  list_queued 1:$((30 * H)) 2:$((50 * H)) 3:60
+  DRY_RUN=true run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(posted)" -eq 0 ]
+  [ "$(output_of cancelled-run-ids)" = "[]" ]
+  [ "$(grep '^- \[' "$GITHUB_STEP_SUMMARY" | sed -E 's/^- \[([0-9]+)\].*/\1/' | tr '\n' ' ')" = "2 1 " ]
+}
+
+@test "a real run lists only the cancelled runs in the summary, not the skipped ones" {
+  list_queued 1:$((30 * H)) 2:$((50 * H))
+  answer_post 1 202; answer_post 2 404 "Not Found"
+  run "$SCRIPT"
+  [ "$(grep -c '^- \[' "$GITHUB_STEP_SUMMARY")" -eq 1 ]
+  grep -qF -- '- [1](' "$GITHUB_STEP_SUMMARY"
+}

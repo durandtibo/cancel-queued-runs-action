@@ -35,3 +35,4 @@ cancel_all: no pause between two requests@@cancel_all.bats@@s/then sleep 1; fi/t
 write_outputs: the cancelled run ids are not written@@outputs.bats main.bats@@s/cancelled-run-ids=%s\\n/cancelled-run-ids=\\n/
 validate_all: a missing tool does not stop the script@@main.bats@@/Required command not found/{n;s/return 1/:/;}
 validate_all: max-age-hours has no upper bound@@main.bats validate.bats@@s/pint 87600/pint/
+main: the dry run summary does not list the eligible runs@@main.bats@@s/select\(length > 0\)/select(length < 0)/
