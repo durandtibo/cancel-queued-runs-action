@@ -96,6 +96,31 @@ list_stale() {
 	done
 }
 
+# Print the number of runs in the statuses of STATUSES whatever their age (the
+# runs "found"), or - when GitHub cannot say. Only used for the log line.
+count_found() {
+	local path="/repos/$REPO/actions/runs" status seen=" " n total=0
+	if [ -n "$WORKFLOW" ]; then path="/repos/$REPO/actions/workflows/$WORKFLOW/runs"; fi
+	local -a extra=()
+	if [ -n "$BRANCH" ]; then extra+=(-f "branch=$BRANCH"); fi
+	if [ -n "$EVENT" ]; then extra+=(-f "event=$EVENT"); fi
+	for status in ${STATUSES//[ ,]/ }; do
+		case "$seen" in *" $status "*) continue ;; esac
+		seen="$seen$status "
+		n=$(gh api --method GET "$path" -f status="$status" -f per_page=1 \
+			${extra[@]+"${extra[@]}"} --jq '.total_count' 2>/dev/null) || {
+			echo "-"
+			return 0
+		}
+		[[ $n =~ ^[0-9]+$ ]] || {
+			echo "-"
+			return 0
+		}
+		total=$((total + n))
+	done
+	echo "$total"
+}
+
 # Read {id, updated_at} lines, print "id age_seconds" for the runs whose
 # updated_at is strictly before $1 (cutoff), without duplicates, oldest first (within the listed runs).
 # $2: now (epoch seconds), only used for the age. ISO 8601 UTC strings compare
@@ -208,7 +233,7 @@ write_summary() {
 
 main() {
 	validate_all || return 1
-	local now cut stale eligible cancelled skipped failed ids
+	local now cut stale found eligible cancelled skipped failed ids
 	now=$(jq -nr 'now | floor')
 	cut=$(cutoff "$now")
 	echo "Cancelling the runs of $REPO not updated since $cut (more than $MAX_AGE_HOURS hours)..."
@@ -217,8 +242,9 @@ main() {
 		die "Cannot list the workflow runs of $REPO (see the messages above)"
 		return 1
 	fi
+	found=$(count_found)
 	read -r eligible cancelled skipped failed ids <<<"$(cancel_all <<<"$stale")"
-	echo "Eligible: $eligible, cancelled: $cancelled, skipped: $skipped, failed: $failed"
+	echo "Found: $found, eligible: $eligible, cancelled: $cancelled, skipped: $skipped, failed: $failed"
 	write_outputs "$eligible" "$cancelled" "$skipped" "$failed" "$ids"
 	if [ "$DRY_RUN" = true ]; then
 		ids=$(jq -R -s -c '[split("\n")[] | select(length > 0) | split(" ")[0] | tonumber]' <<<"$stale")

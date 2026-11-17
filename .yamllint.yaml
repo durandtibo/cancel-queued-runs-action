@@ -8,6 +8,7 @@ rules:
     level: warning
     ignore: |
       .github/
+      action.yaml
   indentation:
     indent-sequences: consistent
   document-start: disable

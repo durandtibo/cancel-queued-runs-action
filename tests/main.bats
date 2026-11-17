@@ -189,3 +189,18 @@ only_gh_path() {
   [ "$(grep -c '^- \[' "$GITHUB_STEP_SUMMARY")" -eq 1 ]
   grep -qF -- '- [1](' "$GITHUB_STEP_SUMMARY"
 }
+
+@test "the log line shows the runs found whatever their age, before the eligible ones" {
+  add_rule GET '*actions/runs*status=queued*per_page=1 *' 200 '{"total_count":4}'
+  list_queued 1:60 2:120
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Found: 4, eligible: 0, cancelled: 0, skipped: 0, failed: 0"* ]] || false
+}
+
+@test "the log line shows a dash for the found runs when the count is not available" {
+  list_queued
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Found: -, eligible: 0,"* ]] || false
+}

@@ -24,22 +24,30 @@ read_output() {
 	echo "${value:-0}"
 }
 
-# Print the summary table. Args: total eligible, cancelled, skipped, then "repo|eligible|cancelled|skipped" rows
+# Print the number of runs of repo $1 whose status is queued right now (- when it cannot be read)
+count_queued() {
+	gh api --method GET "/repos/$1/actions/runs" -f status=queued -f per_page=1 --jq '.total_count' 2>/dev/null || echo "-"
+}
+
+# Print the summary table, sorted by ascending Queued (a "-" last), then by name.
+# Args: total queued, eligible, cancelled, skipped, then "repo|queued|eligible|cancelled|skipped" rows
 print_summary() {
-	local total_found="$1" total_cancelled="$2" total_skipped="$3" row
-	shift 3
+	local total_queued="$1" total_found="$2" total_cancelled="$3" total_skipped="$4" row
+	shift 4
 	echo "=== Summary ==="
 	{
-		printf '%s|%s|%s|%s\n' "Repository" "Eligible" "Cancelled" "Skipped"
-		for row in "$@"; do printf '%s\n' "$row"; done
-		printf '%s|%s|%s|%s\n' "Total" "$total_found" "$total_cancelled" "$total_skipped"
+		printf '%s|%s|%s|%s|%s\n' "Repository" "Queued" "Eligible" "Cancelled" "Skipped"
+		for row in "$@"; do printf '%s\n' "$row"; done |
+			awk -F'|' '{ print (($2 == "-") ? 999999999 : $2) "|" $0 }' |
+			LC_ALL=C sort -t'|' -k1,1n -k2,2f | cut -d'|' -f2-
+		printf '%s|%s|%s|%s|%s\n' "Total" "$total_queued" "$total_found" "$total_cancelled" "$total_skipped"
 	} | awk -F'|' '
-		{ for (i = 1; i <= 4; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
+		{ for (i = 1; i <= 5; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
 		END {
 			for (r = 1; r <= NR; r++) {
-				printf "%-*s  %*s  %*s  %*s\n", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3], w[4], c[r, 4]
+				printf "%-*s  %*s  %*s  %*s  %*s\n", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3], w[4], c[r, 4], w[5], c[r, 5]
 				if (r == 1 || r == NR - 1) {
-					printf "%s\n", sep(w[1] + w[2] + w[3] + w[4] + 6)
+					printf "%s\n", sep(w[1] + w[2] + w[3] + w[4] + w[5] + 8)
 				}
 			}
 		}
@@ -93,11 +101,11 @@ main() {
 	# shellcheck disable=SC2064 # expand now: out_file is local to main
 	trap "rm -f '$out_file'" EXIT
 
-	local failed=() summary=() repo found cancelled skipped
-	local total_found=0 total_cancelled=0 total_skipped=0
+	local failed=() summary=() repo found cancelled skipped queued
+	local total_found=0 total_cancelled=0 total_skipped=0 total_queued=0
 	while read -r repo; do
 		[ -z "$repo" ] && continue
-		echo "=== Running cancel script for $repo ==="
+		echo "=== Running cancel script for $repo ($(count_queued "$repo") queued runs found) ==="
 		: >"$out_file"
 		if GITHUB_OUTPUT="$out_file" REPO="$repo" scripts/cancel.sh; then
 			found=$(read_output "$out_file" eligible-count)
@@ -106,16 +114,18 @@ main() {
 			skipped=$(read_output "$out_file" skipped-count)
 			total_cancelled=$((total_cancelled + cancelled))
 			total_skipped=$((total_skipped + skipped))
-			summary+=("$repo|$found|$cancelled|$skipped")
+			queued=$(count_queued "$repo")
+			if [[ $queued =~ ^[0-9]+$ ]]; then total_queued=$((total_queued + queued)); fi
+			summary+=("$repo|$queued|$found|$cancelled|$skipped")
 		else
 			echo "!!! Failed for $repo, continuing" >&2
 			failed+=("$repo")
-			summary+=("$repo|-|-|-")
+			summary+=("$repo|-|-|-|-")
 		fi
 		echo
 	done <<<"$repos"
 
-	print_summary "$total_found" "$total_cancelled" "$total_skipped" "${summary[@]}"
+	print_summary "$total_queued" "$total_found" "$total_cancelled" "$total_skipped" "${summary[@]}"
 	echo
 	echo "Repositories processed: ${#summary[@]}"
 
