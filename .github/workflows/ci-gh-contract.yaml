@@ -1,0 +1,31 @@
+# Check, with the real gh and no side effect, the one behaviour of gh that scripts/cancel.sh reads:
+# a failed POST exits non-zero and writes "(HTTP nnn)" on stderr (dev/check_gh_contract.sh). The
+# fake gh of the unit tests only copies it. The request cancels the run 1 of this repository,
+# which does not exist, so nothing is cancelled. It needs actions: write, so it has its own
+# workflow: the other action checks only read.
+
+name: Check gh Contract
+on:
+  workflow_call:
+  workflow_dispatch: # to trigger manually
+
+permissions: {}
+
+jobs:
+  check-gh-contract:
+    permissions:
+      actions: write
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Check how gh reports a failed POST
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          make check-gh-contract
+        shell: bash

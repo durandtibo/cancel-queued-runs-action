@@ -14,6 +14,10 @@ mutation-check: ## Check that the bats tests detect deliberate breakages of the 
 check-export: ## Check that the exported files are the files the action needs
 	./dev/check_export.sh
 
+.PHONY: check-gh-contract
+check-gh-contract: ## Check, with the real gh, how a failed POST reports its HTTP code (needs GH_TOKEN)
+	./dev/check_gh_contract.sh
+
 .PHONY: test
 test: ## Run the bats tests
 	bats --recursive tests

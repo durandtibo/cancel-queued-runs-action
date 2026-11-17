@@ -69,6 +69,13 @@ jobs:
     permissions:
       contents: read
 
+  # Check with the real gh how a failed POST reports its HTTP code (no side effect)
+  gh-contract:
+    uses: ./.github/workflows/ci-gh-contract.yaml
+    permissions:
+      actions: write
+      contents: read
+
   # Test the action from the current repository code (not released yet) on multiple OS
   action:
     needs: get-matrix
@@ -77,5 +84,5 @@ jobs:
       use-released: false
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
     permissions:
-      actions: write
+      actions: read
       contents: read
