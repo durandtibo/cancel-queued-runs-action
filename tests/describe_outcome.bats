@@ -19,7 +19,7 @@ setup() {
 @test "describe_outcome describes a skipped run" {
   run describe_outcome skipped
 
-  [ "$output" = "Skipped (cannot be cancelled or deleted)" ]
+  [ "$output" = "Skipped (cannot be cancelled)" ]
 }
 
 @test "describe_outcome describes a failed run" {
@@ -41,8 +41,3 @@ setup() {
   [ -z "$output" ]
 }
 
-@test "describe_outcome describes a deleted run" {
-  run describe_outcome deleted
-
-  [ "$output" = "Deleted (zombie run without job)" ]
-}

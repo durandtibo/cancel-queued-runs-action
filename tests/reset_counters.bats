@@ -9,13 +9,9 @@ setup() {
   SKIPPED_COUNT=4
   FAILED_COUNT=3
   WOULD_CANCEL_COUNT=2
-  DEFERRED_COUNT=1
-  DELETED_COUNT=1
 
   reset_counters
 
-  [ "$DEFERRED_COUNT" -eq 0 ]
-  [ "$DELETED_COUNT" -eq 0 ]
   [ "$CANCELLED_COUNT" -eq 0 ]
   [ "$SKIPPED_COUNT" -eq 0 ]
   [ "$FAILED_COUNT" -eq 0 ]
@@ -23,23 +19,10 @@ setup() {
 }
 
 @test "the counters are 0 when the script is sourced" {
-  [ "$DEFERRED_COUNT" -eq 0 ]
   [ "$CANCELLED_COUNT" -eq 0 ]
   [ "$SKIPPED_COUNT" -eq 0 ]
   [ "$FAILED_COUNT" -eq 0 ]
   [ "$WOULD_CANCEL_COUNT" -eq 0 ]
-}
-
-@test "reset_counters forgets the requests already sent" {
-  REQUEST_SENT=true
-
-  reset_counters
-
-  [ "$REQUEST_SENT" = "false" ]
-}
-
-@test "no request is recorded as sent when the script is sourced" {
-  [ "$REQUEST_SENT" = "false" ]
 }
 
 @test "reset_counters forgets the recorded runs" {

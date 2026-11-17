@@ -187,33 +187,6 @@ teardown() {
   if grep -q "process_run 222" "$LOG_FILE"; then false; fi
 }
 
-@test "process_all_runs calls jq a fixed number of times (twice without a run limit) whatever the number of runs" {
-  real_jq=$(command -v jq)
-  export JQ_CALL_LOG="$MOCK_DIR/jq_calls.log"
-  : > "$JQ_CALL_LOG"
-  cat > "$MOCK_DIR/jq" << MOCK
-#!/usr/bin/env bash
-echo call >> "$JQ_CALL_LOG"
-exec "$real_jq" "\$@"
-MOCK
-  chmod +x "$MOCK_DIR/jq"
-  PATH="$MOCK_DIR:$PATH"
-
-  runs_stream=$(
-    printf '%s\n' \
-      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
-      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}' \
-      '{"id": 3, "queued_at": "2025-01-01T03:00:00Z"}' \
-      '{"id": 4, "queued_at": "2025-01-01T04:00:00Z"}'
-  )
-
-  run process_all_runs "$runs_stream"
-
-  [ "$status" -eq 0 ]
-  [ "$(wc -l < "$JQ_CALL_LOG" | tr -d ' ')" -eq 2 ]
-  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 4 ]
-}
-
 @test "process_all_runs skips runs whose fields are null or missing" {
   runs_stream=$(
     printf '%s\n' \
@@ -427,15 +400,6 @@ mock_outcomes() {
   printf '%s' "$RUN_RECORDS" | grep -qx "5|5h00m|failed"
 }
 
-@test "process_all_runs does not record the runs that were left alone" {
-  mock_outcomes
-  runs_stream='{"id": 4, "queued_at": "2025-01-01T01:00:00Z"}'
-
-  process_all_runs "$runs_stream" >/dev/null
-
-  [ -z "$RUN_RECORDS" ]
-}
-
 @test "process_all_runs does not record a run when process_run sets no outcome" {
   runs_stream='{"id": 101, "queued_at": "2025-01-01T01:00:00Z"}'
 
@@ -536,7 +500,7 @@ mock_clock() {
 }
 
 # --------------------------------------------------------
-# Limit on the number of cancellations (MAX_CANCELLATIONS)
+# Counters
 # --------------------------------------------------------
 
 # The runs queued at 01:00 are old enough to be cancelled (27h46m), the ones
@@ -571,295 +535,38 @@ five_old_runs() {
     '{"id": 5, "queued_at": "2025-01-01T01:00:00Z"}'
 }
 
-@test "process_all_runs processes every run without a limit" {
+@test "process_all_runs processes every run" {
   mock_limit
-  MAX_CANCELLATIONS=0
 
   process_all_runs "$(five_old_runs)" > /dev/null
 
   [ "$CANCELLED_COUNT" -eq 5 ]
-  [ "$DEFERRED_COUNT" -eq 0 ]
   [ "$(grep -c '^process_run' "$LOG_FILE")" -eq 5 ]
 }
 
-@test "process_all_runs stops cancelling when the limit is reached" {
-  mock_limit
-  MAX_CANCELLATIONS=2
+@test "process_all_runs calls jq a fixed number of times (twice) whatever the number of runs" {
+  real_jq=$(command -v jq)
+  export JQ_CALL_LOG="$MOCK_DIR/jq_calls.log"
+  : > "$JQ_CALL_LOG"
+  cat > "$MOCK_DIR/jq" << MOCK
+#!/usr/bin/env bash
+echo call >> "$JQ_CALL_LOG"
+exec "$real_jq" "\$@"
+MOCK
+  chmod +x "$MOCK_DIR/jq"
+  PATH="$MOCK_DIR:$PATH"
 
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$CANCELLED_COUNT" -eq 2 ]
-  [ "$(grep -c '^process_run' "$LOG_FILE")" -eq 2 ]
-}
-
-@test "process_all_runs cancels the first runs of the list when there is a limit" {
-  mock_limit
-  MAX_CANCELLATIONS=2
-
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$(cat "$LOG_FILE")" = $'process_run 1\nprocess_run 2' ]
-}
-
-@test "process_all_runs cancels the oldest runs first when there is a limit" {
-  mock_limit
-  MAX_CANCELLATIONS=2
-
-  # listed most recent first, as GitHub does
-  process_all_runs "$(printf '%s\n' \
-    '{"id": 1, "queued_at": "2025-01-01T01:05:00Z"}' \
-    '{"id": 2, "queued_at": "2025-01-01T01:04:00Z"}' \
-    '{"id": 3, "queued_at": "2025-01-01T01:03:00Z"}' \
-    '{"id": 4, "queued_at": "2025-01-01T01:02:00Z"}')" > /dev/null
-
-  [ "$(cat "$LOG_FILE")" = $'process_run 4\nprocess_run 3' ]
-  [ "$DEFERRED_COUNT" -eq 2 ]
-}
-
-@test "process_all_runs counts the runs left alone after the limit" {
-  mock_limit
-  MAX_CANCELLATIONS=2
-
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$DEFERRED_COUNT" -eq 3 ]
-}
-
-@test "process_all_runs succeeds when runs are left alone because of the limit" {
-  mock_limit
-  MAX_CANCELLATIONS=2
-
-  run process_all_runs "$(five_old_runs)"
-
-  [ "$status" -eq 0 ]
-}
-
-@test "process_all_runs warns once about the runs left alone" {
-  mock_limit
-  MAX_CANCELLATIONS=2
-
-  run process_all_runs "$(five_old_runs)"
-
-  [[ "$output" == *"::warning::MAX_CANCELLATIONS (2) reached: 3 more run(s) are old enough to be cancelled but were left alone."* ]] || false
-  [ "$(echo "$output" | grep -c '::warning::MAX_CANCELLATIONS')" -eq 1 ]
-}
-
-@test "process_all_runs does not warn when the limit is not reached" {
-  mock_limit
-  MAX_CANCELLATIONS=9
-
-  run process_all_runs "$(five_old_runs)"
-
-  [[ "$output" != *"MAX_CANCELLATIONS"* ]] || false
-}
-
-@test "process_all_runs does not warn when exactly the limit of runs is cancelled" {
-  mock_limit
-  MAX_CANCELLATIONS=5
-
-  run process_all_runs "$(five_old_runs)"
-
-  [[ "$output" != *"MAX_CANCELLATIONS"* ]] || false
-  [ "$DEFERRED_COUNT" -eq 0 ]
-}
-
-@test "process_all_runs does not warn without a limit" {
-  mock_limit
-  MAX_CANCELLATIONS=0
-
-  run process_all_runs "$(five_old_runs)"
-
-  [[ "$output" != *"MAX_CANCELLATIONS"* ]] || false
-}
-
-@test "process_all_runs logs the age of the runs left alone" {
-  mock_limit
-  MAX_CANCELLATIONS=1
-
-  run process_all_runs "$(five_old_runs)"
-
-  [[ "$output" == *"Run 5 is 27h46m old."* ]] || false
-}
-
-@test "process_all_runs does not record the runs left alone" {
-  mock_limit
-  MAX_CANCELLATIONS=1
-
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$(printf '%s' "$RUN_RECORDS" | grep -c '')" -eq 1 ]
-  printf '%s' "$RUN_RECORDS" | grep -qx "1|27h46m|cancelled"
-}
-
-@test "process_all_runs counts the runs that would be cancelled towards the limit" {
-  mock_limit
-  MAX_CANCELLATIONS=2
-  OUTCOME_1="would-cancel"
-  OUTCOME_2="would-cancel"
-  OUTCOME_3="would-cancel"
-
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$WOULD_CANCEL_COUNT" -eq 2 ]
-  [ "$DEFERRED_COUNT" -eq 3 ]
-}
-
-@test "process_all_runs does not count the skipped runs towards the limit" {
-  mock_limit
-  MAX_CANCELLATIONS=1
-  OUTCOME_1="skipped"
-  OUTCOME_2="skipped"
-
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$SKIPPED_COUNT" -eq 2 ]
-  [ "$CANCELLED_COUNT" -eq 1 ]
-  [ "$DEFERRED_COUNT" -eq 2 ]
-}
-
-@test "process_all_runs does not count the failed runs towards the limit" {
-  mock_limit
-  MAX_CANCELLATIONS=1
-  OUTCOME_1="failed"
-
-  process_all_runs "$(five_old_runs)" > /dev/null 2>&1 || true
-
-  [ "$FAILED_COUNT" -eq 1 ]
-  [ "$CANCELLED_COUNT" -eq 1 ]
-  [ "$DEFERRED_COUNT" -eq 3 ]
-}
-
-@test "process_all_runs still fails when a run failed before the limit was reached" {
-  mock_limit
-  MAX_CANCELLATIONS=1
-  OUTCOME_1="failed"
-
-  run process_all_runs "$(five_old_runs)"
-
-  [ "$status" -eq 1 ]
-}
-
-@test "process_all_runs still looks at the runs that are not old enough after the limit" {
-  mock_limit
-  MAX_CANCELLATIONS=1
   runs_stream=$(
     printf '%s\n' \
       '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
       '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}' \
-      '{"id": 3, "queued_at": "2025-01-01T01:00:00Z"}'
+      '{"id": 3, "queued_at": "2025-01-01T03:00:00Z"}' \
+      '{"id": 4, "queued_at": "2025-01-01T04:00:00Z"}'
   )
-  OUTCOME_2="noop"
 
-  process_all_runs "$runs_stream" > /dev/null
-
-  [ "$(cat "$LOG_FILE")" = $'process_run 1\nprocess_run 2' ]
-  [ "$DEFERRED_COUNT" -eq 1 ]
-}
-
-@test "process_all_runs does not count a run that is not old enough as left alone" {
-  mock_limit
-  MAX_CANCELLATIONS=1
-  runs_stream=$(
-    printf '%s\n' \
-      '{"id": 1, "queued_at": "2025-01-01T01:00:00Z"}' \
-      '{"id": 2, "queued_at": "2025-01-01T02:00:00Z"}'
-  )
-  OUTCOME_2="noop"
-
-  process_all_runs "$runs_stream" > /dev/null
-
-  [ "$DEFERRED_COUNT" -eq 0 ]
-}
-
-@test "process_all_runs forgets the runs left alone by a previous call" {
-  mock_limit
-  MAX_CANCELLATIONS=1
-  process_all_runs "$(five_old_runs)" > /dev/null
-  [ "$DEFERRED_COUNT" -eq 4 ]
-
-  MAX_CANCELLATIONS=0
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$DEFERRED_COUNT" -eq 0 ]
-}
-
-@test "process_all_runs counts the cancellations again at every call" {
-  mock_limit
-  MAX_CANCELLATIONS=2
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  process_all_runs "$(five_old_runs)" > /dev/null
-
-  [ "$CANCELLED_COUNT" -eq 2 ]
-  [ "$DEFERRED_COUNT" -eq 3 ]
-}
-
-@test "process_all_runs flags the runs beyond MAX_RUNS as over the limit" {
-  process_run() {
-    echo "process_run $1 $2 $3" >> "$LOG_FILE"
-  }
-  MAX_RUNS=1
-  runs='{"id":1,"queued_at":"2026-01-01T01:00:00Z"}
-{"id":2,"queued_at":"2026-01-01T03:00:00Z"}'
-
-  run process_all_runs "$runs"
+  run process_all_runs "$runs_stream"
 
   [ "$status" -eq 0 ]
-  grep -q "process_run 1 18000 true" "$LOG_FILE"
-  grep -q "process_run 2 18000 false" "$LOG_FILE"
-}
-
-@test "process_all_runs flags no run as over the limit when MAX_RUNS is 0" {
-  process_run() {
-    echo "process_run $1 $2 $3" >> "$LOG_FILE"
-  }
-  MAX_RUNS=0
-  runs='{"id":1,"queued_at":"2026-01-01T01:00:00Z"}
-{"id":2,"queued_at":"2026-01-01T03:00:00Z"}'
-
-  run process_all_runs "$runs"
-
-  [ "$status" -eq 0 ]
-  if grep -q " true" "$LOG_FILE"; then false; fi
-}
-
-@test "process_all_runs defers a run over the limit once MAX_CANCELLATIONS is reached" {
-  process_run() {
-    echo "process_run $1" >> "$LOG_FILE"
-    PROCESS_RUN_OUTCOME="noop"
-    if [ "$3" = "true" ]; then PROCESS_RUN_OUTCOME="cancelled"; fi
-  }
-  MAX_RUNS=1
-  MAX_CANCELLATIONS=1
-  runs='{"id":1,"queued_at":"2026-01-01T01:00:00Z"}
-{"id":2,"queued_at":"2026-01-01T02:00:00Z"}
-{"id":3,"queued_at":"2026-01-01T03:00:00Z"}'
-
-  process_all_runs "$runs" >/dev/null
-
-  [ "$CANCELLED_COUNT" -eq 1 ]
-  [ "$DEFERRED_COUNT" -eq 1 ]
-}
-
-@test "process_all_runs counts and records a deleted run" {
-  process_run() { PROCESS_RUN_OUTCOME="deleted"; return 0; }
-
-  process_all_runs '{"id": 601, "queued_at": "2025-01-01T01:00:00Z"}' > /dev/null
-
-  [ "$DELETED_COUNT" -eq 1 ]
-  [ "$CANCELLED_COUNT" -eq 0 ]
-  [[ "$RUN_RECORDS" == "601|5h00m|deleted"* ]] || false
-}
-
-@test "process_all_runs counts the deleted runs toward MAX_CANCELLATIONS" {
-  process_run() { PROCESS_RUN_OUTCOME="deleted"; return 0; }
-  MAX_AGE_HOURS=1
-  MAX_CANCELLATIONS=1
-
-  process_all_runs "$(printf '%s\n' \
-    '{"id": 601, "queued_at": "2025-01-01T01:00:00Z"}' \
-    '{"id": 602, "queued_at": "2025-01-01T02:00:00Z"}')" > /dev/null
-
-  [ "$DELETED_COUNT" -eq 1 ]
-  [ "$DEFERRED_COUNT" -eq 1 ]
+  [ "$(wc -l < "$JQ_CALL_LOG" | tr -d ' ')" -eq 2 ]
+  [ "$(grep -c '^process_run ' "$LOG_FILE")" -eq 4 ]
 }

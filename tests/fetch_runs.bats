@@ -15,11 +15,6 @@ setup() {
 
   export REPO="myorg/myrepo"
   unset WORKFLOW STATUSES BRANCH EVENT MOCK_GH_FAIL_PATTERN MOCK_GH_FAIL_TIMES MOCK_GH_FAIL_MESSAGE
-  # the failures of the tests are HTTP 500, which is retried: tests about the
-  # retries set their own value
-  export MAX_RETRIES=0
-  export RETRY_BASE_DELAY=5
-  export RETRY_MAX_DELAY=60
 
   # Create mock gh command
   # It applies the --jq filter to the JSON in $MOCK_GH_RESPONSE_FILE with the
@@ -89,6 +84,9 @@ EOF
   # Load the script under test
   # Use absolute path to avoid macOS BATS cwd issues
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  # the failures of the tests are HTTP 500, which is retried: tests about the
+  # retries set their own value
+  MAX_RETRIES=0
 }
 
 teardown() {
@@ -435,7 +433,7 @@ MOCK
 # --------------------------------------------------------
 
 @test "fetch_runs retries a listing that fails with a transient error" {
-  export MAX_RETRIES=3
+  MAX_RETRIES=3
   sleep() { :; }
   export MOCK_GH_FAIL_PATTERN="status=queued"
   export MOCK_GH_FAIL_TIMES=2
@@ -448,7 +446,7 @@ MOCK
 }
 
 @test "fetch_runs fails when a transient error lasts longer than the retries" {
-  export MAX_RETRIES=2
+  MAX_RETRIES=2
   sleep() { :; }
   export MOCK_GH_FAIL_PATTERN="status=queued"
 
@@ -459,7 +457,7 @@ MOCK
 }
 
 @test "fetch_runs does not retry an error that is not transient" {
-  export MAX_RETRIES=3
+  MAX_RETRIES=3
   sleep() { echo "slept" >> "$MOCK_DIR/sleep.log"; }
   export MOCK_GH_FAIL_PATTERN="status=queued"
   export MOCK_GH_FAIL_MESSAGE="gh: Not Found (HTTP 404)"
@@ -472,7 +470,7 @@ MOCK
 }
 
 @test "fetch_runs retries each status on its own" {
-  export MAX_RETRIES=3
+  MAX_RETRIES=3
   sleep() { :; }
   export STATUSES="queued,waiting"
   export MOCK_GH_FAIL_PATTERN="status=waiting"
@@ -486,7 +484,7 @@ MOCK
 }
 
 @test "fetch_runs sets LISTING_TRUNCATED after a retry" {
-  export MAX_RETRIES=3
+  MAX_RETRIES=3
   sleep() { :; }
   export MOCK_GH_FAIL_PATTERN="status=queued"
   export MOCK_GH_FAIL_TIMES=1

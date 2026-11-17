@@ -30,51 +30,11 @@
 #                   "false" to only log a warning and exit with 0, the failures
 #                   remaining in the failed_count output (default: true).
 #                   Invalid inputs and a failure to list the runs always fail
-#   CANCEL_DELAY_SECONDS - Seconds to wait between two cancel requests, to stay
-#                          under the secondary rate limits of GitHub when many
-#                          runs are cancelled. Non-negative integer, 0 means no
-#                          delay (default: 0)
-#   MAX_CANCELLATIONS - Maximum number of runs cancelled by one execution, as a
-#                       safety valve against a misconfiguration (for example a
-#                       too small MAX_AGE_HOURS). The runs that are old enough
-#                       but come after the limit are left alone and counted in
-#                       the deferred_count output. In a dry run, the runs that
-#                       would be cancelled count. Runs that are skipped or fail
-#                       do not count. Non-negative integer, 0 means no limit
-#                       (default: 0)
-#   DELETE_STUCK_RUNS - "true" to delete a run that is older than MAX_AGE_HOURS +
-#                       2 * FORCE_BUFFER_HOURS, that cannot be cancelled (HTTP
-#                       409) and that has no job: such a zombie run stays queued forever and
-#                       deleting it is the only way to remove it. The run and
-#                       its history are lost. "false" otherwise (default: false)
-#   MAX_RUNS - Maximum number of runs to keep: only the MAX_RUNS most recent
-#              runs (by queue time) are kept, and the older ones are cancelled
-#              whatever their age. The max_age_hours threshold still applies to
-#              the kept runs. Non-negative integer, 0 means no limit
-#              (default: 0)
-#
-# Internal tuning (not action inputs, integers in seconds/counts, validated by
-# validate_tuning_variables):
-#   MAX_RETRIES - Retries of a rate-limited cancel request, and of a call that
-#                 lists the runs and failed with a transient error (default: 3)
-#   RETRY_BASE_DELAY - First backoff delay in seconds, doubled at each retry
-#                      when GitHub gives no delay (default: 5)
-#   RETRY_MAX_DELAY - Longest delay we are willing to wait, in seconds; a
-#                     rate limit that requires waiting longer is not retried,
-#                     and the backoff between two listing attempts does not
-#                     exceed it (default: 60)
-#   RUNS_LISTING_LIMIT - Number of runs after which GitHub stops listing the
-#                        runs of a status (default: 1000, the documented limit
-#                        of the API); reaching it gives a warning
-#   SUMMARY_MAX_RUNS - Number of runs listed in the job summary; the others
-#                      are only counted (default: 50)
 #
 # GitHub Actions integration (optional, ignored when the variables are unset):
 #   GITHUB_OUTPUT - File to which the outputs found_count, cancelled_count,
 #                   skipped_count, failed_count, would_cancel_count,
-#                   deleted_count, deferred_count, cancelled_run_ids and
-#                   listing_truncated
-#                   are written
+#                   cancelled_run_ids and listing_truncated are written
 #   GITHUB_STEP_SUMMARY - File to which a Markdown summary is appended
 #   GITHUB_SERVER_URL - Base URL of the links to the runs in the summary
 #                       (default: https://github.com)
@@ -95,22 +55,13 @@ BRANCH="${BRANCH:-}"
 EVENT="${EVENT:-}"
 STATUSES="${STATUSES:-queued}"
 DRY_RUN="${DRY_RUN:-false}"
-CANCEL_DELAY_SECONDS="${CANCEL_DELAY_SECONDS:-0}"
-MAX_CANCELLATIONS="${MAX_CANCELLATIONS:-0}"
-MAX_RUNS="${MAX_RUNS:-0}"
 FAIL_ON_ERROR="${FAIL_ON_ERROR:-true}"
-DELETE_STUCK_RUNS="${DELETE_STUCK_RUNS:-false}"
 
 # Counters filled by process_all_runs and reported by main
 CANCELLED_COUNT=0
 SKIPPED_COUNT=0
 FAILED_COUNT=0
 WOULD_CANCEL_COUNT=0
-# Zombie runs (no job, cannot be cancelled) deleted when DELETE_STUCK_RUNS is true
-DELETED_COUNT=0
-# Runs that are old enough to be cancelled but were left alone because
-# MAX_CANCELLATIONS runs were already cancelled
-DEFERRED_COUNT=0
 
 # The runs that were acted on, one "id|age|outcome" per line, listed in the
 # job summary. Filled by record_run, reset by reset_counters.
@@ -121,10 +72,6 @@ RUN_RECORDS=""
 # must not be called in a subshell, and reported by write_outputs.
 LISTING_TRUNCATED=false
 
-# Whether a cancel request was already sent, to wait before the next one. It
-# is set by throttle_requests, which must not be called in a subshell.
-REQUEST_SENT=false
-
 # Directory of the temporary files of an execution. It is created and removed
 # by the entry point (see create_work_dir and cleanup_work_dir), so that the
 # files are removed even when the script is stopped by a signal. When it is
@@ -133,13 +80,18 @@ REQUEST_SENT=false
 WORK_DIR=""
 
 # Outcome of the last process_run call: one of
-#   noop, cancelled, deleted, skipped, would-cancel, failed
+#   noop, cancelled, skipped, would-cancel, failed
 PROCESS_RUN_OUTCOME=""
-MAX_RETRIES="${MAX_RETRIES:-3}"
-RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-5}"
-RETRY_MAX_DELAY="${RETRY_MAX_DELAY:-60}"
-RUNS_LISTING_LIMIT="${RUNS_LISTING_LIMIT:-1000}"
-SUMMARY_MAX_RUNS="${SUMMARY_MAX_RUNS:-50}"
+
+# Internal constants (they were environment variables that the action could not
+# set): retries of a rate-limited cancel and of a failed listing, first backoff
+# delay and longest delay in seconds, runs after which GitHub stops listing a
+# status (the documented limit of the API), runs listed in the job summary.
+MAX_RETRIES=3
+RETRY_BASE_DELAY=5
+RETRY_MAX_DELAY=60
+RUNS_LISTING_LIMIT=1000
+SUMMARY_MAX_RUNS=50
 
 # ----------------------------
 # Create the directory of the temporary files of an execution
@@ -738,136 +690,6 @@ format_age() {
 }
 
 # ----------------------------
-# Wait before a cancel request, when another one was sent before
-# Spaces the requests by CANCEL_DELAY_SECONDS (GitHub asks for about one second
-# between mutating requests; faster bursts trigger secondary rate limits). The
-# first request of an execution is never delayed. Nothing is waited for when
-# CANCEL_DELAY_SECONDS is 0. It records that a request is about to be sent in a
-# global variable, so it must be called in the main shell, not in a subshell
-# such as $(...).
-# Globals:
-#   CANCEL_DELAY_SECONDS - Seconds to wait between two requests
-#   REQUEST_SENT - Set to true by this function
-# ----------------------------
-throttle_requests() {
-	if [ "$REQUEST_SENT" = "true" ] && [ "$CANCEL_DELAY_SECONDS" -gt 0 ]; then
-		sleep "$CANCEL_DELAY_SECONDS"
-	fi
-
-	REQUEST_SENT=true
-}
-
-# ----------------------------
-# Tell whether a run has no job
-# A run that stays queued without any job is a zombie: GitHub cancels a run by
-# cancelling its jobs, so it can never be cancelled. When the number of jobs
-# cannot be read, the run is not considered as having no job, so that it is
-# never deleted by mistake.
-# Args:
-#   $1 - Workflow run ID
-# Returns:
-#   0 if GitHub reports 0 job for the run, 1 otherwise (also on an API error)
-# ----------------------------
-run_has_no_jobs() {
-	local run_id="$1"
-	local total
-
-	total=$(gh api --method GET -H "Accept: application/vnd.github+json" \
-		"/repos/$REPO/actions/runs/$run_id/jobs?per_page=1" --jq '.total_count' 2>/dev/null) || return 1
-
-	[ "$total" = "0" ]
-}
-
-# ----------------------------
-# Delete a run
-# Prints the full HTTP response (headers and body) on stdout, like
-# post_run_endpoint. GitHub answers 204 and applies the deletion a few seconds
-# later, so the run can still be readable right after. The request is not
-# retried when it is rate limited: the run is reported as failed and the next
-# execution deletes it.
-# Args:
-#   $1 - Workflow run ID
-# Returns:
-#   0 (the caller decides from the status code), 1 if the run ID is empty
-# ----------------------------
-delete_run() {
-	local run_id="$1"
-	local stderr_file response
-
-	if [ -z "$run_id" ]; then
-		echo "❌ delete_run error: run_id is empty" >&2
-		return 1
-	fi
-
-	stderr_file=$(make_temp_file)
-	response=$(
-		gh api \
-			-X DELETE \
-			-H "Accept: application/vnd.github+json" \
-			"/repos/$REPO/actions/runs/$run_id" \
-			-i 2>"$stderr_file"
-	) || true
-
-	# The 404 and 403 responses are reported by delete_zombie_run
-	if [ -s "$stderr_file" ] && [ "$(get_status_code "$response")" != "404" ] &&
-		[ "$(get_status_code "$response")" != "403" ]; then
-		echo "::warning::gh api (delete) failed for run $run_id: $(tr '\n' ' ' <"$stderr_file")" >&2
-	fi
-	rm -f "$stderr_file"
-
-	if [ -n "$response" ]; then
-		printf '%s\n' "$response"
-	fi
-}
-
-# ----------------------------
-# Delete a zombie run that cannot be cancelled
-# Called by process_run after a 409 on the cancel request of a run that is older
-# than MAX_AGE_HOURS + 2 * FORCE_BUFFER_HOURS. Nothing is done unless DELETE_STUCK_RUNS is "true"
-# and the run has no job (see run_has_no_jobs). A 404 means that the run is
-# already gone, which is what is wanted. A 403 means that GitHub refuses to
-# delete this run (seen on runs stuck by a GitHub incident): it is permanent, so
-# the run is skipped with an explanation and not counted as a failure that every
-# execution would repeat. PROCESS_RUN_OUTCOME is set to deleted, skipped or
-# failed when the run was handled.
-# Args:
-#   $1 - Run ID
-#   $2 - Age of the run, as text
-# Returns:
-#   0 if the run was handled (deleted, skipped or deletion failed, see
-#   PROCESS_RUN_OUTCOME), 1 if it is not eligible and nothing was done
-# ----------------------------
-delete_zombie_run() {
-	local run_id="$1"
-	local age="$2"
-	local response status_code
-
-	if [ "$DELETE_STUCK_RUNS" != "true" ] || ! run_has_no_jobs "$run_id"; then
-		return 1
-	fi
-
-	echo "Run $run_id (age=$age) has no job and cannot be cancelled: deleting it..."
-	throttle_requests
-	response=$(delete_run "$run_id")
-	status_code=$(get_status_code "$response")
-
-	if [ "$status_code" = "204" ] || [ "$status_code" = "404" ]; then
-		echo "🗑️ Status code: $status_code - Run $run_id deleted"
-		PROCESS_RUN_OUTCOME="deleted"
-	elif [ "$status_code" = "403" ]; then
-		local message
-		message=$(get_response_message "$response")
-		echo "::warning::Run $run_id could not be deleted (HTTP 403${message:+: $message}): GitHub refuses to delete this run, which may not be removable through the API (contact GitHub Support if it has to go), skipping."
-		PROCESS_RUN_OUTCOME="skipped"
-	else
-		log_status "$status_code" "$run_id"
-		echo "❌ Deletion failed for run $run_id"
-		PROCESS_RUN_OUTCOME="failed"
-	fi
-	return 0
-}
-
-# ----------------------------
 # Process a single workflow run
 # Cancels the run if needed and logs the result
 #
@@ -878,11 +700,6 @@ delete_zombie_run() {
 #    - Tries /cancel first, then falls back to /force-cancel (which returns
 #      409 if no regular cancel was attempted) for very old, stuck runs. There
 #      is no fallback when /cancel returns 404: the run no longer exists
-# 3. Delete: age > MAX_AGE_HOURS + 2 * FORCE_BUFFER_HOURS
-#    - When the cancel (and the force-cancel, if it was tried) still answers 409,
-#      DELETE_STUCK_RUNS is "true" and the run has no job (a zombie), the run is
-#      deleted (see delete_zombie_run). The force-cancel tier gets a whole
-#      buffer before this last resort
 #
 # A final HTTP 404 (run not found) or 409 (run cannot be cancelled) means that
 # the run is gone or already finished, typically because it started or
@@ -898,24 +715,18 @@ delete_zombie_run() {
 # Args:
 #   $1 - Run ID
 #   $2 - Age in seconds
-#   $3 - Optional, "true" if the run exceeds the MAX_RUNS limit: it is then
-#        cancelled even if it is not older than MAX_AGE_HOURS (default: false)
 # Globals:
 #   MAX_AGE_HOURS - Base threshold for cancellation
 #   FORCE_BUFFER_HOURS - Extra hours before force-cancel is used
 #   DRY_RUN - "true" to log without cancelling
-#   CANCEL_DELAY_SECONDS - Seconds to wait between two requests (see
-#                          throttle_requests)
 # Returns:
 #   0 on success or if the run is no longer cancellable, 1 on failure
 # ----------------------------
 process_run() {
 	local run_id="$1"
 	local age_seconds="$2"
-	local over_limit="${3:-false}"
 	local max_age_seconds=$((MAX_AGE_HOURS * 3600))
 	local force_age_seconds=$(((MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600))
-	local delete_age_seconds=$(((MAX_AGE_HOURS + 2 * FORCE_BUFFER_HOURS) * 3600))
 	local age
 	age=$(format_age "$age_seconds")
 
@@ -940,23 +751,20 @@ process_run() {
 		echo "Force-cancelling run $run_id (age=$age)..."
 		# The force-cancel endpoint returns 409 unless a regular cancel was
 		# attempted first, so try the standard cancel and fall back to force.
-		throttle_requests
 		response=$(cancel_run "$run_id")
 		status_code=$(get_status_code "$response")
 		# A 404 or a 409 means that the run is gone or cannot be cancelled
 		# (e.g., a zombie run without jobs): force-cancelling it is pointless
 		if [ "$status_code" != "202" ] && ! is_skippable_status "$status_code"; then
-			throttle_requests
 			response=$(force_cancel_run "$run_id")
 		fi
-	elif [ "$age_seconds" -gt "$max_age_seconds" ] || [ "$over_limit" = "true" ]; then
+	elif [ "$age_seconds" -gt "$max_age_seconds" ]; then
 		if [ "$DRY_RUN" = "true" ]; then
 			echo "🧪 [dry-run] Would cancel run $run_id (age=$age)"
 			PROCESS_RUN_OUTCOME="would-cancel"
 			return 0
 		fi
 		echo "Cancelling run $run_id (age=$age)..."
-		throttle_requests
 		response=$(cancel_run "$run_id")
 	else
 		# Age does not exceed thresholds, nothing to do
@@ -964,16 +772,6 @@ process_run() {
 	fi
 
 	status_code=$(get_status_code "$response")
-
-	# A run that is still not cancellable (409) after the force-cancel tier began,
-	# and that is older than the delete threshold, is a zombie if it has no job
-	if [ "$status_code" = "409" ] && [ "$age_seconds" -gt "$delete_age_seconds" ] &&
-		delete_zombie_run "$run_id" "$age"; then
-		if [ "$PROCESS_RUN_OUTCOME" = "deleted" ] || [ "$PROCESS_RUN_OUTCOME" = "skipped" ]; then
-			return 0
-		fi
-		return 1
-	fi
 
 	if is_skippable_status "$status_code"; then
 		local message
@@ -1012,45 +810,7 @@ is_old_enough() {
 }
 
 # ----------------------------
-# Print the IDs of the runs that exceed the MAX_RUNS limit
-# The runs are sorted from the most recent to the oldest queue time (ties keep
-# the given order); the first MAX_RUNS are kept and the IDs of the others are
-# printed, one per line. Nothing is printed when MAX_RUNS is 0.
-# Args:
-#   $1 - Runs, one JSON object per line with "id" and "queued_at" fields
-# Globals:
-#   MAX_RUNS
-# Returns:
-#   0 on success, jq's exit code if the input is not valid JSON
-# ----------------------------
-select_excess_run_ids() {
-	local runs="$1"
-
-	if [ "$MAX_RUNS" -eq 0 ]; then
-		return 0
-	fi
-	printf '%s\n' "$runs" | jq -r -s --argjson keep "$MAX_RUNS" \
-		'map(select(.id != null and .queued_at != null))
-		| sort_by(.queued_at) | reverse | .[$keep:][] | .id | tostring'
-}
-
-# ----------------------------
-# Tell whether MAX_CANCELLATIONS runs were already cancelled
-# The runs that were cancelled and, in a dry run, the runs that would be
-# cancelled are counted. The skipped and failed runs are not: they were not
-# cancelled. Nothing is ever limited when MAX_CANCELLATIONS is 0.
-# Globals:
-#   MAX_CANCELLATIONS, CANCELLED_COUNT, DELETED_COUNT, WOULD_CANCEL_COUNT
-# Returns:
-#   0 if the limit is reached, 1 otherwise
-# ----------------------------
-cancellation_limit_reached() {
-	[ "$MAX_CANCELLATIONS" -gt 0 ] &&
-		[ $((CANCELLED_COUNT + DELETED_COUNT + WOULD_CANCEL_COUNT)) -ge "$MAX_CANCELLATIONS" ]
-}
-
-# ----------------------------
-# Reset the counters reported by main, the requests already sent and the runs
+# Reset the counters reported by main and the runs
 # recorded for the summary
 # ----------------------------
 reset_counters() {
@@ -1058,9 +818,6 @@ reset_counters() {
 	SKIPPED_COUNT=0
 	FAILED_COUNT=0
 	WOULD_CANCEL_COUNT=0
-	DELETED_COUNT=0
-	DEFERRED_COUNT=0
-	REQUEST_SENT=false
 	RUN_RECORDS=""
 }
 
@@ -1097,16 +854,12 @@ count_unparsed_runs() {
 
 # ----------------------------
 # Process all workflow runs
-# Updates the counters CANCELLED_COUNT, DELETED_COUNT, SKIPPED_COUNT, FAILED_COUNT,
-# WOULD_CANCEL_COUNT and DEFERRED_COUNT (reset at the start of the call), and
+# Updates the counters CANCELLED_COUNT, SKIPPED_COUNT, FAILED_COUNT and
+# WOULD_CANCEL_COUNT (reset at the start of the call), and
 # records the runs that were cancelled, skipped, failed or would be cancelled in
 # RUN_RECORDS.
 #
-# Once MAX_CANCELLATIONS runs are cancelled (see cancellation_limit_reached),
-# the next runs that are old enough are not touched and are counted in
-# DEFERRED_COUNT, with a warning at the end. The runs are processed oldest
-# first (by queued_at; ties keep the given order). The runs that are not old
-# enough are still looked at: they are not affected by the limit.
+# The runs are processed oldest first (by queued_at; ties keep the given order).
 # Args:
 #   $1 - JSON array stream from fetch_runs (line-delimited objects)
 # Returns:
@@ -1116,7 +869,7 @@ count_unparsed_runs() {
 process_all_runs() {
 	local runs_stream="$1"
 	local input_stream="$1"
-	local parsed run_id queued_at age_seconds now excess_ids over_limit
+	local parsed run_id queued_at age_seconds now
 	# The unit separator is not whitespace, so read keeps empty fields
 	# (a tab would be collapsed and shift the fields)
 	local sep=$'\x1f'
@@ -1130,17 +883,9 @@ process_all_runs() {
 	# run that is younger than the threshold is never cancelled.
 	now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-	# Process the oldest runs first, so that MAX_CANCELLATIONS cancels the
-	# oldest runs and leaves the most recent ones for later (GitHub lists the
-	# most recent runs first). The sort is stable: ties keep the given order.
+	# Process the oldest runs first (GitHub lists the most recent runs first).
+	# The sort is stable: ties keep the given order.
 	if ! runs_stream=$(printf '%s\n' "$runs_stream" | jq -c -s 'sort_by(.queued_at)[]'); then
-		echo "::error::Cannot parse the list of runs" >&2
-		FAILED_COUNT=$(count_unparsed_runs "$input_stream")
-		return 1
-	fi
-
-	# IDs of the runs older than the MAX_RUNS most recent ones
-	if ! excess_ids=$(select_excess_run_ids "$runs_stream"); then
 		echo "::error::Cannot parse the list of runs" >&2
 		FAILED_COUNT=$(count_unparsed_runs "$input_stream")
 		return 1
@@ -1173,30 +918,17 @@ process_all_runs() {
 		fi
 		echo "Run $run_id is $(format_age "$age_seconds") old."
 
-		over_limit=false
-		if [ -n "$excess_ids" ] && printf '%s\n' "$excess_ids" | grep -qxF "$run_id"; then
-			over_limit=true
-			echo "Run $run_id exceeds the limit of $MAX_RUNS run(s) to keep."
-		fi
-
-		# a run that is old enough is left alone once the limit is reached
-		if cancellation_limit_reached && { is_old_enough "$age_seconds" || [ "$over_limit" = "true" ]; }; then
-			DEFERRED_COUNT=$((DEFERRED_COUNT + 1))
-			continue
-		fi
-
 		# process the run and count what happened
 		PROCESS_RUN_OUTCOME=""
-		if process_run "$run_id" "$age_seconds" "$over_limit"; then
+		if process_run "$run_id" "$age_seconds"; then
 			case "$PROCESS_RUN_OUTCOME" in
 			cancelled) CANCELLED_COUNT=$((CANCELLED_COUNT + 1)) ;;
-			deleted) DELETED_COUNT=$((DELETED_COUNT + 1)) ;;
 			skipped) SKIPPED_COUNT=$((SKIPPED_COUNT + 1)) ;;
 			would-cancel) WOULD_CANCEL_COUNT=$((WOULD_CANCEL_COUNT + 1)) ;;
 			esac
 			# the runs that were left alone (noop) are not listed
 			case "$PROCESS_RUN_OUTCOME" in
-			cancelled | deleted | skipped | would-cancel)
+			cancelled | skipped | would-cancel)
 				record_run "$run_id" "$(format_age "$age_seconds")" "$PROCESS_RUN_OUTCOME"
 				;;
 			esac
@@ -1205,10 +937,6 @@ process_all_runs() {
 			record_run "$run_id" "$(format_age "$age_seconds")" "failed"
 		fi
 	done 3<<<"$parsed"
-
-	if [ "$DEFERRED_COUNT" -gt 0 ]; then
-		echo "::warning::MAX_CANCELLATIONS ($MAX_CANCELLATIONS) reached: $DEFERRED_COUNT more run(s) are old enough to be cancelled but were left alone. Run the action again to process them, or raise max_cancellations."
-	fi
 
 	# Return failure if any cancellations failed
 	if [ "$FAILED_COUNT" -gt 0 ]; then
@@ -1256,8 +984,6 @@ write_outputs() {
 		echo "skipped_count=$SKIPPED_COUNT"
 		echo "failed_count=$FAILED_COUNT"
 		echo "would_cancel_count=$WOULD_CANCEL_COUNT"
-		echo "deleted_count=$DELETED_COUNT"
-		echo "deferred_count=$DEFERRED_COUNT"
 		echo "cancelled_run_ids=$(cancelled_run_ids_json)"
 		echo "listing_truncated=$LISTING_TRUNCATED"
 	} >>"$GITHUB_OUTPUT"
@@ -1273,9 +999,8 @@ write_outputs() {
 describe_outcome() {
 	case "${1:-}" in
 	cancelled) echo "Cancelled" ;;
-	deleted) echo "Deleted (zombie run without job)" ;;
 	would-cancel) echo "Would be cancelled (dry run)" ;;
-	skipped) echo "Skipped (cannot be cancelled or deleted)" ;;
+	skipped) echo "Skipped (cannot be cancelled)" ;;
 	failed) echo "Failed" ;;
 	*) echo "${1:-}" ;;
 	esac
@@ -1366,19 +1091,12 @@ write_summary() {
 		echo "| Runs found | $found_count |"
 		echo "| Cancelled | $CANCELLED_COUNT |"
 		echo "| Would be cancelled (dry run) | $WOULD_CANCEL_COUNT |"
-		echo "| Deleted (zombie runs) | $DELETED_COUNT |"
-		echo "| Skipped (cannot be cancelled or deleted) | $SKIPPED_COUNT |"
+		echo "| Skipped (cannot be cancelled) | $SKIPPED_COUNT |"
 		echo "| Failed | $FAILED_COUNT |"
-		echo "| Left alone (\`max_cancellations\` reached) | $DEFERRED_COUNT |"
 		if [ "$LISTING_TRUNCATED" = "true" ]; then
 			echo
 			echo "> [!WARNING]"
 			echo "> The listing reached the maximum that GitHub returns for a query (${RUNS_LISTING_LIMIT} runs): older runs may be missing. Run the action again to process them."
-		fi
-		if [ "$DEFERRED_COUNT" -gt 0 ]; then
-			echo
-			echo "> [!WARNING]"
-			echo "> \`max_cancellations\` (${MAX_CANCELLATIONS}) was reached: ${DEFERRED_COUNT} more run(s) are old enough to be cancelled but were left alone. Run the action again to process them."
 		fi
 		write_summary_runs
 	} >>"$GITHUB_STEP_SUMMARY"
@@ -1556,110 +1274,6 @@ validate_fail_on_error() {
 }
 
 # ----------------------------
-# Validate the delete stuck runs flag
-# Args:
-#   $1 - "true" or "false"
-# Returns:
-#   0 if valid, 1 otherwise
-# ----------------------------
-validate_delete_stuck_runs() {
-	local delete_stuck_runs="${1:-}"
-
-	if [ "$delete_stuck_runs" != "true" ] && [ "$delete_stuck_runs" != "false" ]; then
-		echo "::error::DELETE_STUCK_RUNS must be 'true' or 'false' (got '$delete_stuck_runs')" >&2
-		return 1
-	fi
-}
-
-# ----------------------------
-# Validate the delay between cancel requests
-# Args:
-#   $1 - Delay in seconds
-# Returns:
-#   0 if it is a non-negative integer without leading zero, 1 otherwise
-# ----------------------------
-validate_cancel_delay_seconds() {
-	local delay="${1:-}"
-
-	if ! [[ "$delay" =~ ^(0|[1-9][0-9]*)$ ]]; then
-		echo "::error::CANCEL_DELAY_SECONDS must be a non-negative integer (got '$delay')" >&2
-		return 1
-	fi
-}
-
-# ----------------------------
-# Validate the maximum number of cancellations
-# Args:
-#   $1 - Maximum number of runs to cancel (0 means no limit)
-# Returns:
-#   0 if it is a non-negative integer without leading zero, 1 otherwise
-# ----------------------------
-validate_max_cancellations() {
-	local max_cancellations="${1:-}"
-
-	if ! [[ "$max_cancellations" =~ ^(0|[1-9][0-9]*)$ ]]; then
-		echo "::error::MAX_CANCELLATIONS must be a non-negative integer (got '$max_cancellations')" >&2
-		return 1
-	fi
-}
-
-# ----------------------------
-# Validate the maximum number of runs to keep
-# Args:
-#   $1 - Maximum number of runs to keep (0 means no limit)
-# Returns:
-#   0 if it is a non-negative integer without leading zero, 1 otherwise
-# ----------------------------
-validate_max_runs() {
-	local max_runs="${1:-}"
-
-	if ! [[ "$max_runs" =~ ^(0|[1-9][0-9]*)$ ]]; then
-		echo "::error::MAX_RUNS must be a non-negative integer (got '$max_runs')" >&2
-		return 1
-	fi
-}
-
-# ----------------------------
-# Validate the internal tuning variables
-# They are not action inputs but they can be set in the environment, and they
-# end up in arithmetic expressions, where a non-integer value would fail with a
-# cryptic bash error. All the invalid variables are reported, one error each.
-#   MAX_RETRIES and SUMMARY_MAX_RUNS: non-negative integers (0 is allowed)
-#   RETRY_BASE_DELAY, RETRY_MAX_DELAY and RUNS_LISTING_LIMIT: positive integers
-# Integers must not have a leading zero (bash would read them as octal).
-# Returns:
-#   0 if all of them are valid, 1 otherwise
-# ----------------------------
-validate_tuning_variables() {
-	local entry name value kind pattern
-	local invalid=0
-
-	for entry in \
-		MAX_RETRIES:non-negative \
-		RETRY_BASE_DELAY:positive \
-		RETRY_MAX_DELAY:positive \
-		RUNS_LISTING_LIMIT:positive \
-		SUMMARY_MAX_RUNS:non-negative; do
-		name="${entry%%:*}"
-		kind="${entry##*:}"
-		value="${!name:-}"
-
-		if [ "$kind" = "positive" ]; then
-			pattern='^[1-9][0-9]*$'
-		else
-			pattern='^(0|[1-9][0-9]*)$'
-		fi
-
-		if ! [[ "$value" =~ $pattern ]]; then
-			echo "::error::$name must be a $kind integer (got '$value')" >&2
-			invalid=1
-		fi
-	done
-
-	return "$invalid"
-}
-
-# ----------------------------
 # Validate the target repository
 # The value is used to build API paths, so only the characters allowed in
 # GitHub owner and repository names are accepted and "." / ".." are rejected.
@@ -1740,28 +1354,11 @@ main() {
 	validate_event "$EVENT" || return 1
 	validate_dry_run "$DRY_RUN" || return 1
 	validate_fail_on_error "$FAIL_ON_ERROR" || return 1
-	validate_delete_stuck_runs "$DELETE_STUCK_RUNS" || return 1
-	validate_cancel_delay_seconds "$CANCEL_DELAY_SECONDS" || return 1
-	validate_max_cancellations "$MAX_CANCELLATIONS" || return 1
-	validate_max_runs "$MAX_RUNS" || return 1
-	validate_tuning_variables || return 1
 	validate_auth || return 1
 
 	echo "⏱ Configured max age: ${MAX_AGE_HOURS} hours"
 	if [ "$DRY_RUN" = "true" ]; then
 		echo "🧪 Dry run enabled: no run will be cancelled."
-	fi
-	if [ "$DELETE_STUCK_RUNS" = "true" ]; then
-		echo "🗑️ Zombie runs (no job, cannot be cancelled) will be deleted."
-	fi
-	if [ "$CANCEL_DELAY_SECONDS" -gt 0 ]; then
-		echo "Waiting ${CANCEL_DELAY_SECONDS}s between two cancel requests."
-	fi
-	if [ "$MAX_CANCELLATIONS" -gt 0 ]; then
-		echo "At most ${MAX_CANCELLATIONS} run(s) will be cancelled."
-	fi
-	if [ "$MAX_RUNS" -gt 0 ]; then
-		echo "Only the ${MAX_RUNS} most recent run(s) are kept."
 	fi
 	echo "🔎 Checking for stale workflow runs for ${REPO}..."
 	if [ "${STATUSES// /}" != "queued" ]; then
@@ -1811,7 +1408,7 @@ main() {
 		echo "✅ No workflow runs found."
 	elif process_all_runs "$runs"; then
 		if [ "$SKIPPED_COUNT" -gt 0 ]; then
-			echo "⚠️ Eligible runs processed, but $SKIPPED_COUNT run(s) were skipped because they could not be cancelled or deleted (HTTP 403, 404 or 409) and may still exist."
+			echo "⚠️ Eligible runs processed, but $SKIPPED_COUNT run(s) were skipped because they could not be cancelled (HTTP 404 or 409) and may still exist."
 		else
 			echo "✅ All eligible runs processed successfully."
 		fi

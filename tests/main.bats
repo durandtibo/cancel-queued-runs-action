@@ -10,7 +10,7 @@ setup() {
   export REPO="myorg/myrepo"
   export MAX_AGE_HOURS=24
   export GH_TOKEN="test-token"
-  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES CANCEL_DELAY_SECONDS FAIL_ON_ERROR MAX_CANCELLATIONS MAX_RUNS BRANCH EVENT
+  unset DRY_RUN FORCE_BUFFER_HOURS WORKFLOW STATUSES FAIL_ON_ERROR BRANCH EVENT
 
   # Source the script under test
   source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
@@ -147,25 +147,6 @@ teardown() {
   [[ "$output" =~ ^::error:: ]] || false
 }
 
-@test "main fails when an internal tuning variable is invalid" {
-  export MAX_RETRIES="many"
-
-  run main
-
-  [ "$status" -eq 1 ]
-  [[ "$output" =~ "::error::MAX_RETRIES must be a non-negative integer (got 'many')" ]] || false
-}
-
-@test "main does not fetch runs when an internal tuning variable is invalid" {
-  fetch_runs() { echo "fetch_runs called" >> "$LOG_FILE"; }
-  export RETRY_BASE_DELAY=0
-
-  run main
-
-  [ "$status" -eq 1 ]
-  [ ! -s "$LOG_FILE" ]
-}
-
 @test "main does not fetch runs when the inputs are invalid" {
   fetch_runs() { echo "fetch_runs called" >> "$LOG_FILE"; }
   export MAX_AGE_HOURS="abc"
@@ -228,7 +209,7 @@ teardown() {
   run main
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "2 run(s) were skipped because they could not be cancelled or deleted (HTTP 403, 404 or 409) and may still exist" ]] || false
+  [[ "$output" =~ "2 run(s) were skipped because they could not be cancelled (HTTP 404 or 409) and may still exist" ]] || false
   [[ ! "$output" =~ "All eligible runs processed successfully." ]] || false
 }
 
@@ -676,39 +657,6 @@ setup_outputs() {
 # Delay between the cancel requests
 # --------------------------------------------------------
 
-@test "main fails when CANCEL_DELAY_SECONDS is invalid" {
-  export CANCEL_DELAY_SECONDS="-1"
-
-  run main
-
-  [ "$status" -eq 1 ]
-  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer (got '-1')" ]] || false
-  [ ! -s "$LOG_FILE" ]
-}
-
-@test "main accepts a CANCEL_DELAY_SECONDS value of 0" {
-  export CANCEL_DELAY_SECONDS=0
-
-  run main
-
-  [ "$status" -eq 0 ]
-}
-
-@test "main announces the delay between the requests" {
-  export CANCEL_DELAY_SECONDS=2
-
-  run main
-
-  [ "$status" -eq 0 ]
-  [[ "$output" =~ "Waiting 2s between two cancel requests." ]] || false
-}
-
-@test "main does not mention the delay by default" {
-  run main
-
-  [[ ! "$output" =~ "Waiting" ]] || false
-}
-
 # --------------------------------------------------------
 # Fail on error
 # --------------------------------------------------------
@@ -1088,74 +1036,6 @@ use_real_flow() {
 # Limit on the number of cancellations
 # --------------------------------------------------------
 
-@test "main fails when MAX_CANCELLATIONS is invalid" {
-  export MAX_CANCELLATIONS="-1"
-
-  run main
-
-  [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_CANCELLATIONS must be a non-negative integer (got '-1')" ]] || false
-  [ ! -s "$LOG_FILE" ]
-}
-
-@test "main fails when MAX_CANCELLATIONS has a leading zero" {
-  export MAX_CANCELLATIONS="05"
-
-  run main
-
-  [ "$status" -eq 1 ]
-}
-
-@test "main accepts a MAX_CANCELLATIONS value of 0" {
-  export MAX_CANCELLATIONS=0
-
-  run main
-
-  [ "$status" -eq 0 ]
-}
-
-@test "main accepts a MAX_CANCELLATIONS value of 10" {
-  export MAX_CANCELLATIONS=10
-
-  run main
-
-  [ "$status" -eq 0 ]
-}
-
-@test "main announces the limit on the number of cancellations" {
-  export MAX_CANCELLATIONS=5
-
-  run main
-
-  [[ "$output" =~ "At most 5 run(s) will be cancelled." ]] || false
-}
-
-@test "main does not mention the limit by default" {
-  run main
-
-  [[ ! "$output" =~ "At most" ]] || false
-}
-
-@test "main does not fail when runs are left alone because of the limit" {
-  export MAX_CANCELLATIONS=1
-  process_all_runs() { DEFERRED_COUNT=4; return 0; }
-
-  run main
-
-  [ "$status" -eq 0 ]
-}
-
-@test "main writes deferred_count in the outputs" {
-  export MAX_CANCELLATIONS=1
-  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
-  : > "$GITHUB_OUTPUT"
-  process_all_runs() { DEFERRED_COUNT=4; return 0; }
-
-  main > /dev/null
-
-  grep -qx "deferred_count=4" "$GITHUB_OUTPUT"
-}
-
 # --------------------------------------------------------
 # Filters on the branch and the event
 # --------------------------------------------------------
@@ -1212,11 +1092,3 @@ use_real_flow() {
   [[ ! "$output" =~ "triggered by the event" ]] || false
 }
 
-@test "main fails when MAX_RUNS is invalid" {
-  export MAX_RUNS="-1"
-
-  run main
-
-  [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_RUNS must be a non-negative integer (got '-1')" ]] || false
-}

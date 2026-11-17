@@ -31,6 +31,12 @@ JSON
 }
 JSON
 
+  # Fake sleep: the retries must not wait, and the waits are recorded
+  export MOCK_SLEEP_LOG="$MOCK_DIR/sleep.log"
+  : > "$MOCK_SLEEP_LOG"
+  printf '#!/usr/bin/env bash\necho "$@" >> "$MOCK_SLEEP_LOG"\n' > "$MOCK_DIR/sleep"
+  chmod +x "$MOCK_DIR/sleep"
+
   # Fake gh: lists runs for GET requests, answers 202 to cancel POSTs
   cat > "$MOCK_DIR/gh" << 'MOCK'
 #!/usr/bin/env bash
@@ -101,7 +107,7 @@ MOCK
   export REPO="myorg/myrepo"
   export GH_TOKEN="test-token"
   export MAX_AGE_HOURS=24
-  unset MOCK_GH_POST_FIXTURE MAX_RETRIES RETRY_BASE_DELAY RETRY_MAX_DELAY DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE CANCEL_DELAY_SECONDS FAIL_ON_ERROR SUMMARY_MAX_RUNS RUNS_LISTING_LIMIT MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG MOCK_GH_LIST_FAILS MAX_CANCELLATIONS BRANCH EVENT
+ unset MOCK_GH_POST_FIXTURE DRY_RUN WORKFLOW STATUSES MOCK_GH_POST_CODE FAIL_ON_ERROR MOCK_GH_TMPDIR_LOG MOCK_GH_POST_HANG MOCK_GH_LIST_FAILS BRANCH EVENT
   SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
 }
 
@@ -225,7 +231,7 @@ posts() { grep -c -- "-X POST" "$MOCK_GH_CALL_LOG" || true; }
   [[ "$output" =~ "::warning::gh api (cancel) failed for run 111: gh: Error (HTTP 500)" ]] || false
 }
 
-# Two runs old enough to be cancelled, and a fake sleep that records its argument
+# Two runs old enough to be cancelled
 setup_two_old_runs() {
   cat > "$MOCK_GH_RUNS" << 'JSON'
 {
@@ -235,41 +241,6 @@ setup_two_old_runs() {
   ]
 }
 JSON
-  export MOCK_SLEEP_LOG="$MOCK_DIR/sleep.log"
-  : > "$MOCK_SLEEP_LOG"
-  printf '#!/usr/bin/env bash\necho "$@" >> "$MOCK_SLEEP_LOG"\n' > "$MOCK_DIR/sleep"
-  chmod +x "$MOCK_DIR/sleep"
-}
-
-@test "end-to-end: waits between the cancel requests when CANCEL_DELAY_SECONDS is set" {
-  setup_two_old_runs
-  export CANCEL_DELAY_SECONDS=7
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 0 ]
-  [ "$(posts)" -eq 2 ]
-  [ "$(cat "$MOCK_SLEEP_LOG")" = "7" ]
-}
-
-@test "end-to-end: does not wait between the cancel requests by default" {
-  setup_two_old_runs
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 0 ]
-  [ "$(posts)" -eq 2 ]
-  [ ! -s "$MOCK_SLEEP_LOG" ]
-}
-
-@test "end-to-end: an invalid CANCEL_DELAY_SECONDS fails before any API call" {
-  export CANCEL_DELAY_SECONDS=abc
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 1 ]
-  [[ "$output" =~ "CANCEL_DELAY_SECONDS must be a non-negative integer" ]] || false
-  [ "$(posts)" -eq 0 ]
 }
 
 @test "end-to-end: a failed cancellation fails the step by default" {
@@ -346,20 +317,6 @@ JSON
   grep -qF '(https://ghe.example.com/myorg/myrepo/actions/runs/111)' "$GITHUB_STEP_SUMMARY"
 }
 
-@test "end-to-end: the summary lists at most SUMMARY_MAX_RUNS runs" {
-  setup_two_old_runs
-  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
-  : > "$GITHUB_STEP_SUMMARY"
-  export SUMMARY_MAX_RUNS=1
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 0 ]
-  grep -q 'runs/111)' "$GITHUB_STEP_SUMMARY"
-  [ -z "$(grep 'runs/112)' "$GITHUB_STEP_SUMMARY" || true)" ]
-  grep -qx '1 more run(s) are not listed here, see the logs of the step.' "$GITHUB_STEP_SUMMARY"
-}
-
 @test "end-to-end: reports listing_truncated=false when the listing is complete" {
   export GITHUB_OUTPUT="$MOCK_DIR/github_output"
   : > "$GITHUB_OUTPUT"
@@ -368,22 +325,6 @@ JSON
 
   [ "$status" -eq 0 ]
   grep -qx "listing_truncated=false" "$GITHUB_OUTPUT"
-}
-
-@test "end-to-end: reports listing_truncated=true when the listing reaches the limit" {
-  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
-  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
-  : > "$GITHUB_OUTPUT"
-  : > "$GITHUB_STEP_SUMMARY"
-  # the mock lists 2 runs: that is the limit here
-  export RUNS_LISTING_LIMIT=2
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 0 ]
-  [[ "$output" =~ "::warning::2 runs were listed for the status 'queued'" ]] || false
-  grep -qx "listing_truncated=true" "$GITHUB_OUTPUT"
-  grep -q 'maximum that GitHub returns' "$GITHUB_STEP_SUMMARY"
 }
 
 # --------------------------------------------------------
@@ -448,7 +389,6 @@ JSON
 
 @test "end-to-end: a recorded 429 response that asks for a long wait is not retried" {
   export MOCK_GH_POST_FIXTURE=response_429.http
-  export RETRY_MAX_DELAY=5
 
   run "$SCRIPT"
 
@@ -458,7 +398,6 @@ JSON
 
 @test "end-to-end: a recorded secondary rate limit that asks for a long wait is not retried" {
   export MOCK_GH_POST_FIXTURE=response_403_secondary_rate_limit.http
-  export RETRY_MAX_DELAY=5
 
   run "$SCRIPT"
 
@@ -466,15 +405,14 @@ JSON
   [[ "$output" =~ "Rate limited on run 111 (cancel), giving up (needs 30s" ]] || false
 }
 
-@test "end-to-end: a recorded exhausted primary rate limit is retried once, then given up" {
+@test "end-to-end: a recorded exhausted primary rate limit is retried, then given up" {
   export MOCK_GH_POST_FIXTURE=response_403_primary_rate_limit.http
   # the reset time of the fixture is long past: the wait is the 1 second minimum
-  export MAX_RETRIES=1
 
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "Rate limited on run 111 (cancel), retrying in 1s (retry 1/1)" ]] || false
+  [[ "$output" =~ "Rate limited on run 111 (cancel), retrying in 1s (retry 1/3)" ]] || false
   [[ "$output" =~ "Rate limited on run 111 (cancel), giving up" ]] || false
 }
 
@@ -641,35 +579,32 @@ JSON
 
 @test "end-to-end: a listing that fails once with a server error is retried" {
   export MOCK_GH_LIST_FAILS=1
-  export RETRY_BASE_DELAY=1
 
   run "$SCRIPT"
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "::warning::Listing the runs with the status 'queued' failed" ]] || false
-  [[ "$output" =~ "retrying in 1s (retry 1/3)" ]] || false
+  [[ "$output" =~ "retrying in 5s (retry 1/3)" ]] || false
   [[ "$output" =~ "Found 2 workflow run(s)." ]] || false
   grep -q "/repos/myorg/myrepo/actions/runs/111/cancel" "$MOCK_GH_CALL_LOG"
 }
 
 @test "end-to-end: a listing that keeps failing fails the step and all the outputs are 0" {
   export MOCK_GH_LIST_FAILS=99
-  export MAX_RETRIES=1
-  export RETRY_BASE_DELAY=1
   export GITHUB_OUTPUT="$MOCK_DIR/github_output"
   : > "$GITHUB_OUTPUT"
 
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "giving up (max 1 retries)" ]] || false
+  [[ "$output" =~ "giving up (max 3 retries)" ]] || false
   [[ "$output" =~ "::error::Cannot list the workflow runs of myorg/myrepo" ]] || false
   [ "$(posts)" -eq 0 ]
   grep -qx "found_count=0" "$GITHUB_OUTPUT"
 }
 
 # --------------------------------------------------------
-# Limit on the number of cancellations
+# Three runs old enough to be cancelled
 # --------------------------------------------------------
 
 three_old_runs() {
@@ -682,95 +617,6 @@ three_old_runs() {
   ]
 }
 JSON
-}
-
-@test "end-to-end: cancels every old run without a limit" {
-  three_old_runs
-  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
-  : > "$GITHUB_OUTPUT"
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 0 ]
-  [ "$(posts)" -eq 3 ]
-  grep -qx "cancelled_count=3" "$GITHUB_OUTPUT"
-  grep -qx "deferred_count=0" "$GITHUB_OUTPUT"
-}
-
-@test "end-to-end: cancels at most MAX_CANCELLATIONS runs" {
-  three_old_runs
-  export MAX_CANCELLATIONS=2
-  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
-  : > "$GITHUB_OUTPUT"
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 0 ]
-  [ "$(posts)" -eq 2 ]
-  grep -qx "cancelled_count=2" "$GITHUB_OUTPUT"
-  grep -qx "deferred_count=1" "$GITHUB_OUTPUT"
-  grep -q "runs/111/cancel" "$MOCK_GH_CALL_LOG"
-  grep -q "runs/112/cancel" "$MOCK_GH_CALL_LOG"
-  run grep -q "runs/113/" "$MOCK_GH_CALL_LOG"
-  [ "$status" -ne 0 ]
-}
-
-@test "end-to-end: warns about the runs left alone" {
-  three_old_runs
-  export MAX_CANCELLATIONS=1
-
-  run "$SCRIPT"
-
-  [[ "$output" =~ "At most 1 run(s) will be cancelled." ]] || false
-  [[ "$output" =~ "::warning::MAX_CANCELLATIONS (1) reached: 2 more run(s) are old enough to be cancelled but were left alone." ]] || false
-}
-
-@test "end-to-end: a dry run applies the limit too and sends no request" {
-  three_old_runs
-  export MAX_CANCELLATIONS=2
-  export DRY_RUN=true
-  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
-  : > "$GITHUB_OUTPUT"
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 0 ]
-  [ "$(posts)" -eq 0 ]
-  grep -qx "would_cancel_count=2" "$GITHUB_OUTPUT"
-  grep -qx "deferred_count=1" "$GITHUB_OUTPUT"
-}
-
-@test "end-to-end: the runs that are not old enough do not use the limit" {
-  export MAX_CANCELLATIONS=1
-  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
-  : > "$GITHUB_OUTPUT"
-
-  run "$SCRIPT"
-
-  # run 111 is old, run 222 is in the future: one cancellation, nothing left alone
-  [ "$(posts)" -eq 1 ]
-  grep -qx "deferred_count=0" "$GITHUB_OUTPUT"
-}
-
-@test "end-to-end: the summary shows the runs left alone" {
-  three_old_runs
-  export MAX_CANCELLATIONS=1
-  export GITHUB_STEP_SUMMARY="$MOCK_DIR/summary.md"
-  : > "$GITHUB_STEP_SUMMARY"
-
-  run "$SCRIPT"
-
-  grep -q '^| Left alone (`max_cancellations` reached) | 2 |$' "$GITHUB_STEP_SUMMARY"
-}
-
-@test "end-to-end: an invalid MAX_CANCELLATIONS fails before any API call" {
-  export MAX_CANCELLATIONS=-1
-
-  run "$SCRIPT"
-
-  [ "$status" -eq 1 ]
-  [[ "$output" =~ "MAX_CANCELLATIONS must be a non-negative integer" ]] || false
-  [ ! -s "$MOCK_GH_CALL_LOG" ]
 }
 
 # --------------------------------------------------------
@@ -786,17 +632,6 @@ JSON
 
   [ "$status" -eq 0 ]
   grep -qx 'cancelled_run_ids=\[111,112,113\]' "$GITHUB_OUTPUT"
-}
-
-@test "end-to-end: cancelled_run_ids does not list the runs left alone by the limit" {
-  three_old_runs
-  export MAX_CANCELLATIONS=2
-  export GITHUB_OUTPUT="$MOCK_DIR/github_output"
-  : > "$GITHUB_OUTPUT"
-
-  run "$SCRIPT"
-
-  grep -qx 'cancelled_run_ids=\[111,112\]' "$GITHUB_OUTPUT"
 }
 
 @test "end-to-end: cancelled_run_ids does not list the runs that were not cancelled" {
@@ -823,7 +658,6 @@ JSON
 
 @test "end-to-end: cancelled_run_ids is empty when the runs cannot be listed" {
   export MOCK_GH_LIST_FAILS=99
-  export MAX_RETRIES=0
   export GITHUB_OUTPUT="$MOCK_DIR/github_output"
   : > "$GITHUB_OUTPUT"
 

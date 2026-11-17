@@ -83,12 +83,12 @@ The `run_for_repos.sh` script allows you to test the cancel action across multip
 
    ```bash
    ./dev/run_for_repos.sh                                   # user durandtibo
-   ./dev/run_for_repos.sh -u octocat -a 48 -r 10            # custom user, MAX_AGE_HOURS, MAX_RUNS
+   ./dev/run_for_repos.sh -u octocat -a 48                  # custom user and MAX_AGE_HOURS
    DRY_RUN=true ./dev/run_for_repos.sh --username octocat   # other variables pass through
    ```
 
-   Options: `-u/--username` (default `durandtibo`), `-a/--max-age-hours` (`MAX_AGE_HOURS`),
-   `-r/--max-runs` (`MAX_RUNS`). Without `-a`/`-r`, the defaults of `cancel.sh` apply.
+   Options: `-u/--username` (default `durandtibo`), `-a/--max-age-hours` (`MAX_AGE_HOURS`).
+   Without `-a`, the default of `cancel.sh` applies.
 
 ### Use Cases
 
@@ -188,11 +188,9 @@ input that is not passed to the script, an output that is not exposed). The `tes
 `.github/workflows/ci-action.yaml` runs the action from the repository code in dry run and
 checks its outputs with `dev/check_dry_run_outputs.sh` (the checks are unit tested in
 `tests/check_dry_run_outputs.bats`). It also checks that an invalid input fails the step. These
-jobs only run in GitHub Actions: to try the check locally, export the eight outputs as environment
+jobs only run in GitHub Actions: to try the check locally, export the seven outputs as environment
 variables (`FOUND_COUNT`, `CANCELLED_COUNT`, `SKIPPED_COUNT`, `FAILED_COUNT`, `WOULD_CANCEL_COUNT`,
-`DEFERRED_COUNT`, `CANCELLED_RUN_IDS`, `LISTING_TRUNCATED`), and `MAX_CANCELLATIONS` if the dry run
-has a limit, and run the script. The dry run of the workflow uses `max_cancellations: 1`, which
-also checks that the input reaches the script.
+`CANCELLED_RUN_IDS`, `LISTING_TRUNCATED`), and run the script.
 
 `tests/action_readme_sync.bats` checks, without any network, that `action.yaml`, `README.md` and
 `scripts/cancel.sh` describe the same inputs (names, defaults, required flags) and outputs, and
