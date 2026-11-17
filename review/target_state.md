@@ -108,7 +108,9 @@ Ordered by impact. "Verified" means I ran it; "read" means I read the code or th
   `event`, `force-cancel-buffer-hours` and `fail-on-error` is untested end to end, and a real cancel
   (the main path, with outputs `cancelled-count` and `cancelled-run-ids` above 0) is never run.
   Only the mocks of level 1 see it. A rename in `action.yaml`'s `env:` block, for example
-  `STATUSES: ${{ inputs.status }}`, would pass level 2.
+  `STATUSES: ${{ inputs.status }}`, would pass level 2. Decision (R1): levels 2 and 3 use the real
+  `gh`, never a fake, so the effect of an input stays a level 1 check, and level 2 proves the wiring
+  of every input with an invalid value (section 6.2).
 - **7. Level 3 is nearly empty until `v3.0.0` exists.** `nightly.yaml` runs the pinned `v2.0.0`
   with the old names, and every row of `tests/action_cases.json` has `"released": false`. Only one
   dry run per OS runs against the released action, through snake_case aliases in `ci-action.yaml`.
@@ -140,9 +142,8 @@ Ordered by impact. "Verified" means I ran it; "read" means I read the code or th
   cancels, correctly), so it is also the only production test of the real cancel path, and it tests
   an old version.
 - **14. `bot-report-queued-runs.yaml` is not about this action.** It reports the queued runs of
-  every public repository of the user, through a GitHub App. It is useful, and it shares nothing
-  with the action, which P1 limits to one repository. It is a maintenance item of an unrelated
-  concern in a repository whose `bot-*` files are otherwise about the repository itself.
+  every public repository of the user, through a GitHub App. It shares nothing with the action,
+  which P1 limits to one repository. Decision (D3): remove it.
 - **15. A stash from before the rewrite remains** (`git stash list`: "wip: shorter job summary").
   It is superseded by #201, as noted in the notes of that work.
 
@@ -225,18 +226,18 @@ endpoint=cancel
 ```
 
 It is shorter than the loop of today (one request, one classification, no `for action in`), and it
-matches the documentation. It is a behaviour change, so **it is gated by an experiment**, which I
-could not run (it writes):
+matches the documentation. It is a behaviour change that rests on a behaviour of GitHub nobody has
+observed here, so it needs an experiment, which I could not run (it writes):
 
 1. Find a run that stayed `queued` after a `/cancel` that returned 202 (the bot's logs, or
    `gh run list --status queued` older than `max-age-hours + 3` on any of the user's repositories).
 2. `POST /force-cancel` on it, once, and keep the status code and the body.
-3. If 202 and the run leaves the queue: adopt the behaviour above. If 409 or no effect: the tier
-   does nothing in practice either way, and the recommendation becomes to remove it with its input
-   (a breaking change to put in `v3.0.0` before it is released).
+3. If 202 and the run leaves the queue, change the trigger as above, in a later release. Otherwise
+   leave the tier as it is.
 
-The previous decision "keep the tier" holds until the experiment is done. Nothing is changed in
-this plan before it.
+**Decision (D1): keep force-cancel.** `v3.0.0` ships the tier as it is today: same input, same
+default, same trigger. This plan does not change it and does not remove it. The trigger change
+above is an optional follow-up, taken only if the experiment supports it.
 
 ### 5.4 Outputs on every path
 
@@ -272,77 +273,67 @@ Keep `tests/helpers/fake_gh` and the table style. Changes:
 - Leave `action_readme_sync.bats` (309 lines) as it is: it implements T14 and CLAUDE.md. If it
   grows again, generate the README tables from `action.yaml` instead of parsing both.
 
-### 6.2 Level 2 and 3: the real action, a fake `gh` on the `PATH`
+### 6.2 Level 2 and 3: the real action, the real `gh`
 
-The composite step calls `gh` from the `PATH`. A job step can put `tests/helpers/fake_gh` first on
-the `PATH` (`$GITHUB_PATH`) and set `FAKE_GH_TABLE` and `FAKE_GH_LOG` (`$GITHUB_ENV`). Then the
-real `action.yaml` runs, with its real `env:` wiring and a real bash on every OS, and **a real
-cancel path with no side effect** (T11). It works the same for `uses: ./` and for the released
-action, because both call `gh` from the `PATH`. This closes findings 6 and 7 without a repository
-that has stale runs.
+Decision (R1): the action tests use the real `gh`, never a fake. Level 2 runs `uses: ./` and level 3
+runs the pinned release, both against the real API with the job's token, with no side effect
+(T11): every row is a dry run, or fails before anything is cancelled. This keeps what the fake
+could hide (a wrong field, a changed `gh` message) in view, and keeps the rule "level 2 and 3
+check the contract and the wiring, not the logic" (T5, T16).
 
-Case schema (`tests/action_cases.json`), the row is the test:
+**Wiring: every input has a row whose invalid value proves it reaches the script.** A value that is
+rejected by the validation, or by GitHub, can only be rejected if the input arrived. If an `env:`
+line were renamed or dropped, the action would ignore the value and the row would succeed. Each
+row follows a positive run on the same runner (T12). The outputs tell the two failures apart:
+unset after a validation failure, `0` and `[]` after a failure to list.
 
-```json
-{
-  "id": "workflow-filter",
-  "inputs": { "workflow": "ci.yaml" },
-  "fake": [
-    "GET|*workflows/ci.yaml/runs*|200|{\"workflow_runs\":[{\"id\":1,\"updated_at\":\"@AGO:30@\"}]}",
-    "POST|*runs/1/cancel*|202|{}"
-  ],
-  "expect": "success",
-  "outputs": {
-    "eligible-count": "1",
-    "cancelled-count": "1",
-    "cancelled-run-ids": "[1]"
-  },
-  "calls": ["*workflows/ci.yaml/runs*", "*POST*runs/1/cancel*"],
-  "not-calls": ["*actions/runs?*"],
-  "released": false
-}
-```
+| Case                    | Inputs                                                 | Asserts                                                   | Proves the wiring of         |
+| ----------------------- | ------------------------------------------------------ | --------------------------------------------------------- | ---------------------------- |
+| `default-dry-run`       | `dry-run: true`                                        | success, outputs well formed, invariants hold             | outputs                      |
+| `huge-age`              | `max-age-hours: 87600`, `dry-run: true`                | success, `eligible-count` is `0` (no run is 10 years old) | defaults, outputs            |
+| `all-statuses`          | all four statuses, `dry-run: true`                     | success, outputs well formed                              | (positive control)           |
+| `invalid-age`           | `max-age-hours: not-a-number`                          | `failure`, outputs unset                                  | `max-age-hours`              |
+| `invalid-age-bound`     | `max-age-hours: 87601`                                 | `failure`, outputs unset                                  | the bound (finding 2)        |
+| `invalid-status`        | `statuses: running`                                    | `failure`, outputs unset                                  | `statuses`                   |
+| `invalid-workflow`      | `workflow: a/b`                                        | `failure`, outputs unset                                  | `workflow`                   |
+| `invalid-branch`        | `branch` with a newline                                | `failure`, outputs unset                                  | `branch`                     |
+| `invalid-event`         | `event` with a newline                                 | `failure`, outputs unset                                  | `event`                      |
+| `invalid-force-buffer`  | `force-cancel-buffer-hours: -1`                        | `failure`, outputs unset                                  | `force-cancel-buffer-hours`  |
+| `invalid-fail-on-error` | `fail-on-error: yes`                                   | `failure`, outputs unset                                  | `fail-on-error`              |
+| `invalid-bool`          | `dry-run: yes`                                         | `failure`, outputs unset                                  | `dry-run`                    |
+| `invalid-repo`          | `repo: not-a-repo`                                     | `failure`, outputs unset                                  | `repo` (validation)          |
+| `unknown-repo`          | `repo: durandtibo/no-such-repository`, `dry-run: true` | `failure`, outputs `0` and `[]`                           | `repo` (reaches the API)     |
+| `unknown-workflow`      | `workflow: no-such-file.yaml`, `dry-run: true`         | `failure`, outputs `0` and `[]`                           | `workflow` (reaches the API) |
+| `bad-token`             | `github-token: invalid`, `dry-run: true`               | `failure`, outputs `0` and `[]`                           | `github-token`               |
+| `fail-on-error-false`   | `unknown-workflow` plus `fail-on-error: false`         | still `failure` (a listing failure is never hidden)       | P6                           |
 
-Fixture dates are written `@AGO:<hours>@` (for example `@AGO:30@` is 30 hours ago); the step that
-installs the fake expands them with `jq` (`now - h*3600 | todate`), so a case never expires.
-`dev/check_action_case.sh` gains `calls` and `not-calls` (globs matched
-against the fake's log) and exact `outputs`. Cases, one per row, on `ubuntu-latest`:
+The rows are data in `tests/action_cases.json`, as today, and `dev/check_action_case.sh` keeps its
+current checks (outcome, format of the outputs, invariants, `eligible-count`, unset or zero
+outputs). It does not change.
 
-| Case                  | Inputs                                      | Asserts (outputs, and requests in the log)                                           |
-| --------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `cancel-old-runs`     | defaults; runs 30 h, 40 h and 1 h old       | `eligible 2`, `cancelled 2`, ids `[a,b]`, one POST per stale run, none for the other |
-| `dry-run`             | `dry-run: true`, same fixture               | `eligible 2`, `cancelled 0`, `[]`, **no POST**                                       |
-| `max-age-hours`       | `max-age-hours: 48`; runs 30 h and 50 h old | `eligible 1`, only the 50 h run is cancelled                                         |
-| `statuses`            | `statuses: queued,waiting`                  | one listing with `status=queued` and one with `status=waiting`                       |
-| `workflow`            | `workflow: ci.yaml`                         | path `workflows/ci.yaml/runs`, and not `actions/runs`                                |
-| `branch-event`        | `branch: main`, `event: push`               | `branch=main` and `event=push` in the listing                                        |
-| `skipped`             | run answers 409 to `/cancel`                | `skipped 1`, `cancelled 0`, step succeeds                                            |
-| `failed`              | run answers 500                             | `failed 1`, outcome `failure`                                                        |
-| `fail-on-error-false` | same, `fail-on-error: false`                | `failed 1`, outcome `success`                                                        |
-| `force-cancel`        | `force-cancel-buffer-hours: 0`, per 5.3     | the endpoint for a run older than the buffer, once                                   |
-| `invalid-age`         | `max-age-hours: x`                          | outcome `failure`, outputs unset, **no `gh` call at all**                            |
-| `invalid-bool`        | `dry-run: yes`                              | same                                                                                 |
-| `invalid-status`      | `statuses: running`                         | same                                                                                 |
-| `listing-failure`     | listing answers 500                         | outcome `failure`, outputs `0`, `[]`                                                 |
+**Kept as it is: one real dry run on every OS of the matrix** (the `test` job, 13 cells). It is where
+the real `gh`, the real `jq` and the real `created` filter meet the real API on each OS. It needs
+`actions: read`, not `write`. The released action runs the same job at level 3.
 
-Each failure row follows a positive row on the same runner (T12), as today.
-**Kept as it is: one real dry run on every OS of the matrix** (the `test` job, 13 cells). It is
-the only place where the real `gh`, the real `jq` and the real `created` filter meet the real API,
-so it covers what the fake cannot. It needs `actions: read`, not `write`. The released action runs
-the same job at level 3.
-
-**New: one real contract check, no side effect.** `dev/check_gh_contract.sh`, run once, on
+**New: one real contract check, no side effect.** `dev/check_gh_contract.sh`, run once on
 `ubuntu-latest`, calls `gh api --method POST /repos/$GITHUB_REPOSITORY/actions/runs/1/cancel` with
 the job's token and asserts that it exits non-zero with `(HTTP 404)` on stderr (finding 5). Run id
-`1` does not exist in this repository, so nothing is cancelled. If `gh` changes its error format,
-this job fails before a user's run is wrongly counted as failed.
+`1` does not exist in this repository, so nothing is cancelled. The job needs `actions: write`
+(a read-only token may answer 403, which would be the contract to write down instead: check it when
+the script is written). If `gh` changes its error format, this job fails before a user's run is
+wrongly counted as failed.
 
-What CI still cannot test: a real cancel of a real run (side effect). It is covered by the fake at
-levels 1 to 3, by the contract check above for the error format, and in production by
-`bot-cancel-stale-queued-runs.yaml`, which runs the released action every hour on this repository.
+**What no level-2 or level-3 row can show, and which check covers it (T11).** With the real API and
+a queue that is normally empty, a row cannot see the effect of `statuses`, `workflow`, `branch`,
+`event` or `max-age-hours` (they all give `eligible-count: 0`), nor a real cancel, nor
+`force-cancel-buffer-hours`, nor `fail-on-error` on a run that cannot be cancelled. These are
+level 1 checks, with the fake `gh` and the request log (section 6.1). The real cancel path is also
+run in production, every hour, by `bot-cancel-stale-queued-runs.yaml` on the released action: a
+failing real cancel fails that workflow, which is visible on the repository. This limit is accepted
+in exchange for tests that use only the real `gh`.
 
-Cells per run (T10): 13 (real dry run) + 14 (cases) + 1 (contract) = 28 jobs, 27 of them cheap
-(`ubuntu-latest`, seconds). Today: 13 + 11. `max-parallel: 8`, `fail-fast: false`,
+Cells per run (T10): 13 (real dry run) + 17 (cases) + 1 (contract) = 31 jobs, 18 of them on one
+`ubuntu-latest` runner and seconds long. Today: 13 + 11. `max-parallel: 8`, `fail-fast: false`,
 `timeout-minutes: 5`.
 
 ### 6.3 What does not change
@@ -353,44 +344,45 @@ the pinned release in `ci-action.yaml` is updated by `bot-pin-action.yaml`.
 
 ## 7. Repository, workflows and documentation
 
-| Path                                        | Target                                                                                                                                                                                                                       |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `README.md`                                 | Remove "Migrating from v2" (goes to the `v3.0.0` release notes). Fix the "oldest first" sentence (finding 3) and "outputs on every path" (5.4). Document the `87600` bound.                                                  |
-| `CONTRIBUTING.md`                           | Remove the CHANGELOG line, fix the `../` links, describe the fake-`gh` cases of `tests/action_cases.json` in 3 lines.                                                                                                        |
-| `examples/*.yaml`                           | `permissions: actions: write` only, no `contents: read`.                                                                                                                                                                     |
-| `.github/workflows/ci-action.yaml`          | Section 6.2: fake `gh` step, `calls` and `not-calls`, `actions: read` on the real dry run, no `github-token` or `repo` lines that repeat the defaults.                                                                       |
-| `.github/workflows/ci.yaml`, `nightly.yaml` | Caller job: `actions: read` (the cases need `contents: read` only).                                                                                                                                                          |
-| `bot-cancel-stale-queued-runs.yaml`         | After the release: `v3.0.0` pin, kebab-case names, no `max_runs` input, no `contents: read`, header updated.                                                                                                                 |
-| `bot-report-queued-runs.yaml`               | Decision D3. No change in this plan.                                                                                                                                                                                         |
-| `dev/`                                      | Add `check_gh_contract.sh` (about 15 lines). `check_action_case.sh` grows by about 25 lines (`calls`, `not-calls`, exact `outputs`).                                                                                         |
-| `tests/characterization.bats`               | Deleted, as in 6.1.                                                                                                                                                                                                          |
-| `CLAUDE.md`                                 | Add two rules: a function that can fail is followed by an explicit return 1 (never rely on set -e), and the action cases use the fake `gh` (`calls`, `not-calls`). Drop the sentence about the target layout, which is done. |
-| `git stash`                                 | Drop `stash@{0}` (finding 15), with the user's go-ahead.                                                                                                                                                                     |
+| Path                                        | Target                                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                                 | Remove "Migrating from v2" (goes to the `v3.0.0` release notes). Fix the "oldest first" sentence (finding 3) and "outputs on every path" (5.4). Document the `87600` bound.                                                                                                           |
+| `CONTRIBUTING.md`                           | Remove the CHANGELOG line, fix the `../` links, describe the cases of `tests/action_cases.json` in 3 lines.                                                                                                                                                                           |
+| `examples/*.yaml`                           | `permissions: actions: write` only, no `contents: read`.                                                                                                                                                                                                                              |
+| `.github/workflows/ci-action.yaml`          | Section 6.2: the new rows, `actions: read` on the real dry run, no `github-token` or `repo` lines that repeat the defaults.                                                                                                                                                           |
+| `.github/workflows/ci.yaml`, `nightly.yaml` | Caller job: `actions: read` (the cases need `contents: read` only).                                                                                                                                                                                                                   |
+| `bot-cancel-stale-queued-runs.yaml`         | After the release: `v3.0.0` pin, kebab-case names, no `max_runs` input, no `contents: read`, header updated.                                                                                                                                                                          |
+| `bot-report-queued-runs.yaml`               | Removed (D3), with its row in `CLAUDE.md`. The GitHub App secrets are not used elsewhere in this repository: remove them from the settings if nothing else needs them.                                                                                                                |
+| `dev/`                                      | Add `check_gh_contract.sh` (about 15 lines). `check_action_case.sh` does not change.                                                                                                                                                                                                  |
+| `tests/characterization.bats`               | Deleted, as in 6.1.                                                                                                                                                                                                                                                                   |
+| `CLAUDE.md`                                 | Add two rules: a function that can fail is followed by an explicit return 1 (never rely on set -e), and levels 2 and 3 use the real `gh`, with no side effect. Drop the sentence about the target layout, which is done, and `report queued runs` from the list of `bot-*` workflows. |
+| `git stash`                                 | Drop `stash@{0}` (finding 15), with the user's go-ahead.                                                                                                                                                                                                                              |
 
 `.gitattributes` and the exported set do not change.
 
 ## 8. Migration plan
 
-One branch and one PR per step, each from an up-to-date `main`, in this order. Steps 1 to 4 are
-independent of the release and of each other.
+One branch and one PR per step, each from an up-to-date `main`, in this order. Decision (D2): all
+of it ships in `v3.0.0`, so the release is the last step and steps 1 to 5 are independent of each
+other.
 
 1. `bugfix/check-tools-and-age-bound`: findings 1 and 2, with the process-level tests and the
-   mutations. Smallest and the only wrong behaviour in the script. Behaviour change: a missing tool
-   now exits 1; `max-age-hours` above 87600 is refused.
-2. `test/fake-gh-action-cases`: section 6.2 (cases, `check_action_case.sh`, `ci-action.yaml`,
-   `check_gh_contract.sh`) and the removal of `characterization.bats`. Behaviour change: none. Every
-   row has `"released": false` until step 5.
+   mutations. Behaviour change: a missing tool now exits 1; `max-age-hours` above 87600 is refused.
+2. `test/real-gh-action-cases`: section 6.2 (the rows of `tests/action_cases.json`, `ci-action.yaml`,
+   `check_gh_contract.sh`) and the removal of `characterization.bats` (6.1). Behaviour change: none.
+   Every row has `"released": false` until step 7.
 3. `feat/list-runs-in-dry-run-summary`: 5.2.
-4. `docs/fix-readme-and-contributing`: findings 3, 5.4, 11 (the migration table), 12 and the
-   examples' permissions. Merge **together with, or after,** the release of step 5 for the
-   `v3.0.0` references.
-5. **Release `v3.0.0`** (exact tag, release notes with the migration table, no floating tag). Then
-   one PR: pin it in `ci-action.yaml` and `bot-cancel-stale-queued-runs.yaml` (the pin bot may open
-   it), switch the released steps to kebab-case, set `"released": true` on every row the release
-   supports (all of them, if steps 1 and 3 are in the release), delete the snake_case aliases.
-6. After the experiment of 5.3: either `feat/force-cancel-unresponsive-runs` (shorter code, same
-   input) or `refactor/remove-force-cancel` (removes an input, so a breaking change: do it before
-   step 5 if the experiment is done by then).
+4. `docs/fix-readme-and-contributing`: findings 3, 5.4, 11 (the migration table moves to the release
+   notes of step 6), 12 and the examples' permissions.
+5. `chore/remove-report-queued-runs`: D3, and the `CLAUDE.md` update. Behaviour change for the
+   action: none.
+6. **Release `v3.0.0`** (exact tag, release notes with the migration table, no floating tag). The
+   force-cancel tier is in it as it is today (D1).
+7. One PR after the release: pin `v3.0.0` in `ci-action.yaml` and `bot-cancel-stale-queued-runs.yaml`
+   (the pin bot may open it), switch the released steps to kebab-case and delete the snake_case
+   aliases, remove `max_runs` and `contents: read` from the bot, set `"released": true` on every row,
+   and drop `stash@{0}` with the user's go-ahead.
+8. Optional, later: the force-cancel trigger of 5.3, only if its experiment supports it.
 
 Per CLAUDE.md, each PR states which checks ran (`make lint` fails on `main` at `lint-makefile`, a
 shared `.make/` issue noted in the repository's tooling notes; run the targets one by one), that CI
@@ -398,35 +390,45 @@ was not awaited, and which workflows cannot run locally (all of `ci-action.yaml`
 
 ## 9. Decisions and risks
 
-- **D1. The force-cancel experiment (5.3).** Needs the user: it sends one real `POST /force-cancel`
-  on one stuck run. Recommended: do it before the release, because the answer may remove an input.
-- **D2. Release timing.** `main` already documents `v3.0.0`. Recommended: release as soon as steps
-  1 and 2 are merged, so the README is true and level 3 starts to protect the v3 contract (finding
-  7). Steps 3 and 4 can follow in `v3.1.0`.
-- **D3. `bot-report-queued-runs.yaml`.** Options: keep it here (nothing breaks), or move it to a
-  personal `.github` or "ops" repository so this one is about one action. Recommended: move it when
-  convenient; it is not part of this plan and has no urgency.
-- **R1. The fake `gh` on the `PATH` assumes the composite step uses the `gh` of the `PATH`.** True
-  today (`gh api` in the script). The levels 2 and 3 cases would fail loudly, not pass silently,
-  if it changed: a case that expects a POST and sees none fails. The real dry-run job still runs
-  without the fake.
-- **R2. The fake can drift from the real API.** It is the reason for the two real jobs (dry run on
-  every OS, 404 contract check). A fake that gets a field wrong cannot be seen by the other 14
-  cases. Fixtures use only `id` and `updated_at`, the two fields the script reads.
-- **R3. Releasing before the experiment of 5.3** puts force-cancel in `v3.0.0` with a trigger that
-  may do nothing. Cost: if it must be removed, that is a second breaking release. Accepted if the
-  user wants the release first.
+Decisions taken by the maintainer on the first version of this document:
+
+- **D1. Keep the force-cancel tier.** It ships in `v3.0.0` unchanged. The experiment of 5.3 is not
+  a condition of the release; the trigger change stays an optional follow-up.
+- **D2. Everything ships in `v3.0.0`.** The release comes after steps 1 to 5 of the plan, so the
+  README, the examples and level 3 are true and complete at the first v3 release.
+- **D3. Remove `bot-report-queued-runs.yaml`.**
+- **R1. Levels 2 and 3 use the real `gh`, not the fake.** Section 6.2 is written for it. The price
+  is that the effect of the filters and a real cancel are level 1 checks only (6.2, last
+  paragraph); the gain is that no fake can drift from the API at the levels that exist to catch
+  that.
+
+Risks that remain:
+
+- **R2. The effect of the filters is not tested against the real API.** If a filter were dropped in
+  `list_stale`, level 1 sees it (the fake's request log), and level 2 would not. The mutations
+  `list_stale: the branch and event filters are dropped` and `the created filter is dropped` pin it.
+- **R3. The invalid-value rows prove the wiring only as long as the validation rejects the value.**
+  A rule loosened later (for example `branch` accepting a newline) makes its row fail, which is the
+  intended alarm. Keep one rejected value per input in `tests/validate.bats` too.
+- **R4. `v3.0.0` ships the force-cancel tier with a trigger that may never fire** (finding 4). Cost:
+  dead code that the README describes, and a possible second change. Accepted by D1.
+- **R5. The contract check (6.2) may answer 403 instead of 404 with a read-only token.** It runs
+  with `actions: write`, and the exact answer is checked once when the script is written.
 
 ## 10. Rejected alternatives
 
 - **Redesign the contract again before the first v3 release.** No flaw in it is large enough to pay
   for a second migration (section 4).
 - **Test the action only at level 1.** The wiring (`env:` names, outputs) is the part that unit
-  tests cannot see, and it is the part that breaks on a rename. The fake `gh` makes level 2 as
-  cheap as level 1.
-- **Create stale queued runs in a scratch repository for a real cancel test.** A queued run cannot
-  be made stale in minutes (the age threshold is in hours), and it needs a second repository, a
-  token and a cleanup. The fake and one 404 check show the same thing, with no state.
+  tests cannot see, and it is the part that breaks on a rename. The invalid-value rows of 6.2
+  cover it with the real `gh` and no side effect.
+- **A fake `gh` on the `PATH` for levels 2 and 3.** It would let level 2 assert the requests sent and
+  run a real cancel path on every OS. Rejected by the maintainer (R1): tests of the real action
+  should use the real `gh`.
+- **Create stale queued runs for a real cancel test.** A run is stale only after hours, so the
+  test would need a second repository and a cleanup. A shorter way, a canary run and
+  `max-age-hours: 0`, changes the contract (P2: nothing younger than the limit is cancelled) for the
+  sake of a test. Not adopted.
 - **Rewrite the script in Python or JavaScript.** Not on every runner, or a build step (P7, P8,
   P11). `gh` and `jq` are enough for 245 lines.
 - **Move the logic into `run:` blocks of `action.yaml`.** It could not be sourced and tested (T5).
