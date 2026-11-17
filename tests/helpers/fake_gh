@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Fake gh for the bats tests: one script for the whole suite.
+#
+# It answers from a table (a file named by FAKE_GH_TABLE) and appends every
+# call to FAKE_GH_LOG, so that a test can read which requests were sent.
+#
+# One rule per line, fields separated by "|", the first matching rule wins:
+#   METHOD|GLOB|CODE|BODY
+#     METHOD  GET or POST (a gh call with --method GET or -X POST)
+#     GLOB    shell pattern matched against all the arguments joined by spaces
+#     CODE    HTTP code to answer
+#     BODY    JSON body (for a GET, it is filtered with the --jq argument)
+# A call that matches no rule answers 404. "gh auth status" always succeeds.
+#
+# Like gh: an HTTP error (code >= 400) exits 1 and writes "gh: <text> (HTTP <code>)"
+# on stderr; with -i the response headers (CRLF line endings) are on stdout.
+set -u
+
+printf '%s\n' "$*" >>"${FAKE_GH_LOG:?FAKE_GH_LOG must be set}"
+
+if [ "${1:-}" = "auth" ]; then
+	exit 0
+fi
+
+method=GET
+filter=.
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+	case "${args[$i]}" in
+	-X | --method) method="${args[$((i + 1))]}" ;;
+	--jq) filter="${args[$((i + 1))]}" ;;
+	esac
+done
+joined="$*"
+
+code=404
+body='{"message":"Not Found"}'
+while IFS='|' read -r r_method r_glob r_code r_body; do
+	[ -n "$r_method" ] || continue
+	# shellcheck disable=SC2254
+	case "$joined" in
+	$r_glob)
+		if [ "$r_method" = "$method" ]; then
+			code="$r_code"
+			body="$r_body"
+			break
+		fi
+		;;
+	esac
+done <"${FAKE_GH_TABLE:?FAKE_GH_TABLE must be set}"
+
+if [ "$method" = "POST" ]; then
+	if [[ "$joined" == *" -i"* ]]; then
+		printf 'HTTP/2.0 %s Status\r\nContent-Type: application/json\r\n\r\n%s\n' "$code" "$body"
+	fi
+	if [ "$code" -ge 400 ]; then
+		echo "gh: $(printf '%s' "$body" | jq -r '.message // "error"') (HTTP $code)" >&2
+		exit 1
+	fi
+	exit 0
+fi
+
+if [ "$code" -ge 400 ]; then
+	echo "gh: $(printf '%s' "$body" | jq -r '.message // "error"') (HTTP $code)" >&2
+	exit 1
+fi
+printf '%s\n' "$body" | jq -c "$filter"

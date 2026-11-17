@@ -1,0 +1,68 @@
+[
+  {
+    "id": "default-dry-run",
+    "inputs": { "dry_run": "true" },
+    "expect": "success",
+    "released": false
+  },
+  {
+    "id": "huge-age",
+    "inputs": { "max_age_hours": "87600", "dry_run": "true" },
+    "expect": "success",
+    "released": false
+  },
+  {
+    "id": "all-statuses",
+    "inputs": { "statuses": "queued,waiting,pending,requested", "dry_run": "true" },
+    "expect": "success",
+    "released": false
+  },
+  {
+    "id": "workflow-filter",
+    "inputs": { "workflow": "ci.yaml", "dry_run": "true" },
+    "expect": "success",
+    "released": false
+  },
+  {
+    "id": "branch-event-filter",
+    "inputs": { "branch": "main", "event": "push", "dry_run": "true" },
+    "expect": "success",
+    "released": false
+  },
+  {
+    "id": "invalid-age",
+    "inputs": { "max_age_hours": "not-a-number" },
+    "expect": "failure",
+    "released": false
+  },
+  {
+    "id": "invalid-force-buffer",
+    "inputs": { "force_cancel_buffer_hours": "-1" },
+    "expect": "failure",
+    "released": false
+  },
+  {
+    "id": "invalid-bool",
+    "inputs": { "dry_run": "yes" },
+    "expect": "failure",
+    "released": false
+  },
+  {
+    "id": "invalid-status",
+    "inputs": { "statuses": "running" },
+    "expect": "failure",
+    "released": false
+  },
+  {
+    "id": "unknown-workflow",
+    "inputs": { "workflow": "no-such-file.yaml" },
+    "expect": "failure",
+    "released": false
+  },
+  {
+    "id": "fail-on-error-false",
+    "inputs": { "workflow": "no-such-file.yaml", "fail_on_error": "false" },
+    "expect": "failure",
+    "released": false
+  }
+]
