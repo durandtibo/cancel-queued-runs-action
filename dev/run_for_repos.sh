@@ -29,15 +29,18 @@ count_queued() {
 	gh api --method GET "/repos/$1/actions/runs" -f status=queued -f per_page=1 --jq '.total_count' 2>/dev/null || echo "-"
 }
 
-# Print the summary table. Args: total eligible, cancelled, skipped, queued, then "repo|eligible|cancelled|skipped|queued" rows
+# Print the summary table, sorted by ascending Queued (a "-" last), then by name.
+# Args: total queued, eligible, cancelled, skipped, then "repo|queued|eligible|cancelled|skipped" rows
 print_summary() {
-	local total_found="$1" total_cancelled="$2" total_skipped="$3" total_queued="$4" row
+	local total_queued="$1" total_found="$2" total_cancelled="$3" total_skipped="$4" row
 	shift 4
 	echo "=== Summary ==="
 	{
-		printf '%s|%s|%s|%s|%s\n' "Repository" "Eligible" "Cancelled" "Skipped" "Queued"
-		for row in "$@"; do printf '%s\n' "$row"; done
-		printf '%s|%s|%s|%s|%s\n' "Total" "$total_found" "$total_cancelled" "$total_skipped" "$total_queued"
+		printf '%s|%s|%s|%s|%s\n' "Repository" "Queued" "Eligible" "Cancelled" "Skipped"
+		for row in "$@"; do printf '%s\n' "$row"; done |
+			awk -F'|' '{ print (($2 == "-") ? 999999999 : $2) "|" $0 }' |
+			LC_ALL=C sort -t'|' -k1,1n -k2,2f | cut -d'|' -f2-
+		printf '%s|%s|%s|%s|%s\n' "Total" "$total_queued" "$total_found" "$total_cancelled" "$total_skipped"
 	} | awk -F'|' '
 		{ for (i = 1; i <= 5; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
 		END {
@@ -113,7 +116,7 @@ main() {
 			total_skipped=$((total_skipped + skipped))
 			queued=$(count_queued "$repo")
 			if [[ $queued =~ ^[0-9]+$ ]]; then total_queued=$((total_queued + queued)); fi
-			summary+=("$repo|$found|$cancelled|$skipped|$queued")
+			summary+=("$repo|$queued|$found|$cancelled|$skipped")
 		else
 			echo "!!! Failed for $repo, continuing" >&2
 			failed+=("$repo")
@@ -122,7 +125,7 @@ main() {
 		echo
 	done <<<"$repos"
 
-	print_summary "$total_found" "$total_cancelled" "$total_skipped" "$total_queued" "${summary[@]}"
+	print_summary "$total_queued" "$total_found" "$total_cancelled" "$total_skipped" "${summary[@]}"
 	echo
 	echo "Repositories processed: ${#summary[@]}"
 
