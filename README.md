@@ -57,7 +57,8 @@ before the first API call.
 
 `cancelled-count + skipped-count + failed-count = eligible-count`, except in a dry run. All the
 outputs are set on every path, including a failure, so a step with `continue-on-error` can read
-them. The action also writes a summary table with the first 50 cancelled runs.
+them. The action also writes a summary table with the first 50 runs: the cancelled ones, or in a
+dry run the ones that would be cancelled.
 
 ## ⏱ Examples
 

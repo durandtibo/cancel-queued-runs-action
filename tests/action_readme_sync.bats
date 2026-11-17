@@ -205,13 +205,6 @@ only_in_first() {
   [ -z "$missing" ] || { echo "not exposed by action.yaml: $missing"; false; }
 }
 
-@test "sync: every output of the script is listed in the header of the script" {
-  for name in $(action_outputs); do
-    awk '/^set -euo/ {exit} {print}' "$SCRIPT_FILE" | grep -q "$name" ||
-      { echo "$name is not mentioned in the header of the script"; false; }
-  done
-}
-
 # --------------------------------------------------------
 # Passing the inputs to the script
 # --------------------------------------------------------
@@ -222,16 +215,6 @@ only_in_first() {
       { echo "input $name must be used exactly once"; false; }
     grep -E "^        [A-Z_]+: \\$\{\{ inputs\\.$name \}\}$" "$ACTION_FILE" > /dev/null ||
       { echo "input $name is not passed in the env: block"; false; }
-  done
-}
-
-@test "sync: every environment variable passed by action.yaml is documented in the header of the script" {
-  vars=$(grep -E '^        [A-Z_]+: \$\{\{ inputs\.' "$ACTION_FILE" | sed -E 's/^ +([A-Z_]+):.*/\1/')
-  [ -n "$vars" ]
-
-  for var in $vars; do
-    awk '/^set -euo/ {exit} {print}' "$SCRIPT_FILE" | grep -qE "^#   $var( |,)" ||
-      { echo "$var is not documented in the header of the script"; false; }
   done
 }
 

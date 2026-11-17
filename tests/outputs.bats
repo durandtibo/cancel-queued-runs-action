@@ -86,3 +86,15 @@ setup() {
   run write_summary 0 0 0 0 '[]'
   [ "$status" -eq 0 ]
 }
+
+@test "write_summary lists the runs of a dry run under 'Would cancel', with no cancelled run" {
+  DRY_RUN=true write_summary 2 0 0 0 '[101,102]'
+  grep -qx 'Would cancel:' "$GITHUB_STEP_SUMMARY"
+  grep -qF -- '- [101](https://github.com/myorg/myrepo/actions/runs/101)' "$GITHUB_STEP_SUMMARY"
+  ! grep -q '^Cancelled:' "$GITHUB_STEP_SUMMARY" || false
+}
+
+@test "write_summary lists the runs of a real run under 'Cancelled'" {
+  write_summary 1 1 0 0 '[101]'
+  grep -qx 'Cancelled:' "$GITHUB_STEP_SUMMARY"
+}
