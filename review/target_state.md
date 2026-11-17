@@ -182,8 +182,9 @@ and `listing_truncated` (their features are removed, see section 8).
    it with 409 unless a regular cancel was sent first, so it is always the second request). Outcome
    of the last request by HTTP code: 202 cancelled; 404 or 409 skipped with a warning; 429, or
    403 with a rate limit message: stop, and count this run and the ones after it as failed;
-   anything else: failed, and continue. A fixed pause of one second separates two requests (the delay GitHub asks
-   for between requests that write); nothing is waited before the first one or in a dry run.
+   anything else: failed, and continue. A fixed pause of one second separates two requests (the
+   delay GitHub asks for between requests that write); nothing is waited before the first one or
+   in a dry run.
 6. **Report**: set the outputs, write one summary table (section 4), and exit `1` when
    `failed-count > 0` and `fail-on-error` is `true`.
 7. If the listing reaches 1000 runs for a status, write a `::warning::` that older candidates may
