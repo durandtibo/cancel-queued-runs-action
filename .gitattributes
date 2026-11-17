@@ -9,6 +9,7 @@ tests/fixtures/*.http -text
 /.make/ export-ignore
 /dev/ export-ignore
 /examples/ export-ignore
+/review/ export-ignore
 /tests/ export-ignore
 /.gitattributes export-ignore
 /.gitignore export-ignore
