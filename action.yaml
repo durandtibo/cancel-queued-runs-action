@@ -14,7 +14,7 @@ inputs:
     default: ${{ github.repository }}
   max-age-hours:
     description: >
-      Runs older than this many hours are cancelled (positive integer). The age is measured from
+      Runs older than this many hours are cancelled (positive integer, at most 87600). The age is measured from
       the last update of the run, so a re-run restarts it
     default: "24"
   statuses:

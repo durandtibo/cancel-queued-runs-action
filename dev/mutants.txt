@@ -33,3 +33,5 @@ list_stale: the branch and event filters are dropped@@list_stale.bats main.bats@
 list_stale: the created filter is dropped@@list_stale.bats main.bats@@s/-f "created=<\$1"//
 cancel_all: no pause between two requests@@cancel_all.bats@@s/then sleep 1; fi/then :; fi/
 write_outputs: the cancelled run ids are not written@@outputs.bats main.bats@@s/cancelled-run-ids=%s\\n/cancelled-run-ids=\\n/
+validate_all: a missing tool does not stop the script@@main.bats@@/Required command not found/{n;s/return 1/:/;}
+validate_all: max-age-hours has no upper bound@@main.bats validate.bats@@s/pint 87600/pint/

@@ -37,6 +37,15 @@ ko() {
   ko pint 0 01 -1 1.5 abc ""
 }
 
+@test "pint with a maximum accepts the maximum and rejects one more" {
+  VAR=87600
+  require VAR pint 87600 2>/dev/null
+  VAR=87601
+  ! require VAR pint 87600 2>/dev/null || false
+  VAR=99999999999999999999
+  ! require VAR pint 87600 2>/dev/null || false
+}
+
 @test "nint accepts non-negative integers only" {
   ok nint 0 3 100
   ko nint -1 00 03 x ""

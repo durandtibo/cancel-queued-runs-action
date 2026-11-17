@@ -122,3 +122,45 @@ setup() {
 @test "the script uses only bash, gh and jq: no date, no temporary file" {
   ! grep -nE '(^|[^a-z_])date( |$)|mktemp' "$SCRIPT" || false
 }
+
+# A PATH with the fake gh and nothing else: bash is called by its path, jq is missing
+only_gh_path() {
+  mkdir -p "$WORK/only_gh"
+  ln -s "$BATS_TEST_DIRNAME/helpers/fake_gh" "$WORK/only_gh/gh"
+  echo "$WORK/only_gh"
+}
+
+@test "a missing jq stops the script with exit 1, a message and no request" {
+  list_queued 1:$((30 * H))
+  run env PATH="$(only_gh_path)" /bin/bash "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::Required command not found: jq"* ]] || false
+  [ ! -s "$FAKE_GH_LOG" ]
+  [ ! -s "$GITHUB_OUTPUT" ]
+}
+
+@test "a missing gh stops the script with exit 1 and a message" {
+  mkdir -p "$WORK/empty"
+  run env PATH="$WORK/empty" /bin/bash "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::Required command not found: gh"* ]] || false
+}
+
+@test "an invalid input exits 1 with one error and no output" {
+  MAX_AGE_HOURS=abc run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::MAX_AGE_HOURS"* ]] || false
+  [ ! -s "$GITHUB_OUTPUT" ]
+  [ ! -s "$FAKE_GH_LOG" ]
+}
+
+@test "max-age-hours 87600 is accepted and 87601 is refused before any request" {
+  list_queued
+  MAX_AGE_HOURS=87600 run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  : >"$FAKE_GH_LOG"
+  MAX_AGE_HOURS=87601 run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::MAX_AGE_HOURS"* ]] || false
+  [ ! -s "$FAKE_GH_LOG" ]
+}
