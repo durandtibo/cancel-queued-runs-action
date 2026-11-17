@@ -46,12 +46,13 @@ die() {
 	return 1
 }
 
-# Check the variable named $1 against the rule $2: pint, nint, bool, statuses,
-# repo, workflow or line (one line, used for the values sent as fields)
+# Check the variable named $1 against the rule $2: pint (positive integer, at
+# most $3 when given), nint, bool, statuses, repo, workflow or line (one line,
+# used for the values sent as fields)
 require() {
 	local name="$1" value="${!1:-}" ok=false
 	case "$2" in
-	pint) [[ $value =~ ^[1-9][0-9]*$ ]] && ok=true ;;
+	pint) [[ $value =~ ^[1-9][0-9]*$ ]] && [ "${#value}" -le 9 ] && [ "$value" -le "${3:-999999999}" ] && ok=true ;;
 	nint) [[ $value =~ ^(0|[1-9][0-9]*)$ ]] && ok=true ;;
 	bool) [[ $value == true || $value == false ]] && ok=true ;;
 	statuses) [[ ${value// /} =~ ^(queued|waiting|pending|requested)(,(queued|waiting|pending|requested))*$ ]] && ok=true ;;
@@ -59,16 +60,19 @@ require() {
 	workflow) [[ -z $value || ($value =~ ^[A-Za-z0-9_.-]+$ && $value != . && $value != ..) ]] && ok=true ;;
 	line) [[ $value != *$'\n'* && $value != *$'\r'* ]] && ok=true ;;
 	esac
-	[ "$ok" = true ] || die "$name is not valid for the rule '$2' (got '$value')"
+	[ "$ok" = true ] || die "$name is not valid for the rule '$2${3:+ (at most $3)}' (got '$value')"
 }
 
 # Validate every input, then the tools and the credentials, before any API call
 validate_all() {
 	local cmd
 	for cmd in gh jq; do
-		command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
+		command -v "$cmd" >/dev/null 2>&1 || {
+			die "Required command not found: $cmd"
+			return 1
+		}
 	done
-	require MAX_AGE_HOURS pint || return 1
+	require MAX_AGE_HOURS pint 87600 || return 1
 	require FORCE_BUFFER_HOURS nint || return 1
 	require STATUSES statuses || return 1
 	require FAIL_ON_ERROR bool || return 1
