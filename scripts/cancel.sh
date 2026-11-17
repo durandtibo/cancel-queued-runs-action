@@ -1,30 +1,13 @@
 #!/usr/bin/env bash
 #
 # Cancel the workflow runs of one repository that have not started (queued by
-# default) for longer than MAX_AGE_HOURS. The age of a run is measured from its
-# last update (updated_at), so a re-run restarts it. A run is cancelled only if
-# updated_at is strictly older than MAX_AGE_HOURS.
+# default) for longer than MAX_AGE_HOURS. The age is measured from updated_at, so
+# a re-run restarts it; a run is cancelled only if updated_at is strictly older.
 #
-# Environment variables (validated before the first API call):
-#   GH_TOKEN           Token with actions:write (or GITHUB_TOKEN, or gh auth login)
-#   REPO               Target repository, owner/name (required)
-#   MAX_AGE_HOURS      Positive integer (default: 24)
-#   FORCE_BUFFER_HOURS Non-negative integer (default: 3): a run older than
-#                      MAX_AGE_HOURS + this, for which /cancel failed with an
-#                      unexpected error, is sent to /force-cancel
-#   STATUSES           Comma-separated, among queued, waiting, pending,
-#                      requested (default: queued)
-#   WORKFLOW           File name (ci.yaml) or numeric ID of one workflow (default: all)
-#   BRANCH             Only the runs of this head branch, by name (default: all)
-#   EVENT              Only the runs triggered by this event (default: all)
-#   FAIL_ON_ERROR      true (default) or false: false turns a run that could not
-#                      be cancelled into a warning
-#   DRY_RUN            true or false (default): log what would be cancelled only
-#
-# Outputs, written to $GITHUB_OUTPUT on every path: eligible-count,
-# cancelled-count, skipped-count, failed-count, cancelled-run-ids (JSON array).
-# cancelled + skipped + failed = eligible outside a dry run. A summary table is
-# appended to $GITHUB_STEP_SUMMARY.
+# Inputs are the environment variables of action.yaml (REPO, MAX_AGE_HOURS,
+# FORCE_BUFFER_HOURS, STATUSES, WORKFLOW, BRANCH, EVENT, FAIL_ON_ERROR, DRY_RUN,
+# GH_TOKEN), validated before the first API call. Outputs go to $GITHUB_OUTPUT
+# (see action.yaml) and a summary to $GITHUB_STEP_SUMMARY.
 #
 # Exit codes: 0 success; 1 invalid input, runs that cannot be listed, or a run
 # that could not be cancelled (unless FAIL_ON_ERROR is false).
@@ -200,7 +183,8 @@ write_outputs() {
 }
 
 # Append one summary table (same arguments as write_outputs), with the first 50
-# cancelled runs as links (no-op without $GITHUB_STEP_SUMMARY)
+# runs of the array $5 as links: the cancelled runs, or in a dry run the eligible
+# ones (no-op without $GITHUB_STEP_SUMMARY)
 write_summary() {
 	[ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
 	{
@@ -212,7 +196,9 @@ write_summary() {
 		echo "| Eligible | Cancelled | Skipped | Failed |"
 		echo "| ---: | ---: | ---: | ---: |"
 		echo "| $1 | $2 | $3 | $4 |"
-		if [ "$2" -gt 0 ]; then
+		if [ "$5" != "[]" ]; then
+			echo
+			if [ "$DRY_RUN" = true ]; then echo "Would cancel:"; else echo "Cancelled:"; fi
 			echo
 			printf '%s' "$5" | jq -r --arg s "${GITHUB_SERVER_URL:-https://github.com}" --arg r "$REPO" \
 				'.[:50][] | "- [\(.)](\($s)/\($r)/actions/runs/\(.))"'
@@ -234,6 +220,9 @@ main() {
 	read -r eligible cancelled skipped failed ids <<<"$(cancel_all <<<"$stale")"
 	echo "Eligible: $eligible, cancelled: $cancelled, skipped: $skipped, failed: $failed"
 	write_outputs "$eligible" "$cancelled" "$skipped" "$failed" "$ids"
+	if [ "$DRY_RUN" = true ]; then
+		ids=$(jq -R -s -c '[split("\n")[] | select(length > 0) | split(" ")[0] | tonumber]' <<<"$stale")
+	fi
 	write_summary "$eligible" "$cancelled" "$skipped" "$failed" "$ids"
 	if [ "$failed" -gt 0 ]; then
 		if [ "$FAIL_ON_ERROR" = true ]; then
