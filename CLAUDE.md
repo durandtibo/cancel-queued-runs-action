@@ -8,7 +8,7 @@ A GitHub composite action (`action.yaml`) that cancels workflow runs queued long
 `max-age-hours`. The logic lives in `scripts/cancel.sh` (bash, must work on GNU/Linux and
 BSD/macOS; Windows is not supported and not tested) and is tested with
 [bats](https://github.com/bats-core/bats-core) in `tests/`.
-`dev/` holds maintainer helpers (`check_bats_assertions.sh`, `check_dry_run_outputs.sh`,
+`dev/` holds maintainer helpers (`check_bats_assertions.sh`, `check_action_case.sh`,
 `check_export.sh`, `mutation_check.sh`, `mutants.txt`), not part of the action.
 
 ## Environment
@@ -104,9 +104,9 @@ Conventions:
 ## Testing strategy
 
 The strategy is the same for all the action repositories of `durandtibo`. The full reasoning and
-the properties (T1 to T16) are in `review/testing.md`. This repository does not follow it
-everywhere yet (for example the action cases are not in a JSON file): follow the target when you
-add or change tests, and do not migrate the rest in an unrelated PR.
+the properties (T1 to T16) are in `review/testing.md`. This repository follows it: the action
+cases are the rows of `tests/action_cases.json`, read by `ci-action.yaml`, and checked by
+`dev/check_action_case.sh`.
 
 Three levels:
 
