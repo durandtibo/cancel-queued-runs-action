@@ -1,664 +1,435 @@
 # cancel-queued-runs-action: target state
 
-Review date: 2026-11-17. Scope: `action.yaml`, `scripts/cancel.sh`, `tests/`, `dev/`, `examples/`,
-`README.md`, `CLAUDE.md` and `.github/workflows/`. `.make/` is out of scope: it is synced from a
-shared repository. The testing rules come from `review/testing.md` (properties T1 to T16).
+Review date: 2026-11-17, on `main` at `2f8ced2` (the v3 rewrite of #198 to #203 is merged, `v3.0.0`
+is not released). This file replaces the previous target state, which is implemented (it stays in
+the git history). The testing rules come from `review/testing.md` (T1 to T16).
 
-What was read: every file listed above, except the bodies of the 61 bats files (only their names
-and counts) and the fixtures. What was run: one read-only API call to check the `created` filter
-(section 5.2). Not run: `make lint`, `make format`, `bats tests/`, and the CI workflows.
+What was read: `action.yaml`, `scripts/cancel.sh`, `README.md`, `CONTRIBUTING.md`, `CLAUDE.md`,
+`.gitattributes`, `examples/`, `dev/*.sh`, `dev/mutants.txt`, `tests/helpers/*`,
+`tests/action_cases.json`, the heads of `characterization.bats`, `validate.bats` and
+`action_readme_sync.bats`, and the workflows `ci*.yaml`, `nightly.yaml`, `lib-get-test-matrix.yaml`,
+`bot-cancel-stale-queued-runs.yaml`, `bot-report-queued-runs.yaml`. Not read in full: the other
+bats files, `security-*`, `bot-format-files`, `bot-pin-action`, `bot-sync-shared-makefile`, `.make/`
+(shared, out of scope).
+
+What was run: `bats --recursive tests` (188 tests, 0 failures), `make lint-shell`, `lint-markdown`,
+`lint-yaml`, `check-format-shell`, `lint-bats`, `check-export` (all pass), two experiments on the
+script (findings 1 and 7), one read-only `gh api` listing of this repository (finding 3), and the
+GitHub REST documentation page of the workflow-run endpoints. Not run: the CI workflows, anything
+that writes to GitHub, `make mutation-check`, `make format`.
 
 ## 1. Properties of the action
 
-These are the properties the target state must keep. Every choice below is judged against them.
+The target state keeps these properties. Every finding and every choice below is judged against
+them. P1 to P9 are about the action; P10 to P12 are about how it is built and shipped.
 
-| #   | Property                   | Statement                                                                                                                                                                                                                                                              |
-| --- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1  | Single purpose             | Cancel the workflow runs of one repository that have not started (`queued` by default) for longer than `max_age_hours`. It does not prune by count, delete runs, or work on several repositories.                                                                      |
-| P2  | Never cancels too much     | A run is cancelled only if its status is one the caller listed, it matches the filters, and its age is strictly greater than `max_age_hours`. A run in progress or completed is never touched. `dry_run` shows exactly what would happen, with no request that writes. |
-| P3  | Idempotent and re-runnable | Running it twice, or two executions at the same time, gives the same end state. A run that is gone or finished between the listing and the request (HTTP 404 or 409) is skipped, not a failure. Whatever one execution did not do, the next one does.                  |
-| P4  | Exact contract             | Every input is validated before the first API call and fails with an `::error::`. Every output is always set, has a documented format, and is the same for the local and the released action.                                                                          |
-| P5  | Injection-safe             | Inputs reach the script only through `env:`. Values that go into an API path are checked against a strict pattern. Values that go into a query are sent as `gh api -f` fields, never concatenated. Nothing from the API is printed as a workflow command.              |
-| P6  | Fails loudly, by choice    | A caller mistake and a failure to list the runs always fail. A failure to cancel a run fails by default, and becomes a warning only with `fail_on_error: false`.                                                                                                       |
-| P7  | Portable                   | Works on GNU/Linux and BSD/macOS, and with the bash 3.2 of macOS. Uses only `bash`, `gh` and `jq`, which are on the GitHub-hosted runners. No `date` arithmetic, so no GNU/BSD split. Windows is not supported.                                                        |
-| P8  | Small and fast             | One script of at most 250 lines and 12 functions. At most one listing call per status and per page, and one call per cancelled run. Work is done on the server (filters) and in one `jq` call, not in a bash loop per run.                                             |
-| P9  | Maintainable               | Each behaviour has one place: a function, a test, one sentence in the README. No setting that cannot be explained in one sentence. No undocumented knob. The tests do not depend on the text of the script.                                                            |
-| P10 | Tested at three levels     | Level 1: the script with a fake `gh`. Level 2: the local action, with no side effect. Level 3: the released action, nightly, same cases. What CI cannot test is written down with the check that covers it.                                                            |
-| P11 | Shipped equals needed      | The release contains `action.yaml`, `LICENSE` and `scripts/cancel.sh`, and nothing else. It is checked in CI.                                                                                                                                                          |
-| P12 | Immutable releases         | Exact version tags only. No floating tag.                                                                                                                                                                                                                              |
+| #   | Property                | Statement                                                                                                                                                                                                                                                                            |
+| --- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P1  | Single purpose          | Cancel the runs of **one repository** that have not started (`queued` by default) for longer than `max-age-hours`. It does not delete runs, keep the N most recent, or loop over repositories.                                                                                       |
+| P2  | Never cancels too much  | A run is cancelled only if its status is listed by the caller, it matches the filters, and its `updated_at` is strictly older than the cutoff. A run in progress or completed is never listed. `dry-run` sends no request that writes. One rule decides: `updated_at < cutoff`.      |
+| P3  | Idempotent, convergent  | Running it twice, or two executions at once, gives the same end state. A run that is gone or finished (HTTP 404 or 409) is skipped, not a failure. What one execution does not do (rate limit, 1000-run cap, listing error) the next one does. Nothing is retried inside the action. |
+| P4  | Exact contract          | Every input is validated before the first API call, with one `::error::`. Every output is set on every path, has a documented format, and is the same for the local and the released action. Inputs and outputs are `kebab-case`.                                                    |
+| P5  | Injection-safe          | Inputs reach the script through `env:` only. Values in an API path match a strict pattern. Values in a query are sent as `gh api -f` fields. Nothing that comes from the API is printed as a workflow command.                                                                       |
+| P6  | Fails loudly, by choice | A caller mistake, a missing tool or credential, and a failure to list the runs always fail. A failure to cancel a run fails by default, and is a warning only with `fail-on-error: false`.                                                                                           |
+| P7  | Portable and light      | GNU/Linux and BSD/macOS, bash 3.2 included. Only `bash`, `gh` and `jq`, which are on the GitHub-hosted runners. No `date` arithmetic. Windows is not supported.                                                                                                                      |
+| P8  | Small and fast          | One script, at most 250 lines and 12 functions. Filters run on the server, selection in one `jq` call. One paginated listing per status, one request per run. Requests that write are sequential, one second apart (GitHub's rule), so the cost of a backlog is one second per run.  |
+| P9  | Maintainable            | Each behaviour has one place: one function, one test, one sentence in the README. No knob that cannot be explained in one sentence. Tests pin behaviour (requests sent, outputs, exit code), not the text of the script.                                                             |
+| P10 | Tested at three levels  | Level 1: the script with a fake `gh`. Level 2: the local action (`uses: ./`). Level 3: the released action, nightly, same cases. No test has a side effect on a repository. What CI cannot test is written down with the check that covers it.                                       |
+| P11 | Shipped equals needed   | A release contains `action.yaml`, `LICENSE` and `scripts/cancel.sh`, and nothing else. CI checks it.                                                                                                                                                                                 |
+| P12 | Immutable, documented   | Releases are exact version tags, no floating tag. The README describes the current behaviour only; history is in the release notes.                                                                                                                                                  |
 
-Non-goals: Windows runners, several repositories in one call (use a matrix, see the README),
-deleting runs, keeping the N most recent runs (use `concurrency` in the workflow for that),
-retrying inside the action (the schedule retries), and a configurable rate limit.
+Non-goals: Windows, several repositories in one call (a matrix, see `examples/`), deleting runs,
+pruning by count (`concurrency` does it at creation time), retries and rate-limit tuning.
 
-## 2. Findings in the current state
+## 2. State today
 
-Numbers are counted from the repository at `02295e7`. Ordered by impact.
+| Item                | Value                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| `scripts/cancel.sh` | 245 lines, 11 functions                                                              |
+| `action.yaml`       | 10 inputs, 5 outputs, one composite step                                             |
+| `README.md`         | 161 lines                                                                            |
+| Tests               | 188 bats tests in 14 files, 1881 lines with helpers; 21 mutations; all pass          |
+| `dev/`              | 4 scripts and `mutants.txt`, 318 lines of shell, 3 bats files that test them         |
+| CI                  | 8 `ci-*`, `nightly`, `lib-*`, 5 `bot-*`, 2 `security-*` workflows                    |
+| Released versions   | latest is `v2.0.0` (old names). `v3.0.0` is documented everywhere and does not exist |
 
-### Size and complexity (P8, P9)
+The v3 design is sound and matches P1 to P9: one rule, server-side `created` filter, `jq` dates,
+one `require` table, five outputs, no retry layers. **The target state does not redesign it.** It
+closes the gaps between what the repository claims and what it does or tests, then releases.
 
-- **1.** **The script is 1838 lines with 55 functions, for one `POST`.** The tests are 11,025
-  lines (61 files, 1087 tests) and 120 mutations, so the test code is six times the code. Each
-  extra feature below costs code, tests, mutations, README text and a troubleshooting entry.
-- **2.** **14 inputs and 10 outputs, four of them modes of operation that change what the
-  action is.** `max_runs` cancels runs "whatever their age", which contradicts P2: the action can
-  cancel a run that was queued one minute ago. `delete_stuck_runs` deletes runs and their
-  history. `max_cancellations` and `cancel_delay_seconds` are safety valves and rate-limit tuning
-  that a hourly job with `dry_run` does not need. `force_cancel_buffer_hours` configures a tier
-  whose value is doubtful (finding 4); the maintainer decided to keep it (D1).
-- **3.** **Two retry mechanisms, one tuning layer.** The listing retries on the error text
-  (`is_transient_error`, 37 lines). The cancel retries on the HTTP headers (`is_rate_limited`,
-  `get_retry_delay`, `post_run_endpoint_with_retry`, about 130 lines with the CRLF handling and
-  nine HTTP fixtures). Five environment variables (`MAX_RETRIES`, `RETRY_BASE_DELAY`,
-  `RETRY_MAX_DELAY`, `RUNS_LISTING_LIMIT`, `SUMMARY_MAX_RUNS`) are validated by a 38-line function
-  but are in neither `action.yaml` nor the README: they cannot be set from the action. The
-  action is scheduled hourly and is idempotent (P3), so the next execution is the retry.
-- **4.** **The force-cancel tier almost never applies.** `process_run` sends `/force-cancel` only
-  when `/cancel` fails with something other than 202, 404 or 409. A run stuck in the queue
-  answers 409 to `/cancel`, which is skipped with no second request. So the tier runs only after
-  a 5xx or a 403 on `/cancel`, which `/force-cancel` is unlikely to fix. `dev/README.md` says
-  it itself: force-cancel "occasionally fails with a 500". Nothing in the repository shows one
-  run that this tier cancelled. Decision D1: the tier stays, because it was useful for some
-  repositories in the past; the target keeps its behaviour and its input.
-- **5.** **Dates are parsed in bash for both GNU and BSD** (`to_unix_ts`, `compute_age_seconds`,
-  `format_age`, `is_old_enough`, about 110 lines plus the mutations that pin them). `jq` has
-  `fromdateiso8601` and `now`, and is already required.
-- **6.** **`process_all_runs` is 117 lines and runs `jq` four times**, then loops in bash with
-  counters in globals, a `PROCESS_RUN_OUTCOME` global, and `RUN_RECORDS` as a string split on
-  `|`. The functions "must not be called in a subshell" in five places (comments), which is a
-  design smell: the state is hidden in globals.
-- **7.** **The job summary is 160 lines** (`write_summary`, `write_summary_runs`,
-  `describe_outcome`): a table of every outcome, the filters, a capped list of runs with links.
-  The step log already has the same information.
-- **8.** **`main` prints a line per option** (nine `if`s) and the validators are 14 functions
-  of 16 to 38 lines, each with its own `.bats` file, for what is one table of rules.
+## 3. Findings
 
-### Correctness and efficiency (P2, P3, P8)
+Ordered by impact. "Verified" means I ran it; "read" means I read the code or the documentation.
 
-- **9.** **The listing is incomplete exactly where it matters.** The API lists the newest runs
-  first and returns at most 1000 runs per status. The runs that the action wants (the oldest)
-  are the ones cut off. The action then warns, and the `listing_truncated` output exists only
-  for this. The cause is that the action downloads every queued run, young or old, then filters
-  in bash. The API has a server-side filter on the creation date (section 5.2), which is a
-  strict superset of the stale runs because `updated_at >= created_at`. With it, a queue of 5000
-  young runs and 3 stale ones is a single page of 3 runs.
-- **10.** **Wasted calls.** For a repository with a big queue, the current listing downloads up
-  to 10 pages of 100 runs for each status, then throws away nearly all of them.
-- **11.** **Cancel, force-cancel, deletion and `/jobs` lookups add up to four request types
-  per run**, each with its own error handling, the 404 and 403 special cases of `delete_run`,
-  and the `PROCESS_RUN_OUTCOME` states `noop`, `cancelled`, `deleted`, `skipped`, `would-cancel`,
-  `failed`.
-- **12.** **The age is `updated_at`, which is named `queued_at` in the code and the README.**
-  The choice is deliberate and right (a re-run run restarts its age), but the field name lies.
-  The target keeps the rule and names it.
+### Correctness
 
-### Tests and CI (P10, P11, T11, T16)
+- **1. A missing `jq` or `gh` does not stop the script (verified).** `validate_all` runs
+  `command -v "$cmd" || die ...` and `main` calls it as `validate_all || return 1`. Bash ignores
+  `set -e` inside a function called in an `||` list, so `die` (which only returns 1) does not
+  end the loop. With `gh` present and `jq` absent, the output is
+  `::error::Required command not found: jq`, then `cancel.sh: line 222: jq: command not found`,
+  exit **127**, and no output is written. This breaks P4 (outputs on every path) and P6 (the
+  message is clear, the exit code is not). Test 186 does not see it: it calls `validate_all`
+  directly, where `set -e` is active, and with `gh` missing.
+- **2. `max-age-hours` has no upper bound (verified).** `99999999` passes validation and the cutoff
+  becomes `-9382-12-08T04:51:43Z`, which GitHub's `created` filter will not accept: the user gets
+  "Cannot list the workflow runs" instead of "max-age-hours is not valid". Past 10^19 `jq` itself
+  fails. A bound of 87600 (ten years) says what is meant and the `huge-age` case already uses it.
+- **3. The README says the oldest runs are listed first, and they are not (verified).** A read-only
+  listing of this repository returned runs newest first by `created_at`. The documentation does not
+  state an order. With more than 1000 stale runs for a status, the cap keeps the **newest** of the
+  stale ones, and `select_stale` then sorts only those. The action still converges (the cancelled
+  runs leave the queue), but the sentence "the oldest are asked for first" in Limitations is false,
+  and "oldest first" in `select_stale` is the order of one batch, not of the backlog.
+- **4. The force-cancel tier is triggered by the wrong signal (read).** The REST documentation says
+  `/force-cancel` is for "a workflow run [that] is not responding to" `/cancel`. The script sends
+  it only when `/cancel` itself returns an unexpected error (not 202, 404, 409, 429) on a run older
+  than `max-age-hours + force-cancel-buffer-hours`. A run that does not respond to `/cancel` is one
+  where `/cancel` answered **202 and the run is still queued the next hour**. That run is cancelled
+  again by the next execution (it is still stale), and again with the same result, forever, with
+  `cancelled-count: 1` each time. The tier never helps that run. The previous review decided to keep
+  the tier (D1 then); this finding is about when it fires, not whether it exists. See section 5.3.
+  The documentation also does not explain the 409 on `/force-cancel`: the earlier claim that GitHub
+  "rejects it unless a regular cancel was sent first" is not in the documentation and was never
+  tested.
+- **5. The `(HTTP nnn)` suffix of `gh` is the only way the script reads a cancel error (read).**
+  The fake `gh` writes it, so the tests can only confirm that the script agrees with the fake. No
+  check shows that the real `gh` writes it for a `POST`. If `gh` changes, every failure becomes
+  `failed` (the safe side), and a 404 or 409 that should be skipped fails the step. The listing path
+  is covered by the real dry-run jobs; the cancel path is not.
 
-- **13.** **The tests of level 2 cancel real runs.** The `test` job (13 cells) and `test-48h`
-  run the action without `dry_run` against this repository. This breaks T11 (no side effect)
-  and makes the result depend on what is queued at that moment. A real cancel cannot be
-  asserted, so the jobs only check that the step succeeds. `test-outputs` already does the right
-  thing (dry run, assertions on outputs), but only on one runner.
-- **14.** **The cases are jobs, not data** (T8): three jobs of 25 to 60 lines, each duplicated
-  for local and released. A new case is a new job.
-- **15.** **The mutation check is coupled to the text of the script.** 120 `sed` expressions
-  such as `s/\[ "\$age_seconds" -gt "\$force_age_seconds" \]/.../` break on any rewrite of a
-  line, so the check punishes refactoring. It is a good idea (T12) with a fragile form.
-- **16.** **Most unit tests mock one function to test the next one** (61 files). They pin the
-  structure, not the behaviour: replacing `post_run_endpoint` by a different way to call `gh`
-  would fail tests that still describe correct behaviour.
-- **17.** **`dev/` and the bots are partly redundant.** `dev/run_for_repos.sh` (119 lines) calls
-  `scripts/cancel.sh` directly, so it is coupled to the internals, and loops over the user's
-  repositories, as `bot-report-queued-runs.yaml` does for the report. `dev/README.md` (250 lines)
-  proposes a "workaround" that the script already implements and explains tests in prose that
-  the tests say better. `bot-cancel-stale-queued-runs.yaml` runs the action at `v1.9` while the
-  latest release is `v2.0.0`.
+### Tests and CI
 
-### Documentation (P4, P9)
+- **6. Level 2 and 3 cannot assert the effect of any input (P10, T5, T16, CLAUDE.md).** CLAUDE.md
+  says every input needs a case "that sets it and asserts its effect". With dry runs on a repository
+  whose queue is normally empty, the cases `workflow-filter`, `branch-event-filter` and
+  `all-statuses` only assert "success", and a filter that is silently dropped gives the same
+  result: `eligible-count: 0`. The wiring of `max-age-hours`, `statuses`, `workflow`, `branch`,
+  `event`, `force-cancel-buffer-hours` and `fail-on-error` is untested end to end, and a real cancel
+  (the main path, with outputs `cancelled-count` and `cancelled-run-ids` above 0) is never run.
+  Only the mocks of level 1 see it. A rename in `action.yaml`'s `env:` block, for example
+  `STATUSES: ${{ inputs.status }}`, would pass level 2.
+- **7. Level 3 is nearly empty until `v3.0.0` exists.** `nightly.yaml` runs the pinned `v2.0.0`
+  with the old names, and every row of `tests/action_cases.json` has `"released": false`. Only one
+  dry run per OS runs against the released action, through snake_case aliases in `ci-action.yaml`.
+  The nightly check currently protects nothing about the v3 contract.
+- **8. The jobs have more permissions than they use (T15).** `test` and `test-cases` in
+  `ci-action.yaml` and the caller job in `ci.yaml` and `nightly.yaml` have `actions: write`. A dry
+  run needs `actions: read`, a validation failure needs none.
+  `bot-cancel-stale-queued-runs.yaml` has `contents: read` and no checkout. The examples set
+  `contents: read` at the workflow level for the same reason, while the README says `actions: write`
+  is enough. Users copy examples.
+- **9. `characterization.bats` is a scaffold that outlived its job.** It was written to pin five
+  rules during the rewrite (its own header says so, and refers to the previous target state). Its
+  tests overlap `select_stale.bats`, `cancel_run.bats` and `main.bats`, and it still uses the
+  names `fail_on_error`, `max_age_hours` and the removed `MAX_RETRIES` (line 175). 255 lines.
+- **10. The mutation check has no mutation for findings 1 and 2 (read).** It is otherwise fine (T12):
+  21 mutations, each anchored on a short token. Whenever a finding is fixed, its mutation is added.
 
-- **18.** **The README is 650 lines.** About 250 lines are troubleshooting entries that quote
-  internal log lines (`::warning::MAX_CANCELLATIONS (...) reached`), so every message change is
-  a README change. The same facts appear in three places (README, `action.yaml`, the header of
-  `cancel.sh`).
-- **19.** **Input names are `snake_case`, the sibling actions use `kebab-case`**
-  (`python-version`, `uv-version`, `github-app-client-id`). One naming per fleet is cheaper to
-  remember and to template. This is a breaking change, so it belongs in the same release as the
-  rest.
+### Documentation and housekeeping
 
-## 3. Target contract
+- **11. `main` documents a release that does not exist.** README, `examples/` and
+  `ci-action.yaml` comments say `@v3.0.0`. A user who copies the README gets "unable to resolve
+  action". The README also holds a "Migrating from v2" table, which P12 and T14 put in the release
+  notes, and which will be wrong for ever once `v4` exists.
+- **12. `CONTRIBUTING.md` points to files that do not exist or are outside the repository:**
+  `[CHANGELOG.md](../CHANGELOG.md)` and `[examples/](../examples/)` (a file in the root cannot use
+  `../`), and "Update CHANGELOG" when releases carry the history.
+- **13. `bot-cancel-stale-queued-runs.yaml` runs `v1.9` with `max_runs`** (a removed input) and
+  its header documents `max_runs`. It is the only real cancel of the repository (the CI never
+  cancels, correctly), so it is also the only production test of the real cancel path, and it tests
+  an old version.
+- **14. `bot-report-queued-runs.yaml` is not about this action.** It reports the queued runs of
+  every public repository of the user, through a GitHub App. It is useful, and it shares nothing
+  with the action, which P1 limits to one repository. It is a maintenance item of an unrelated
+  concern in a repository whose `bot-*` files are otherwise about the repository itself.
+- **15. A stash from before the rewrite remains** (`git stash list`: "wip: shorter job summary").
+  It is superseded by #201, as noted in the notes of that work.
 
-Breaking changes are intentional, listed in section 8. The target version is `v3.0.0`.
+### Not findings (checked, correct)
 
-### Inputs (10, down from 14)
+`.gitattributes` and `dev/check_export.sh` agree (the export is `LICENSE`, `action.yaml`,
+`scripts/cancel.sh`). The `created=<cutoff` filter never drops a stale run (`updated_at >=
+created_at`). Booleans, statuses, repo and workflow are validated before the first call. Inputs
+go through `env:`. All workflows have `permissions: {}`, `timeout-minutes` on jobs, pinned SHAs
+with `ratchet` comments. Failure cases in `ci-action.yaml` use `continue-on-error` and assert the
+outcome after a positive run. `shellcheck`, `shfmt`, `markdownlint`, `yamllint` pass.
 
-| Input                       | Default                    | Description                                                                                                                                                                                                                        |
-| --------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github-token`              | `${{ github.token }}`      | Token with `actions: write` on the target repository.                                                                                                                                                                              |
-| `repo`                      | `${{ github.repository }}` | Target repository, `owner/name`.                                                                                                                                                                                                   |
-| `max-age-hours`             | `24`                       | A run older than this many hours is cancelled. Positive integer. The age is measured from the last update of the run (`updated_at`), so a re-run restarts it.                                                                      |
-| `statuses`                  | `queued`                   | Comma-separated, among `queued`, `waiting`, `pending`, `requested`. Duplicates are ignored. Runs in progress are never listed.                                                                                                     |
-| `workflow`                  | empty                      | Only the runs of this workflow: a file name (`ci.yaml`) or a numeric ID. Empty means all.                                                                                                                                          |
-| `branch`                    | empty                      | Only the runs of this head branch, by name, case sensitive. Empty means all.                                                                                                                                                       |
-| `event`                     | empty                      | Only the runs triggered by this event (`push`, `schedule`, ...). Empty means all.                                                                                                                                                  |
-| `force-cancel-buffer-hours` | `3`                        | Non-negative integer. A run older than `max-age-hours` plus this many hours, which `/cancel` refused with something other than 202, 404 or 409, is sent to `/force-cancel`. `0` means as soon as it is older than `max-age-hours`. |
-| `fail-on-error`             | `true`                     | `true` or `false`. When `false`, a run that could not be cancelled is a warning and the step succeeds. Invalid inputs and a failure to list the runs always fail.                                                                  |
-| `dry-run`                   | `false`                    | `true` or `false`. List and log the runs that would be cancelled, send nothing that writes.                                                                                                                                        |
+## 4. Target contract
 
-Booleans accept exactly `true` and `false`. Anything else fails the step.
+**No change to the names, defaults or meaning of the 10 inputs and 5 outputs of `action.yaml`**,
+except two additions to the validation (finding 2, and the force-cancel decision of section 5.3,
+which is a behaviour change with no change of name). Rationale: `v3.0.0` has never been released.
+The contract is right, and a second round of renames before the first release has a cost (the
+README, the tests, the cases, the examples) and no benefit.
 
-### Outputs (5, down from 10)
+Considered and rejected, so they are not proposed again:
 
-| Output              | Value                                                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eligible-count`    | Integer. Runs older than `max-age-hours` that match the statuses and filters. In a dry run, this is the number that would be cancelled.     |
-| `cancelled-count`   | Integer. Runs for which GitHub accepted the cancel request (HTTP 202). Always `0` in a dry run.                                             |
-| `skipped-count`     | Integer. Runs that were gone or no longer cancellable (HTTP 404 or 409).                                                                    |
-| `failed-count`      | Integer. Runs that could not be cancelled, and runs left unprocessed because GitHub rate limited the execution.                             |
-| `cancelled-run-ids` | JSON array on one line, for example `[101,102]`, `[]` if none, in the order processed. Read it with `fromJSON()`. Always `[]` in a dry run. |
+| Idea                                            | Why not                                                                                                                                         |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Remove `fail-on-error`, use `continue-on-error` | `continue-on-error` also hides an invalid input and a failure to list, which P6 says must fail. The input costs one condition.                  |
+| Remove `branch` and `event`                     | They are server-side filters, cost two lines, and are how a caller targets `schedule` runs.                                                     |
+| Add `max-cancellations` or a time budget        | Removed in v3 on purpose. The schedule bounds the work, and `timeout-minutes` is the caller's guard.                                            |
+| Cancel in parallel                              | GitHub asks for sequential writes one second apart. Parallelism would trade speed for secondary rate limits.                                    |
+| Add an output with the eligible ids             | A sixth output for the preview case. The log and the summary (finding in 5.2) carry it; a caller who needs it uses the `gh` command in the log. |
+| Skip the pause after a 404 or 409               | A rejected request is still a request that writes. One rule (always one second) is simpler.                                                     |
 
-Invariant: `cancelled + skipped + failed = eligible` outside a dry run. All five are set on every
-path, including a failure, so that a step with `continue-on-error` can be read.
+Validation changes:
 
-Removed: `found_count` (the target does not download the runs it does not need, finding 9),
-`would_cancel_count` (equal to `eligible-count` in a dry run), `deleted_count`, `deferred_count`
-and `listing_truncated` (their features are removed, see section 8).
-
-### Behaviour
-
-1. **Validate** every input, then the presence of `gh`, `jq` and a token. Stop at the first
-   problem with one `::error::` line.
-2. **Compute the cutoff** with `jq`: `now - max-age-hours * 3600`, as an ISO 8601 UTC string.
-   It is computed once, so all the runs are compared with the same instant.
-3. **List** the candidates: for each distinct status, one paginated `GET` on
-   `/repos/{repo}/actions/runs` (or `/actions/workflows/{workflow}/runs`), with the fields
-   `status`, `per_page=100`, `created=<cutoff`, and `branch` and `event` when set. A listing
-   error fails the step, after the outputs are written.
-4. **Select** with one `jq` call: keep the runs with `updated_at < cutoff`, remove duplicates by
-   `id` (a status changed between two calls), sort by `updated_at`, oldest first. The output is
-   one `id age` line per run.
-5. **Cancel** each run, oldest first, with `POST /actions/runs/{id}/cancel`, unless `dry-run`.
-   If the run is older than `max-age-hours + force-cancel-buffer-hours` and `/cancel` did not answer
-   202, 404, 409 or a rate limit, send `POST /actions/runs/{id}/force-cancel` once (GitHub rejects
-   it with 409 unless a regular cancel was sent first, so it is always the second request). Outcome
-   of the last request by HTTP code: 202 cancelled; 404 or 409 skipped with a warning; 429, or
-   403 with a rate limit message: stop, and count this run and the ones after it as failed;
-   anything else: failed, and continue. A fixed pause of one second separates two requests (the
-   delay GitHub asks for between requests that write); nothing is waited before the first one or
-   in a dry run.
-6. **Report**: set the outputs, write one summary table (section 4), and exit `1` when
-   `failed-count > 0` and `fail-on-error` is `true`.
-7. If the listing reaches 1000 runs for a status, write a `::warning::` that older candidates may
-   be missing. There is no output for it: the cancelled runs leave the queue, so the next
-   execution sees the rest, and the execution converges.
-
-The decision `cancel / do not cancel` has exactly one rule (P2): `updated_at < cutoff`. There is
-no second tier for the decision, and no rule depends on another input. `force-cancel` is a
-fallback for the way a run is cancelled, not a second reason to cancel it.
-
-## 4. Target `action.yaml`
-
-One composite step. The step is one script because the three parts (validate, decide, act) share
-data that is cheaper to pass in memory than through step outputs, and because splitting the
-script would make it harder to run and test on a laptop (T13).
-
-```yaml
-name: "cancel-queued-runs"
-description: "Cancel the workflow runs that have not started for longer than a number of hours"
-author: "Thibaut Durand"
-branding:
-  icon: "clock"
-  color: "blue"
-
-inputs:
-  github-token:
-    description: "Token with actions:write permission on the target repository"
-    default: ${{ github.token }}
-  repo:
-    description: "Target repository, owner/name"
-    default: ${{ github.repository }}
-  max-age-hours:
-    description: >
-      Runs older than this many hours are cancelled (positive integer). The age is measured from
-      the last update of the run, so a re-run restarts it
-    default: "24"
-  statuses:
-    description: >
-      Comma-separated run statuses to consider, among queued, waiting, pending and requested
-    default: "queued"
-  workflow:
-    description: "Only the runs of this workflow: a file name (ci.yaml) or a numeric ID"
-    default: ""
-  branch:
-    description: "Only the runs of this head branch, given by name (case sensitive)"
-    default: ""
-  event:
-    description: "Only the runs triggered by this event (push, schedule, ...)"
-    default: ""
-  force-cancel-buffer-hours:
-    description: >
-      Hours after max-age-hours from which /force-cancel is tried when /cancel is refused with an
-      unexpected error (non-negative integer, 0 means right after max-age-hours)
-    default: "3"
-  fail-on-error:
-    description: >
-      "true" or "false". If "false", a run that could not be cancelled is a warning, not a failure
-    default: "true"
-  dry-run:
-    description: >
-      "true" or "false". If "true", log the runs that would be cancelled and cancel nothing
-    default: "false"
-
-outputs:
-  eligible-count:
-    description: "Number of runs older than max-age-hours (in a dry run: that would be cancelled)"
-    value: ${{ steps.cancel.outputs.eligible-count }}
-  cancelled-count:
-    description: "Number of runs for which a cancel request was accepted (0 in a dry run)"
-    value: ${{ steps.cancel.outputs.cancelled-count }}
-  skipped-count:
-    description: "Number of runs that were gone or not cancellable anymore (HTTP 404 or 409)"
-    value: ${{ steps.cancel.outputs.skipped-count }}
-  failed-count:
-    description: "Number of runs that could not be cancelled, or were left when GitHub rate limited"
-    value: ${{ steps.cancel.outputs.failed-count }}
-  cancelled-run-ids:
-    description: 'JSON array of the cancelled run IDs, "[]" if none. Read it with fromJSON()'
-    value: ${{ steps.cancel.outputs.cancelled-run-ids }}
-
-runs:
-  using: "composite"
-  steps:
-    - name: Cancel the stale runs
-      id: cancel
-      shell: bash
-      run: ${{ github.action_path }}/scripts/cancel.sh
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        REPO: ${{ inputs.repo }}
-        MAX_AGE_HOURS: ${{ inputs.max-age-hours }}
-        FORCE_BUFFER_HOURS: ${{ inputs.force-cancel-buffer-hours }}
-        STATUSES: ${{ inputs.statuses }}
-        WORKFLOW: ${{ inputs.workflow }}
-        BRANCH: ${{ inputs.branch }}
-        EVENT: ${{ inputs.event }}
-        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
-        DRY_RUN: ${{ inputs.dry-run }}
-```
-
-The job summary is one table, written by the script: the repository, the age, the counts of the
-five outputs, and the runs cancelled as links, capped at 50. It replaces the 160 lines of the
-current summary.
-
-The permissions a caller needs are `actions: write` (it includes read). `contents: read` is only
-for a checkout step, which this action does not need.
+| Input           | Rule today       | Rule in the target                                   |
+| --------------- | ---------------- | ---------------------------------------------------- |
+| `max-age-hours` | positive integer | positive integer, at most `87600`; the error says so |
 
 ## 5. Target `scripts/cancel.sh`
 
-Budget: at most 250 lines including comments, at most 12 functions, no global that a function
-changes except the counters (and these are read by one function). Every decision is in a function
-that takes its input as an argument and prints its result.
+Budget unchanged: at most 250 lines, 12 functions. The five changes below cost about 15 lines, paid
+for by the end of `characterization`-style comments and by shortening the header.
 
-### 5.1 Functions
-
-| Function        | Lines | Job                                                                                                                      |
-| --------------- | ----- | ------------------------------------------------------------------------------------------------------------------------ |
-| `die`           | 4     | Print `::error::` and exit 1 (or return, when sourced).                                                                  |
-| `require`       | 12    | `require NAME KIND`: one rule table for all the inputs (`int`, `bool`, `statuses`, `repo`, ...).                         |
-| `validate_all`  | 25    | Call `require` for each input, then check `gh`, `jq` and the token.                                                      |
-| `cutoff`        | 4     | Print the ISO 8601 UTC time `max-age-hours` ago, computed by `jq` (`now`, `todate`).                                     |
-| `list_stale`    | 30    | One paginated `gh api` call per distinct status. Print `{id, updated_at}` lines.                                         |
-| `select_stale`  | 10    | `jq`: filter on the cutoff, deduplicate by id, sort oldest first, print `id age_seconds`.                                |
-| `cancel_run`    | 30    | `POST` `/cancel`, then the `/force-cancel` fallback of step 5. Print `cancelled`, `skipped`, `failed` or `rate-limited`. |
-| `cancel_all`    | 30    | The loop: pause, call `cancel_run`, count, stop on a rate limit.                                                         |
-| `write_outputs` | 12    | Write the five outputs to `$GITHUB_OUTPUT`.                                                                              |
-| `write_summary` | 25    | The one table.                                                                                                           |
-| `main`          | 30    | The flow of section 3, skipped when the file is sourced by tests.                                                        |
-
-### 5.2 Key mechanics
-
-**Server-side filter on the creation date.** One read-only call was made on this repository to
-check the syntax. `status=completed` returned `total_count` 2500 without the filter, 2490 with
-`created=<2026-06-01T00:00:00Z` and 0 with `created=<2020-01-01T00:00:00Z`, so the comparison with
-a full ISO 8601 timestamp works and filters on the server. It is sent as a field, not in the URL:
+### 5.1 Fix the tool check (finding 1)
 
 ```bash
-gh api --method GET "$runs_path" --paginate \
-  -f status="$status" -f per_page=100 -f "created=<$cutoff" \
-  ${BRANCH:+-f "branch=$BRANCH"} ${EVENT:+-f "event=$EVENT"} \
-  --jq '.workflow_runs[] | {id, updated_at}'
+for cmd in gh jq; do
+  command -v "$cmd" >/dev/null 2>&1 || { die "Required command not found: $cmd"; return 1; }
+done
 ```
 
-Because `updated_at >= created_at`, a run created after the cutoff cannot have an `updated_at`
-before it, so the filter never removes a stale run. The exact `updated_at` test is still done in
-step 4, because a run created long ago and re-run recently must not be cancelled.
+Regression test, at the level where the bug lives: **run the script as a process**
+(`run env PATH=<only gh> "$SCRIPT"`), not `validate_all` from a sourced shell. Assert exit code 1,
+that the output names `jq`, and that `GITHUB_OUTPUT` is untouched or complete (see 5.4). The mutation
+is `s/\{ die "Required command[^}]*return 1; \}/die .../`.
 
-**Dates in `jq`, not in bash.** `fromdateiso8601` and `now` work the same on GNU and BSD, and a
-test passes a fixed instant with `--argjson now`, so no `date` mock is needed:
+A rule for the whole file: every call to a function that can fail is followed by an explicit
+return 1 on failure; no function relies on `set -e`, because a caller in an `||` list turns it off.
+
+### 5.2 The summary lists what a dry run would cancel
+
+The first use of the action is a dry run. Today its summary is the four counts, and the runs are in
+the step log only. In a dry run the summary lists the eligible runs (first 50, as links); outside a
+dry run it lists the cancelled ones, as now. `main` passes `$stale` (the `id age` lines it already
+has) to `write_summary` in a dry run and the cancelled ids otherwise. About 6 lines. The outputs
+do not change.
+
+### 5.3 Force-cancel on a run that does not respond (finding 4)
+
+Behaviour today: `/cancel`; then `/force-cancel` if `/cancel` failed unexpectedly and the run is
+older than `max-age-hours + force-cancel-buffer-hours`.
+
+Target behaviour, same input, same default, same meaning of the buffer in hours: **a run that is
+still stale after `max-age-hours + force-cancel-buffer-hours` has already been sent a `/cancel` by
+an earlier execution and did not respond. It goes to `/force-cancel` instead of `/cancel`.** In
+code, `cancel_run` picks the endpoint from the age, instead of retrying after an error:
 
 ```bash
-select_stale() { # stdin: {id, updated_at} lines; $1: cutoff; $2: now (epoch seconds)
-  jq -r -s --arg cutoff "$1" --argjson now "$2" '
-    unique_by(.id) | map(select(.updated_at < $cutoff)) | sort_by(.updated_at)
-    | .[] | "\(.id) \($now - (.updated_at | fromdateiso8601))"'
-}
+endpoint=cancel
+[ "$2" -gt $(((MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600)) ] && endpoint=force-cancel
 ```
 
-The comparison of two ISO 8601 UTC strings of the same shape is a plain string comparison, which
-is correct and avoids parsing. The age in seconds is only for the log.
+It is shorter than the loop of today (one request, one classification, no `for action in`), and it
+matches the documentation. It is a behaviour change, so **it is gated by an experiment**, which I
+could not run (it writes):
 
-**One way to read an error.** `gh api` exits non-zero on HTTP 400 and above and writes
-`... (HTTP 409)` on stderr. `cancel_run` reads the code from there, with no `-i`, no header
-parsing and no carriage-return handling:
+1. Find a run that stayed `queued` after a `/cancel` that returned 202 (the bot's logs, or
+   `gh run list --status queued` older than `max-age-hours + 3` on any of the user's repositories).
+2. `POST /force-cancel` on it, once, and keep the status code and the body.
+3. If 202 and the run leaves the queue: adopt the behaviour above. If 409 or no effect: the tier
+   does nothing in practice either way, and the recommendation becomes to remove it with its input
+   (a breaking change to put in `v3.0.0` before it is released).
 
-```bash
-cancel_run() { # $1: run id
-  local out code
-  if gh api --method POST "/repos/$REPO/actions/runs/$1/cancel" >/dev/null 2>"$ERR"; then
-    echo cancelled; return
-  fi
-  out=$(<"$ERR")
-  code=$(printf '%s' "$out" | sed -nE 's/.*\(HTTP ([0-9]{3})\).*/\1/p' | head -n1)
-  case "$code" in
-  404 | 409) echo skipped ;;
-  429) echo rate-limited ;;
-  403) if printf '%s' "$out" | grep -qi 'rate limit'; then echo rate-limited; else echo failed; fi ;;
-  *) echo failed ;;
-  esac
-}
-```
+The previous decision "keep the tier" holds until the experiment is done. Nothing is changed in
+this plan before it.
 
-`cancel_run` takes the run id and its age in seconds. After a `/cancel` that is not a 202, a 404, a
-409 or a rate limit, and only if the age exceeds `(MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600`, it
-sends the same `POST` to `/force-cancel` and classifies that answer with the same `case`. The
-threshold and the fallback are the `process_run` tiers that stay; the delete tier is removed.
-(The snippet above shows the classification only.)
+### 5.4 Outputs on every path
 
-**No global state to chase.** `cancel_all` reads the `id age` lines and keeps four counters and
-the list of ids in its own scope; `write_outputs` and `write_summary` take them as arguments
-(`write_outputs eligible cancelled skipped failed ids`). There is no `PROCESS_RUN_OUTCOME`, no
-`RUN_RECORDS`, and no function with a "must not be called in a subshell" rule.
+`main` writes the outputs on a listing failure but not on a validation failure, and `check_action_case`
+encodes it (`"outputs": "unset"`). That is consistent with P4 if the README says it: **a validation
+failure sets no output**, because the counts do not exist yet. The README currently says "set on
+every path, including a failure". Fix the sentence, not the script.
 
-**Validation as a table.**
+### 5.5 Smaller
 
-```bash
-validate_all() {
-  require MAX_AGE_HOURS pint
-  require FORCE_BUFFER_HOURS nint
-  require STATUSES statuses
-  require FAIL_ON_ERROR bool
-  require DRY_RUN bool
-  require REPO repo
-  require WORKFLOW workflow_or_empty
-  require BRANCH no_newline
-  require EVENT no_newline
-  ...
-}
-```
-
-`BRANCH` and `EVENT` only need to be one line: they are sent as `-f` fields, so they cannot add a
-query parameter or break the path. `WORKFLOW` and `REPO` go in a path and keep a strict pattern.
-
-### 5.3 What is dropped from the script, and why
-
-| Removed                                                                                                                                                                                 | Lines (about) | Reason                                                                            |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| `to_unix_ts`, `compute_age_seconds`, `format_age`, `is_old_enough`                                                                                                                      | 110           | `jq` does the dates (finding 5).                                                  |
-| `is_transient_error`, `list_runs_of_status` retry, `get_retry_delay`, `is_rate_limited`, `post_run_endpoint_with_retry`, `get_status_code`, `get_response_message`, `post_run_endpoint` | 330           | The schedule is the retry (finding 3).                                            |
-| `delete_run`, `delete_zombie_run`, `run_has_no_jobs`, the delete tier in `process_run`                                                                                                  | 140           | Destructive, out of purpose (P1).                                                 |
-| `delete_run`, `delete_zombie_run`, `run_has_no_jobs`                                                                                                                                    | 140           | Destructive, out of purpose (P1).                                                 |
-| `select_excess_run_ids`, `cancellation_limit_reached`, `throttle_requests` configuration, `reset_counters`, `record_run`, `count_unparsed_runs`                                         | 120           | `max_runs`, `max_cancellations`, `cancel_delay_seconds` and the globals are gone. |
-| 14 validators, `validate_tuning_variables`                                                                                                                                              | 270           | One `require` function and a table.                                               |
-| `write_summary_runs`, `describe_outcome`, the long `write_summary`                                                                                                                      | 130           | One table.                                                                        |
-| `create_work_dir`, `cleanup_work_dir`, `make_temp_file`                                                                                                                                 | 50            | One temp file for stderr, removed by a `trap`.                                    |
-| `dedupe_runs`, `fetch_runs`, `warn_if_listing_truncated`                                                                                                                                | 90            | Replaced by `list_stale` and `select_stale`.                                      |
+- Header: shorten the 30-line comment to what is not in `action.yaml`, because it is the third copy
+  of the input list (the `action.yaml`, the README, the header).
+- Check `99999999`-style values (finding 2) in `require`: add a rule `pint87600`, or one more
+  argument (`require NAME pint MAX`). Prefer the argument: the `case` stays one table.
 
 ## 6. Tests
 
-The strategy is `review/testing.md`. The target is a smaller suite that pins behaviour, not text.
+### 6.1 Level 1: the script with a fake `gh`
 
-### 6.1 Level 1: the script, with a fake `gh`
+Keep `tests/helpers/fake_gh` and the table style. Changes:
 
-- One fake `gh` on `PATH` for the whole suite (`tests/helpers/fake_gh`). It answers from a table
-  in the test (path and method to code and body) and appends every call to a log file. A test
-  reads the log to assert which requests were sent. This replaces 61 files that mock one
-  function each, and the nine `.http` fixtures.
-- Tests are grouped by behaviour, not one file per function: `validate.bats` (every input: one
-  valid and one invalid value, all in a table), `select_stale.bats` (boundaries: exactly
-  `max-age-hours`, one second more, one second less, a re-run run, a duplicate, an empty list),
-  `cancel_run.bats` (202, 404, 409, 429, 403 with and without a rate limit message, 500, an
-  empty body; force-cancel after a 500 on an old run, none on a young run, none after a 404, 409
-  or rate limit, the boundary of the buffer, `0` for the buffer), `cancel_all.bats` (order,
-  pause, stop on a rate limit, counters), `list_stale.bats` (filters sent as fields, one call per
-  distinct status, an error on the listing), `main.bats` (the flow, dry run sends no `POST`,
-  `fail-on-error`, outputs on every path), `outputs.bats` (format of the five outputs and of the
-  summary).
-- The rule "each function has its own `tests/<function>.bats`" in `CLAUDE.md` is replaced by "one
-  file per behaviour group, named after what it checks". The rule "one behaviour per test",
-  "mock `gh`", "regression test for each bug fix" and "boundary ages" stay.
-- `dev/check_bats_assertions.sh` (the check that assertions do not pass vacuously on bash 3.2) is
-  kept: it checks the tests, not the script.
-- Time is injected (`--argjson now`), never mocked, so `date` is not faked.
+- Delete `characterization.bats`, after moving what only it covers (the validation of each input
+  by name, `fail-on-error: false` not hiding a listing failure) into `validate.bats` and
+  `main.bats`. Before deleting, run `make mutation-check` with and without the file: if no mutation
+  needs it, nothing is lost (that is the only criterion, not the test count).
+- Add process-level tests for the whole script for the three exit paths a caller sees: invalid input
+  (1, no output), missing tool (1, finding 1), listing failure (1, outputs `0`, `[]`).
+- Add `max-age-hours=87600` accepted and `87601` rejected.
+- Add mutations: the tool check, the upper bound, the dry-run summary lists runs.
+- Make the bash version visible in the `test` job of `ci-action.yaml` (`bash --version`), because
+  P7 claims bash 3.2 and nobody has checked which bash `shell: bash` selects on the hosted macOS
+  image. Not verified here.
+- Leave `action_readme_sync.bats` (309 lines) as it is: it implements T14 and CLAUDE.md. If it
+  grows again, generate the README tables from `action.yaml` instead of parsing both.
 
-### 6.2 Mutation check
+### 6.2 Level 2 and 3: the real action, a fake `gh` on the `PATH`
 
-Kept (T12), reduced to the rules that define P2 and P3. It stays a `sed` on the script, because a
-switch inside the script would put test code in production. To survive a refactor, the list is
-limited to about 15 mutations on the decisions that matter, each anchored on a short, stable
-token (an operator, a function name) and not on a whole line:
+The composite step calls `gh` from the `PATH`. A job step can put `tests/helpers/fake_gh` first on
+the `PATH` (`$GITHUB_PATH`) and set `FAKE_GH_TABLE` and `FAKE_GH_LOG` (`$GITHUB_ENV`). Then the
+real `action.yaml` runs, with its real `env:` wiring and a real bash on every OS, and **a real
+cancel path with no side effect** (T11). It works the same for `uses: ./` and for the released
+action, because both call `gh` from the `PATH`. This closes findings 6 and 7 without a repository
+that has stale runs.
 
-| Decision                                    | Mutation                             |
-| ------------------------------------------- | ------------------------------------ |
-| Age is strictly greater than the cutoff     | `<` to `<=` in `select_stale`        |
-| A run younger than the cutoff is kept       | remove the `select`                  |
-| Duplicates are removed                      | remove `unique_by`                   |
-| Dry run sends nothing                       | ignore `DRY_RUN`                     |
-| 404 and 409 are skipped, not failed         | swap with `failed`                   |
-| A rate limit stops the loop                 | continue instead of stopping         |
-| Force-cancel only after an unexpected error | send it after any non-202            |
-| Force-cancel only after the buffer          | drop the age condition               |
-| `fail-on-error: false` does not fail        | ignore it                            |
-| A non-boolean value is rejected             | accept any value                     |
-| Statuses are listed once each               | remove the deduplication of statuses |
-| The filters are sent                        | drop `branch` and `event`            |
+Case schema (`tests/action_cases.json`), the row is the test:
 
-The check runs on one OS in `ci-mutation-check.yaml`, as today. If the number of mutations grows
-over 25, that is a sign the script grew again.
+```json
+{
+  "id": "workflow-filter",
+  "inputs": { "workflow": "ci.yaml" },
+  "fake": [
+    "GET|*workflows/ci.yaml/runs*|200|{\"workflow_runs\":[{\"id\":1,\"updated_at\":\"@AGO:30@\"}]}",
+    "POST|*runs/1/cancel*|202|{}"
+  ],
+  "expect": "success",
+  "outputs": {
+    "eligible-count": "1",
+    "cancelled-count": "1",
+    "cancelled-run-ids": "[1]"
+  },
+  "calls": ["*workflows/ci.yaml/runs*", "*POST*runs/1/cancel*"],
+  "not-calls": ["*actions/runs?*"],
+  "released": false
+}
+```
 
-### 6.3 Level 2 and 3: the action, in a real workflow
+Fixture dates are written `@AGO:<hours>@` (for example `@AGO:30@` is 30 hours ago); the step that
+installs the fake expands them with `jq` (`now - h*3600 | todate`), so a case never expires.
+`dev/check_action_case.sh` gains `calls` and `not-calls` (globs matched
+against the fake's log) and exact `outputs`. Cases, one per row, on `ubuntu-latest`:
 
-One reusable `ci-action.yaml` with `use-released` (as today, T7). Two changes: no job cancels a
-real run (T11), and the cases are data (T8).
+| Case                  | Inputs                                      | Asserts (outputs, and requests in the log)                                           |
+| --------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `cancel-old-runs`     | defaults; runs 30 h, 40 h and 1 h old       | `eligible 2`, `cancelled 2`, ids `[a,b]`, one POST per stale run, none for the other |
+| `dry-run`             | `dry-run: true`, same fixture               | `eligible 2`, `cancelled 0`, `[]`, **no POST**                                       |
+| `max-age-hours`       | `max-age-hours: 48`; runs 30 h and 50 h old | `eligible 1`, only the 50 h run is cancelled                                         |
+| `statuses`            | `statuses: queued,waiting`                  | one listing with `status=queued` and one with `status=waiting`                       |
+| `workflow`            | `workflow: ci.yaml`                         | path `workflows/ci.yaml/runs`, and not `actions/runs`                                |
+| `branch-event`        | `branch: main`, `event: push`               | `branch=main` and `event=push` in the listing                                        |
+| `skipped`             | run answers 409 to `/cancel`                | `skipped 1`, `cancelled 0`, step succeeds                                            |
+| `failed`              | run answers 500                             | `failed 1`, outcome `failure`                                                        |
+| `fail-on-error-false` | same, `fail-on-error: false`                | `failed 1`, outcome `success`                                                        |
+| `force-cancel`        | `force-cancel-buffer-hours: 0`, per 5.3     | the endpoint for a run older than the buffer, once                                   |
+| `invalid-age`         | `max-age-hours: x`                          | outcome `failure`, outputs unset, **no `gh` call at all**                            |
+| `invalid-bool`        | `dry-run: yes`                              | same                                                                                 |
+| `invalid-status`      | `statuses: running`                         | same                                                                                 |
+| `listing-failure`     | listing answers 500                         | outcome `failure`, outputs `0`, `[]`                                                 |
 
-- **General behaviour, `os_matrix` (13 cells):** the default usage with `dry-run: true`. It asserts
-  the contract: `cancelled-count` is `0`, `cancelled-run-ids` is `[]`, the four counts are
-  integers, `eligible-count` is the number of lines the log reports. This runs on every OS and
-  shows that `gh`, `jq` and the script work on each of them.
-- **Edge cases, one runner (`ubuntu-latest`):** one row per case in `tests/action_cases.json`,
-  each row a matrix cell:
+Each failure row follows a positive row on the same runner (T12), as today.
+**Kept as it is: one real dry run on every OS of the matrix** (the `test` job, 13 cells). It is
+the only place where the real `gh`, the real `jq` and the real `created` filter meet the real API,
+so it covers what the fake cannot. It needs `actions: read`, not `write`. The released action runs
+the same job at level 3.
 
-| Case id                | Inputs                                                        | Asserts                                                      | `released` |
-| ---------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ | ---------- |
-| `default-dry-run`      | `dry-run: true`                                               | outputs are well formed                                      | `false`    |
-| `huge-age`             | `max-age-hours: 87600`, `dry-run: true`                       | `eligible-count` is exactly `0`                              | `false`    |
-| `all-statuses`         | `statuses: queued,waiting,pending,requested`, `dry-run: true` | succeeds                                                     | `false`    |
-| `workflow-filter`      | `workflow: ci.yaml`, `dry-run: true`                          | succeeds                                                     | `false`    |
-| `branch-event-filter`  | `branch: main`, `event: push`, `dry-run: true`                | succeeds                                                     | `false`    |
-| `invalid-age`          | `max-age-hours: not-a-number`                                 | outcome is `failure`, and `failed-check` is `validate`       | `false`    |
-| `invalid-force-buffer` | `force-cancel-buffer-hours: -1`                               | outcome is `failure`                                         | `false`    |
-| `invalid-bool`         | `dry-run: yes`                                                | outcome is `failure`                                         | `false`    |
-| `invalid-status`       | `statuses: running`                                           | outcome is `failure`                                         | `false`    |
-| `unknown-workflow`     | `workflow: no-such-file.yaml`                                 | outcome is `failure` (the listing fails), outputs still set  | `false`    |
-| `fail-on-error-false`  | `workflow: no-such-file.yaml`, `fail-on-error: false`         | the listing still fails, which `fail-on-error` does not hide | `false`    |
+**New: one real contract check, no side effect.** `dev/check_gh_contract.sh`, run once, on
+`ubuntu-latest`, calls `gh api --method POST /repos/$GITHUB_REPOSITORY/actions/runs/1/cancel` with
+the job's token and asserts that it exits non-zero with `(HTTP 404)` on stderr (finding 5). Run id
+`1` does not exist in this repository, so nothing is cancelled. If `gh` changes its error format,
+this job fails before a user's run is wrongly counted as failed.
 
-The `released` column is `false` for every row until `v3.0.0` is released, because the released
-action has the old input names. Each failure row follows the positive row on the same runner
-(T12).
+What CI still cannot test: a real cancel of a real run (side effect). It is covered by the fake at
+levels 1 to 3, by the contract check above for the error format, and in production by
+`bot-cancel-stale-queued-runs.yaml`, which runs the released action every hour on this repository.
 
-- **Verification script:** `dev/check_action_case.sh` reads a case and the step outputs from
-  the environment and asserts them, so the local and the released runs use the same code (T6).
-  Outputs are asserted by format and by invariant, never printed only (T16).
-- **Level 3:** `nightly.yaml` calls `ci-action.yaml` with `use-released: true`, as today. The
-  pinned release in the file is updated by `bot-pin-action.yaml`.
-- **What CI cannot test, and what covers it (T11).** A real cancel changes the repository, so
-  no CI job does it. It is covered by the unit tests (level 1) with the fake `gh`, and in
-  production by `bot-cancel-stale-queued-runs.yaml`, which runs the released action hourly against
-  this repository: a failing real cancel fails that workflow, which is visible on the repository.
-- **Cells per run (T10):** 13 (general) + 11 (cases) on each of the PR, the push and the nightly
-  of the released action. `max-parallel: 8`, `fail-fast: false`, `timeout-minutes: 5`.
+Cells per run (T10): 13 (real dry run) + 14 (cases) + 1 (contract) = 28 jobs, 27 of them cheap
+(`ubuntu-latest`, seconds). Today: 13 + 11. `max-parallel: 8`, `fail-fast: false`,
+`timeout-minutes: 5`.
 
-### 6.4 Other checks, unchanged
+### 6.3 What does not change
 
-`ci-format.yaml`, `ci-shell.yaml`, `ci-shell-bash32.yaml` (P7: bash 3.2 on macOS),
-`ci-export.yaml` (P11), `ci-verify-workflows.yaml`, `lib-get-test-matrix.yaml`. The expected set
-of exported files in `dev/check_export.sh` is unchanged: `LICENSE`, `action.yaml`, `scripts/`,
-`scripts/cancel.sh`.
+`ci-format`, `ci-shell` (full matrix, because bash and BSD tools differ, P7), `ci-shell-bash32`,
+`ci-mutation-check`, `ci-export`, `ci-verify-workflows`, `lib-get-test-matrix`, and the rule that
+the pinned release in `ci-action.yaml` is updated by `bot-pin-action.yaml`.
 
 ## 7. Repository, workflows and documentation
 
-### Repository
+| Path                                        | Target                                                                                                                                                                                                                       |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                                 | Remove "Migrating from v2" (goes to the `v3.0.0` release notes). Fix the "oldest first" sentence (finding 3) and "outputs on every path" (5.4). Document the `87600` bound.                                                  |
+| `CONTRIBUTING.md`                           | Remove the CHANGELOG line, fix the `../` links, describe the fake-`gh` cases of `tests/action_cases.json` in 3 lines.                                                                                                        |
+| `examples/*.yaml`                           | `permissions: actions: write` only, no `contents: read`.                                                                                                                                                                     |
+| `.github/workflows/ci-action.yaml`          | Section 6.2: fake `gh` step, `calls` and `not-calls`, `actions: read` on the real dry run, no `github-token` or `repo` lines that repeat the defaults.                                                                       |
+| `.github/workflows/ci.yaml`, `nightly.yaml` | Caller job: `actions: read` (the cases need `contents: read` only).                                                                                                                                                          |
+| `bot-cancel-stale-queued-runs.yaml`         | After the release: `v3.0.0` pin, kebab-case names, no `max_runs` input, no `contents: read`, header updated.                                                                                                                 |
+| `bot-report-queued-runs.yaml`               | Decision D3. No change in this plan.                                                                                                                                                                                         |
+| `dev/`                                      | Add `check_gh_contract.sh` (about 15 lines). `check_action_case.sh` grows by about 25 lines (`calls`, `not-calls`, exact `outputs`).                                                                                         |
+| `tests/characterization.bats`               | Deleted, as in 6.1.                                                                                                                                                                                                          |
+| `CLAUDE.md`                                 | Add two rules: a function that can fail is followed by an explicit return 1 (never rely on set -e), and the action cases use the fake `gh` (`calls`, `not-calls`). Drop the sentence about the target layout, which is done. |
+| `git stash`                                 | Drop `stash@{0}` (finding 15), with the user's go-ahead.                                                                                                                                                                     |
 
-| Path                        | Target                                                                                                                                                                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `scripts/cancel.sh`         | At most 250 lines (section 5).                                                                                                                                                                                                       |
-| `tests/*.bats`              | About 8 files by behaviour group, `tests/helpers/fake_gh`, `tests/action_cases.json`, `tests/action_readme_sync.bats`.                                                                                                               |
-| `tests/fixtures/*.http`     | Removed, with the `-text` rule in `.gitattributes`.                                                                                                                                                                                  |
-| `dev/`                      | `check_action_case.sh`, `check_bats_assertions.sh`, `check_export.sh`, `mutation_check.sh`, `mutants.txt`. `run_for_repos.sh` removed.                                                                                               |
-| `dev/README.md` (250 lines) | Removed. What is useful (how to run the tests, how to add a mutation) goes to `CONTRIBUTING.md` in at most 30 lines.                                                                                                                 |
-| `examples/`                 | Three files: `basic-usage.yaml`, `scheduled-cleanup.yaml`, `multi-repo-cleanup.yaml` (a matrix over repositories, which replaces `run_for_repos.sh`). `ci-integration.yaml` and `custom-permissions.yaml` are covered by the README. |
-| `review/`                   | `testing.md` and this file.                                                                                                                                                                                                          |
+`.gitattributes` and the exported set do not change.
 
-### Workflows
+## 8. Migration plan
 
-- `bot-cancel-stale-queued-runs.yaml`: update to the new release and the new input names. Remove
-  the `max_runs` input. Keep the hourly schedule.
-- `bot-report-queued-runs.yaml`: unchanged, it is a report and not a use of the action.
-- `ci.yaml`, `ci-*.yaml`, `nightly.yaml`: structure unchanged, `ci-action.yaml` rewritten as in
-  section 6.3. Every job keeps `permissions`, `timeout-minutes` and pinned actions.
-- Everything else (`security-*`, `bot-format-files`, `bot-pin-action`, `bot-sync-shared-makefile`)
-  is unchanged.
+One branch and one PR per step, each from an up-to-date `main`, in this order. Steps 1 to 4 are
+independent of the release and of each other.
 
-### `README.md` (about 150 lines, down from 650)
+1. `bugfix/check-tools-and-age-bound`: findings 1 and 2, with the process-level tests and the
+   mutations. Smallest and the only wrong behaviour in the script. Behaviour change: a missing tool
+   now exits 1; `max-age-hours` above 87600 is refused.
+2. `test/fake-gh-action-cases`: section 6.2 (cases, `check_action_case.sh`, `ci-action.yaml`,
+   `check_gh_contract.sh`) and the removal of `characterization.bats`. Behaviour change: none. Every
+   row has `"released": false` until step 5.
+3. `feat/list-runs-in-dry-run-summary`: 5.2.
+4. `docs/fix-readme-and-contributing`: findings 3, 5.4, 11 (the migration table), 12 and the
+   examples' permissions. Merge **together with, or after,** the release of step 5 for the
+   `v3.0.0` references.
+5. **Release `v3.0.0`** (exact tag, release notes with the migration table, no floating tag). Then
+   one PR: pin it in `ci-action.yaml` and `bot-cancel-stale-queued-runs.yaml` (the pin bot may open
+   it), switch the released steps to kebab-case, set `"released": true` on every row the release
+   supports (all of them, if steps 1 and 3 are in the release), delete the snake_case aliases.
+6. After the experiment of 5.3: either `feat/force-cancel-unresponsive-runs` (shorter code, same
+   input) or `refactor/remove-force-cancel` (removes an input, so a breaking change: do it before
+   step 5 if the experiment is done by then).
 
-1. What it does, in three lines, and the one-step usage example.
-2. Inputs and outputs, as the two tables of section 3. The text is the one of `action.yaml`, and
-   `tests/action_readme_sync.bats` checks it (T14).
-3. Four examples: the default, a dry run, a filter on a workflow and a branch, and a scheduled
-   cleanup. The multi-repository case links to `examples/multi-repo-cleanup.yaml`.
-4. How it works, in the six steps of section 3, with the one rule (`updated_at` older than the
-   limit) and its consequence for a re-run run.
-5. Limitations: queued and similar statuses only, one repository, 1000 runs per status and
-   per execution (and why it converges), a run that GitHub refuses to cancel stays in the queue
-   and shows up as `skipped-count`, rate limits stop the execution and the next one continues.
-6. Migrating from `v2`: the table of section 8.
-
-The troubleshooting entries that quote log lines are removed. A log line is not an interface.
-A short "A run is skipped (HTTP 409)" paragraph remains, with the manual workaround
-(`gh api -X DELETE /repos/{repo}/actions/runs/{id}`) for the rare zombie run that the action no
-longer deletes.
-
-### `CLAUDE.md`
-
-Update four things: the test rule (one file per behaviour group), the list of `dev/` helpers, the
-sentence that says "Each function ... has its own `tests/<function_name>.bats` file", and the
-target layout note ("The cases are in a JSON file" is now true, so remove "does not follow it
-everywhere yet" for this repository). The shell rules (portable, `shellcheck`, `shfmt`, quote
-everything, validate early) stay.
-
-## 8. Breaking changes and migration
-
-Release `v3.0.0` (an exact tag, no floating tag, P12). The `v2.0.0` release stays valid.
-
-| Change                                                                                                                                 | Migration                                                                                          |
-| -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Inputs renamed to kebab-case (`github_token` to `github-token`, `max_age_hours` to `max-age-hours`, `fail_on_error`, `dry_run`)        | Rename the keys.                                                                                   |
-| `force_cancel_buffer_hours` renamed                                                                                                    | Rename the key to `force-cancel-buffer-hours`. The behaviour is the same.                          |
-| `delete_stuck_runs` removed                                                                                                            | Delete the key. Delete a zombie run by hand with the `gh api` command of the README.               |
-| `max_runs` removed                                                                                                                     | Use `concurrency: { group: ..., cancel-in-progress: true }` in the workflow that creates the runs. |
-| `max_cancellations` and `deferred_count` removed                                                                                       | Use `dry-run` first. The hourly schedule bounds the work of one execution to one backlog.          |
-| `cancel_delay_seconds` removed                                                                                                         | Replaced by a fixed one-second pause between two cancel requests.                                  |
-| Outputs renamed to kebab-case, and `found_count`, `would_cancel_count`, `deleted_count`, `deferred_count`, `listing_truncated` removed | Read `eligible-count` for the old `would_cancel_count`.                                            |
-| The five tuning environment variables of the script                                                                                    | They were not reachable from the action. Gone.                                                     |
-| `scripts/cancel.sh` called directly                                                                                                    | `dev/run_for_repos.sh` is removed. Use the matrix example.                                         |
-| A rate limit stops the execution instead of retrying 3 times                                                                           | The unprocessed runs are in `failed-count` and the next execution cancels them.                    |
-| A transient listing error fails the step at once (no retry)                                                                            | Next scheduled execution. A caller who needs more can wrap the step in a retry action.             |
-
-Behaviour that does not change: the age is measured from `updated_at`; the threshold is
-"strictly older than"; 404 and 409 are skipped; `fail-on-error` defaults to `true`; every input
-is validated before any API call; `dry-run` writes nothing.
+Per CLAUDE.md, each PR states which checks ran (`make lint` fails on `main` at `lint-makefile`, a
+shared `.make/` issue noted in the repository's tooling notes; run the targets one by one), that CI
+was not awaited, and which workflows cannot run locally (all of `ci-action.yaml`).
 
 ## 9. Decisions and risks
 
-- **D1. Remove the force-cancel tier?** Decided: **keep it.** It was useful for some repositories
-  in the past, and nothing in the repository proves it useless (finding 4). The target keeps the
-  behaviour as it is: `/cancel` first, then `/force-cancel` on an unexpected error for a run older
-  than `max-age-hours + force-cancel-buffer-hours`. Only the input is renamed. Follow-up, not
-  blocking: search the logs of `bot-cancel-stale-queued-runs.yaml` for a `Force-cancelling` run
-  that ended in 202. If there is none after a year, reopen the decision with that evidence.
-- **D2. Rename the inputs to kebab-case?** Decided: **yes**, as recommended (one convention in the
-  fleet, and the release is breaking anyway).
-- **D3. The fixed one-second pause.** Decided: **keep the simple rule**, as recommended. It costs
-  one second per cancelled run: a backlog of 300 runs takes five minutes, so set `timeout-minutes`
-  for it. If a backlog proves it too slow, apply the pause only after the 20th request.
-- **R1. The `created` filter is a risk to the speed, not to the result.** It was verified
-  empirically with one call (section 5.2), not only read in the documentation. If GitHub ignored
-  it, the listing would return too much, never too little, and the `updated_at` test in
-  `select_stale` is the authority, so the result is the same. Action: a level-1 test asserts that
-  the `created` field is sent. Nothing else.
-- **R2. The `(HTTP nnn)` suffix of `gh` errors is how the code is read.** It is the assumption the
-  current code already makes for the listing. An unknown code is `failed`, the safe side (a loud
-  failure, no wrong cancel). Action: before step 3 of the plan, run one real `gh api -X POST` that
-  returns 409 and one on a missing run that returns 404, paste the exact stderr into the fake `gh`
-  and into `cancel_run.bats`. A format change then fails a test, and the nightly run of the
-  released action shows it.
-- **R3. A smaller suite has fewer tests.** The count goes from 1087 to about 150, and the measure
-  is the coverage of the behaviours of section 3, not the count. Action: follow the order of the
-  plan. The characterization suite comes first (step 1), the old per-function tests are deleted
-  only in the PR of step 3, and that PR is merged only if `make mutation-check` passes on the new
-  suite. A decision without a mutant gets a mutant, not an old test.
+- **D1. The force-cancel experiment (5.3).** Needs the user: it sends one real `POST /force-cancel`
+  on one stuck run. Recommended: do it before the release, because the answer may remove an input.
+- **D2. Release timing.** `main` already documents `v3.0.0`. Recommended: release as soon as steps
+  1 and 2 are merged, so the README is true and level 3 starts to protect the v3 contract (finding
+  7). Steps 3 and 4 can follow in `v3.1.0`.
+- **D3. `bot-report-queued-runs.yaml`.** Options: keep it here (nothing breaks), or move it to a
+  personal `.github` or "ops" repository so this one is about one action. Recommended: move it when
+  convenient; it is not part of this plan and has no urgency.
+- **R1. The fake `gh` on the `PATH` assumes the composite step uses the `gh` of the `PATH`.** True
+  today (`gh api` in the script). The levels 2 and 3 cases would fail loudly, not pass silently,
+  if it changed: a case that expects a POST and sees none fails. The real dry-run job still runs
+  without the fake.
+- **R2. The fake can drift from the real API.** It is the reason for the two real jobs (dry run on
+  every OS, 404 contract check). A fake that gets a field wrong cannot be seen by the other 14
+  cases. Fixtures use only `id` and `updated_at`, the two fields the script reads.
+- **R3. Releasing before the experiment of 5.3** puts force-cancel in `v3.0.0` with a trigger that
+  may do nothing. Cost: if it must be removed, that is a second breaking release. Accepted if the
+  user wants the release first.
 
 ## 10. Rejected alternatives
 
-- **Keep every feature, only refactor.** It keeps the 14 inputs, the
-  destructive deletion and six times more test code than script. The cost of each feature is paid
-  on every change for ever, for a purpose (P1) it does not serve.
-- **Rewrite in Python or JavaScript.** Python is not on every runner image, JavaScript needs a
-  build step or a committed `dist/` (P11, P8). `gh` and `jq` are there, and with the server
-  filter and one `jq` call the logic is about 100 lines of bash.
-- **Several composite steps with step outputs.** Good for `read-json-action`, where each step
-  has a different tool. Here the data (a list of runs) is large and flows through one pipeline,
-  and a single script is the thing that runs on a laptop (T13).
-- **Move the logic into `action.yaml` as `run:` blocks.** It cannot be sourced and unit-tested,
-  which T5 and T13 require.
-- **Keep the retry layers, but share one.** Smaller than today, but still about 80 lines and
-  3 inputs of tuning for a case (a transient failure) that the hourly schedule already absorbs.
-- **List everything, then filter in `jq`, without `created`.** Simpler to explain, and it
-  is what the action does today. It downloads every young run to find the old ones and loses the
-  old ones when the queue is over 1000 (finding 9).
-- **Keep `max_runs` as a separate action.** The use case (prune a queue to the N most recent
-  runs) is what `concurrency: cancel-in-progress` does at creation time, with no scheduled job.
-
-## 11. Migration plan
-
-One branch and one PR per step, each from an up-to-date `main` (CLAUDE.md). Each PR leaves `main`
-releasable.
-
-1. **Tests first.** Add `tests/helpers/fake_gh` and `tests/action_cases.json`, and a characterization
-   suite of the current behaviour at the script boundary (the five rules that stay: threshold,
-   dry run, 404 and 409, `fail-on-error`, validation). Nothing in the script changes. This is what
-   makes steps 2 and 3 safe.
-2. **Remove the features** (`delete_stuck_runs`, `max_runs`, `max_cancellations`,
-   `cancel_delay_seconds`, tuning variables), with their tests, mutations and README
-   text. Behaviour change: listed in section 8.
-3. **Rewrite the core:** `jq` dates, `list_stale` with the `created` filter, `cancel_run` reading
-   the code from `gh`, the one `require` table, the one summary. Delete the old functions and the
-   old tests. The script is at most 250 lines at the end of this PR.
-4. **Rename inputs and outputs** and the new `action.yaml` (section 4), update the bot workflow
-   and the examples, rewrite the README and `CLAUDE.md`, remove `dev/run_for_repos.sh`,
-   `dev/README.md` and `tests/fixtures/`.
-5. **Rewrite `ci-action.yaml`** with the case table, remove the real cancels, add
-   `dev/check_action_case.sh`, reduce `dev/mutants.txt`.
-6. **Release `v3.0.0`**, then pin it in `ci-action.yaml` and in the bot workflow (the pin bot
-   does it), and set `released: true` on the rows that the release supports.
-
-Steps 2 and 3 can be one PR if the review is easy, but not with step 4: the rename is the part a
-consumer sees, and a revert must be possible alone.
+- **Redesign the contract again before the first v3 release.** No flaw in it is large enough to pay
+  for a second migration (section 4).
+- **Test the action only at level 1.** The wiring (`env:` names, outputs) is the part that unit
+  tests cannot see, and it is the part that breaks on a rename. The fake `gh` makes level 2 as
+  cheap as level 1.
+- **Create stale queued runs in a scratch repository for a real cancel test.** A queued run cannot
+  be made stale in minutes (the age threshold is in hours), and it needs a second repository, a
+  token and a cleanup. The fake and one 404 check show the same thing, with no state.
+- **Rewrite the script in Python or JavaScript.** Not on every runner, or a build step (P7, P8,
+  P11). `gh` and `jq` are enough for 245 lines.
+- **Move the logic into `run:` blocks of `action.yaml`.** It could not be sourced and tested (T5).
+- **Delete `check_bats_assertions.sh` and the bash 3.2 job.** They protect against a real bats
+  limitation on the macOS bash and cost 60 lines and one macOS job. Revisit only if P7 drops bash
+  3.2.
