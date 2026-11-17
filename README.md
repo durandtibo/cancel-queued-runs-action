@@ -148,7 +148,7 @@ a warning, not a failure. Running the action twice gives the same end state.
 | Outputs `found_count`, `would_cancel_count`, `listing_truncated` | Removed. Read `eligible-count` for the old `would_cancel_count`       |
 | Outputs `*_count` and `cancelled_run_ids`                        | Renamed to `*-count` and `cancelled-run-ids`                          |
 | Retries on rate limits and on listing errors                     | None: the next execution is the retry                                 |
-| `scripts/cancel.sh` called directly, `dev/run_for_repos.sh`      | Use the action; for several repositories, the matrix example          |
+| `scripts/cancel.sh` called directly                              | Use the action; for several repositories, the matrix example          |
 
 ## 🤝 Contributing
 
