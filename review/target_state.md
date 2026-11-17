@@ -45,7 +45,7 @@ Numbers are counted from the repository at `02295e7`. Ordered by impact.
   cancel a run that was queued one minute ago. `delete_stuck_runs` deletes runs and their
   history. `max_cancellations` and `cancel_delay_seconds` are safety valves and rate-limit tuning
   that a hourly job with `dry_run` does not need. `force_cancel_buffer_hours` configures a tier
-  whose value is doubtful (finding 4).
+  whose value is doubtful (finding 4); the maintainer decided to keep it (D1).
 - **3.** **Two retry mechanisms, one tuning layer.** The listing retries on the error text
   (`is_transient_error`, 37 lines). The cancel retries on the HTTP headers (`is_rate_limited`,
   `get_retry_delay`, `post_run_endpoint_with_retry`, about 130 lines with the CRLF handling and
@@ -58,7 +58,8 @@ Numbers are counted from the repository at `02295e7`. Ordered by impact.
   answers 409 to `/cancel`, which is skipped with no second request. So the tier runs only after
   a 5xx or a 403 on `/cancel`, which `/force-cancel` is unlikely to fix. `dev/README.md` says
   it itself: force-cancel "occasionally fails with a 500". Nothing in the repository shows one
-  run that this tier cancelled. See open decision D1.
+  run that this tier cancelled. Decision D1: the tier stays, because it was useful for some
+  repositories in the past; the target keeps its behaviour and its input.
 - **5.** **Dates are parsed in bash for both GNU and BSD** (`to_unix_ts`, `compute_age_seconds`,
   `format_age`, `is_old_enough`, about 110 lines plus the mutations that pin them). `jq` has
   `fromdateiso8601` and `now`, and is already required.
@@ -83,7 +84,7 @@ Numbers are counted from the repository at `02295e7`. Ordered by impact.
   young runs and 3 stale ones is a single page of 3 runs.
 - **10.** **Wasted calls.** For a repository with a big queue, the current listing downloads up
   to 10 pages of 100 runs for each status, then throws away nearly all of them.
-- **11.** **Cancel and force-cancel, deletion and `/jobs` lookups add up to four request types
+- **11.** **Cancel, force-cancel, deletion and `/jobs` lookups add up to four request types
   per run**, each with its own error handling, the 404 and 403 special cases of `delete_run`,
   and the `PROCESS_RUN_OUTCOME` states `noop`, `cancelled`, `deleted`, `skipped`, `would-cancel`,
   `failed`.
@@ -128,19 +129,20 @@ Numbers are counted from the repository at `02295e7`. Ordered by impact.
 
 Breaking changes are intentional, listed in section 8. The target version is `v3.0.0`.
 
-### Inputs (9, down from 14)
+### Inputs (10, down from 14)
 
-| Input           | Default                    | Description                                                                                                                                                       |
-| --------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github-token`  | `${{ github.token }}`      | Token with `actions: write` on the target repository.                                                                                                             |
-| `repo`          | `${{ github.repository }}` | Target repository, `owner/name`.                                                                                                                                  |
-| `max-age-hours` | `24`                       | A run older than this many hours is cancelled. Positive integer. The age is measured from the last update of the run (`updated_at`), so a re-run restarts it.     |
-| `statuses`      | `queued`                   | Comma-separated, among `queued`, `waiting`, `pending`, `requested`. Duplicates are ignored. Runs in progress are never listed.                                    |
-| `workflow`      | empty                      | Only the runs of this workflow: a file name (`ci.yaml`) or a numeric ID. Empty means all.                                                                         |
-| `branch`        | empty                      | Only the runs of this head branch, by name, case sensitive. Empty means all.                                                                                      |
-| `event`         | empty                      | Only the runs triggered by this event (`push`, `schedule`, ...). Empty means all.                                                                                 |
-| `fail-on-error` | `true`                     | `true` or `false`. When `false`, a run that could not be cancelled is a warning and the step succeeds. Invalid inputs and a failure to list the runs always fail. |
-| `dry-run`       | `false`                    | `true` or `false`. List and log the runs that would be cancelled, send nothing that writes.                                                                       |
+| Input                       | Default                    | Description                                                                                                                                                                                                                        |
+| --------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github-token`              | `${{ github.token }}`      | Token with `actions: write` on the target repository.                                                                                                                                                                              |
+| `repo`                      | `${{ github.repository }}` | Target repository, `owner/name`.                                                                                                                                                                                                   |
+| `max-age-hours`             | `24`                       | A run older than this many hours is cancelled. Positive integer. The age is measured from the last update of the run (`updated_at`), so a re-run restarts it.                                                                      |
+| `statuses`                  | `queued`                   | Comma-separated, among `queued`, `waiting`, `pending`, `requested`. Duplicates are ignored. Runs in progress are never listed.                                                                                                     |
+| `workflow`                  | empty                      | Only the runs of this workflow: a file name (`ci.yaml`) or a numeric ID. Empty means all.                                                                                                                                          |
+| `branch`                    | empty                      | Only the runs of this head branch, by name, case sensitive. Empty means all.                                                                                                                                                       |
+| `event`                     | empty                      | Only the runs triggered by this event (`push`, `schedule`, ...). Empty means all.                                                                                                                                                  |
+| `force-cancel-buffer-hours` | `3`                        | Non-negative integer. A run older than `max-age-hours` plus this many hours, which `/cancel` refused with something other than 202, 404 or 409, is sent to `/force-cancel`. `0` means as soon as it is older than `max-age-hours`. |
+| `fail-on-error`             | `true`                     | `true` or `false`. When `false`, a run that could not be cancelled is a warning and the step succeeds. Invalid inputs and a failure to list the runs always fail.                                                                  |
+| `dry-run`                   | `false`                    | `true` or `false`. List and log the runs that would be cancelled, send nothing that writes.                                                                                                                                        |
 
 Booleans accept exactly `true` and `false`. Anything else fails the step.
 
@@ -175,8 +177,11 @@ and `listing_truncated` (their features are removed, see section 8).
    `id` (a status changed between two calls), sort by `updated_at`, oldest first. The output is
    one `id age` line per run.
 5. **Cancel** each run, oldest first, with `POST /actions/runs/{id}/cancel`, unless `dry-run`.
-   Outcome by HTTP code: 202 cancelled; 404 or 409 skipped with a warning; 429, or 403 with a
-   rate limit message: stop, and count this run and the ones after it as failed; anything else:
+   If the run is older than `max-age-hours + force-cancel-buffer-hours` and `/cancel` did not answer
+   202, 404, 409 or a rate limit, send `POST /actions/runs/{id}/force-cancel` once (GitHub rejects
+   it with 409 unless a regular cancel was sent first, so it is always the second request). Outcome
+   of the last request by HTTP code: 202 cancelled; 404 or 409 skipped with a warning; 429, or
+   403 with a rate limit message: stop, and count this run and the ones after it as failed; anything else:
    failed, and continue. A fixed pause of one second separates two requests (the delay GitHub asks
    for between requests that write); nothing is waited before the first one or in a dry run.
 6. **Report**: set the outputs, write one summary table (section 4), and exit `1` when
@@ -186,7 +191,8 @@ and `listing_truncated` (their features are removed, see section 8).
    execution sees the rest, and the execution converges.
 
 The decision `cancel / do not cancel` has exactly one rule (P2): `updated_at < cutoff`. There is
-no second tier, and no rule depends on another input.
+no second tier for the decision, and no rule depends on another input. `force-cancel` is a
+fallback for the way a run is cancelled, not a second reason to cancel it.
 
 ## 4. Target `action.yaml`
 
@@ -227,6 +233,11 @@ inputs:
   event:
     description: "Only the runs triggered by this event (push, schedule, ...)"
     default: ""
+  force-cancel-buffer-hours:
+    description: >
+      Hours after max-age-hours from which /force-cancel is tried when /cancel is refused with an
+      unexpected error (non-negative integer, 0 means right after max-age-hours)
+    default: "3"
   fail-on-error:
     description: >
       "true" or "false". If "false", a run that could not be cancelled is a warning, not a failure
@@ -264,6 +275,7 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         REPO: ${{ inputs.repo }}
         MAX_AGE_HOURS: ${{ inputs.max-age-hours }}
+        FORCE_BUFFER_HOURS: ${{ inputs.force-cancel-buffer-hours }}
         STATUSES: ${{ inputs.statuses }}
         WORKFLOW: ${{ inputs.workflow }}
         BRANCH: ${{ inputs.branch }}
@@ -287,19 +299,19 @@ that takes its input as an argument and prints its result.
 
 ### 5.1 Functions
 
-| Function        | Lines | Job                                                                                              |
-| --------------- | ----- | ------------------------------------------------------------------------------------------------ |
-| `die`           | 4     | Print `::error::` and exit 1 (or return, when sourced).                                          |
-| `require`       | 12    | `require NAME KIND`: one rule table for all the inputs (`int`, `bool`, `statuses`, `repo`, ...). |
-| `validate_all`  | 25    | Call `require` for each input, then check `gh`, `jq` and the token.                              |
-| `cutoff`        | 4     | Print the ISO 8601 UTC time `max-age-hours` ago, computed by `jq` (`now`, `todate`).             |
-| `list_stale`    | 30    | One paginated `gh api` call per distinct status. Print `{id, updated_at}` lines.                 |
-| `select_stale`  | 10    | `jq`: filter on the cutoff, deduplicate by id, sort oldest first, print `id age_seconds`.        |
-| `cancel_run`    | 20    | One `POST`, print `cancelled`, `skipped`, `failed` or `rate-limited`.                            |
-| `cancel_all`    | 30    | The loop: pause, call `cancel_run`, count, stop on a rate limit.                                 |
-| `write_outputs` | 12    | Write the five outputs to `$GITHUB_OUTPUT`.                                                      |
-| `write_summary` | 25    | The one table.                                                                                   |
-| `main`          | 30    | The flow of section 3, skipped when the file is sourced by tests.                                |
+| Function        | Lines | Job                                                                                                                      |
+| --------------- | ----- | ------------------------------------------------------------------------------------------------------------------------ |
+| `die`           | 4     | Print `::error::` and exit 1 (or return, when sourced).                                                                  |
+| `require`       | 12    | `require NAME KIND`: one rule table for all the inputs (`int`, `bool`, `statuses`, `repo`, ...).                         |
+| `validate_all`  | 25    | Call `require` for each input, then check `gh`, `jq` and the token.                                                      |
+| `cutoff`        | 4     | Print the ISO 8601 UTC time `max-age-hours` ago, computed by `jq` (`now`, `todate`).                                     |
+| `list_stale`    | 30    | One paginated `gh api` call per distinct status. Print `{id, updated_at}` lines.                                         |
+| `select_stale`  | 10    | `jq`: filter on the cutoff, deduplicate by id, sort oldest first, print `id age_seconds`.                                |
+| `cancel_run`    | 30    | `POST` `/cancel`, then the `/force-cancel` fallback of step 5. Print `cancelled`, `skipped`, `failed` or `rate-limited`. |
+| `cancel_all`    | 30    | The loop: pause, call `cancel_run`, count, stop on a rate limit.                                                         |
+| `write_outputs` | 12    | Write the five outputs to `$GITHUB_OUTPUT`.                                                                              |
+| `write_summary` | 25    | The one table.                                                                                                           |
+| `main`          | 30    | The flow of section 3, skipped when the file is sourced by tests.                                                        |
 
 ### 5.2 Key mechanics
 
@@ -354,6 +366,12 @@ cancel_run() { # $1: run id
 }
 ```
 
+`cancel_run` takes the run id and its age in seconds. After a `/cancel` that is not a 202, a 404, a
+409 or a rate limit, and only if the age exceeds `(MAX_AGE_HOURS + FORCE_BUFFER_HOURS) * 3600`, it
+sends the same `POST` to `/force-cancel` and classifies that answer with the same `case`. The
+threshold and the fallback are the `process_run` tiers that stay; the delete tier is removed.
+(The snippet above shows the classification only.)
+
 **No global state to chase.** `cancel_all` reads the `id age` lines and keeps four counters and
 the list of ids in its own scope; `write_outputs` and `write_summary` take them as arguments
 (`write_outputs eligible cancelled skipped failed ids`). There is no `PROCESS_RUN_OUTCOME`, no
@@ -364,6 +382,7 @@ the list of ids in its own scope; `write_outputs` and `write_summary` take them 
 ```bash
 validate_all() {
   require MAX_AGE_HOURS pint
+  require FORCE_BUFFER_HOURS nint
   require STATUSES statuses
   require FAIL_ON_ERROR bool
   require DRY_RUN bool
@@ -384,7 +403,7 @@ query parameter or break the path. `WORKFLOW` and `REPO` go in a path and keep a
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
 | `to_unix_ts`, `compute_age_seconds`, `format_age`, `is_old_enough`                                                                                                                      | 110           | `jq` does the dates (finding 5).                                                  |
 | `is_transient_error`, `list_runs_of_status` retry, `get_retry_delay`, `is_rate_limited`, `post_run_endpoint_with_retry`, `get_status_code`, `get_response_message`, `post_run_endpoint` | 330           | The schedule is the retry (finding 3).                                            |
-| `force_cancel_run`, the force tier in `process_run`                                                                                                                                     | 60            | Almost never applies (finding 4).                                                 |
+| `delete_run`, `delete_zombie_run`, `run_has_no_jobs`, the delete tier in `process_run`                                                                                                  | 140           | Destructive, out of purpose (P1).                                                 |
 | `delete_run`, `delete_zombie_run`, `run_has_no_jobs`                                                                                                                                    | 140           | Destructive, out of purpose (P1).                                                 |
 | `select_excess_run_ids`, `cancellation_limit_reached`, `throttle_requests` configuration, `reset_counters`, `record_run`, `count_unparsed_runs`                                         | 120           | `max_runs`, `max_cancellations`, `cancel_delay_seconds` and the globals are gone. |
 | 14 validators, `validate_tuning_variables`                                                                                                                                              | 270           | One `require` function and a table.                                               |
@@ -406,10 +425,12 @@ The strategy is `review/testing.md`. The target is a smaller suite that pins beh
   valid and one invalid value, all in a table), `select_stale.bats` (boundaries: exactly
   `max-age-hours`, one second more, one second less, a re-run run, a duplicate, an empty list),
   `cancel_run.bats` (202, 404, 409, 429, 403 with and without a rate limit message, 500, an
-  empty body), `cancel_all.bats` (order, pause, stop on a rate limit, counters), `list_stale.bats`
-  (filters sent as fields, one call per distinct status, an error on the listing), `main.bats`
-  (the flow, dry run sends no `POST`, `fail-on-error`, outputs on every path), `outputs.bats`
-  (format of the five outputs and of the summary).
+  empty body; force-cancel after a 500 on an old run, none on a young run, none after a 404, 409
+  or rate limit, the boundary of the buffer, `0` for the buffer), `cancel_all.bats` (order,
+  pause, stop on a rate limit, counters), `list_stale.bats` (filters sent as fields, one call per
+  distinct status, an error on the listing), `main.bats` (the flow, dry run sends no `POST`,
+  `fail-on-error`, outputs on every path), `outputs.bats` (format of the five outputs and of the
+  summary).
 - The rule "each function has its own `tests/<function>.bats`" in `CLAUDE.md` is replaced by "one
   file per behaviour group, named after what it checks". The rule "one behaviour per test",
   "mock `gh`", "regression test for each bug fix" and "boundary ages" stay.
@@ -424,18 +445,20 @@ switch inside the script would put test code in production. To survive a refacto
 limited to about 15 mutations on the decisions that matter, each anchored on a short, stable
 token (an operator, a function name) and not on a whole line:
 
-| Decision                                | Mutation                             |
-| --------------------------------------- | ------------------------------------ |
-| Age is strictly greater than the cutoff | `<` to `<=` in `select_stale`        |
-| A run younger than the cutoff is kept   | remove the `select`                  |
-| Duplicates are removed                  | remove `unique_by`                   |
-| Dry run sends nothing                   | ignore `DRY_RUN`                     |
-| 404 and 409 are skipped, not failed     | swap with `failed`                   |
-| A rate limit stops the loop             | continue instead of stopping         |
-| `fail-on-error: false` does not fail    | ignore it                            |
-| A non-boolean value is rejected         | accept any value                     |
-| Statuses are listed once each           | remove the deduplication of statuses |
-| The filters are sent                    | drop `branch` and `event`            |
+| Decision                                    | Mutation                             |
+| ------------------------------------------- | ------------------------------------ |
+| Age is strictly greater than the cutoff     | `<` to `<=` in `select_stale`        |
+| A run younger than the cutoff is kept       | remove the `select`                  |
+| Duplicates are removed                      | remove `unique_by`                   |
+| Dry run sends nothing                       | ignore `DRY_RUN`                     |
+| 404 and 409 are skipped, not failed         | swap with `failed`                   |
+| A rate limit stops the loop                 | continue instead of stopping         |
+| Force-cancel only after an unexpected error | send it after any non-202            |
+| Force-cancel only after the buffer          | drop the age condition               |
+| `fail-on-error: false` does not fail        | ignore it                            |
+| A non-boolean value is rejected             | accept any value                     |
+| Statuses are listed once each               | remove the deduplication of statuses |
+| The filters are sent                        | drop `branch` and `event`            |
 
 The check runs on one OS in `ci-mutation-check.yaml`, as today. If the number of mutations grows
 over 25, that is a sign the script grew again.
@@ -452,18 +475,19 @@ real run (T11), and the cases are data (T8).
 - **Edge cases, one runner (`ubuntu-latest`):** one row per case in `tests/action_cases.json`,
   each row a matrix cell:
 
-| Case id               | Inputs                                                        | Asserts                                                      | `released` |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ | ---------- |
-| `default-dry-run`     | `dry-run: true`                                               | outputs are well formed                                      | `false`    |
-| `huge-age`            | `max-age-hours: 87600`, `dry-run: true`                       | `eligible-count` is exactly `0`                              | `false`    |
-| `all-statuses`        | `statuses: queued,waiting,pending,requested`, `dry-run: true` | succeeds                                                     | `false`    |
-| `workflow-filter`     | `workflow: ci.yaml`, `dry-run: true`                          | succeeds                                                     | `false`    |
-| `branch-event-filter` | `branch: main`, `event: push`, `dry-run: true`                | succeeds                                                     | `false`    |
-| `invalid-age`         | `max-age-hours: not-a-number`                                 | outcome is `failure`, and `failed-check` is `validate`       | `false`    |
-| `invalid-bool`        | `dry-run: yes`                                                | outcome is `failure`                                         | `false`    |
-| `invalid-status`      | `statuses: running`                                           | outcome is `failure`                                         | `false`    |
-| `unknown-workflow`    | `workflow: no-such-file.yaml`                                 | outcome is `failure` (the listing fails), outputs still set  | `false`    |
-| `fail-on-error-false` | `workflow: no-such-file.yaml`, `fail-on-error: false`         | the listing still fails, which `fail-on-error` does not hide | `false`    |
+| Case id                | Inputs                                                        | Asserts                                                      | `released` |
+| ---------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ | ---------- |
+| `default-dry-run`      | `dry-run: true`                                               | outputs are well formed                                      | `false`    |
+| `huge-age`             | `max-age-hours: 87600`, `dry-run: true`                       | `eligible-count` is exactly `0`                              | `false`    |
+| `all-statuses`         | `statuses: queued,waiting,pending,requested`, `dry-run: true` | succeeds                                                     | `false`    |
+| `workflow-filter`      | `workflow: ci.yaml`, `dry-run: true`                          | succeeds                                                     | `false`    |
+| `branch-event-filter`  | `branch: main`, `event: push`, `dry-run: true`                | succeeds                                                     | `false`    |
+| `invalid-age`          | `max-age-hours: not-a-number`                                 | outcome is `failure`, and `failed-check` is `validate`       | `false`    |
+| `invalid-force-buffer` | `force-cancel-buffer-hours: -1`                               | outcome is `failure`                                         | `false`    |
+| `invalid-bool`         | `dry-run: yes`                                                | outcome is `failure`                                         | `false`    |
+| `invalid-status`       | `statuses: running`                                           | outcome is `failure`                                         | `false`    |
+| `unknown-workflow`     | `workflow: no-such-file.yaml`                                 | outcome is `failure` (the listing fails), outputs still set  | `false`    |
+| `fail-on-error-false`  | `workflow: no-such-file.yaml`, `fail-on-error: false`         | the listing still fails, which `fail-on-error` does not hide | `false`    |
 
 The `released` column is `false` for every row until `v3.0.0` is released, because the released
 action has the old input names. Each failure row follows the positive row on the same runner
@@ -478,7 +502,7 @@ action has the old input names. Each failure row follows the positive row on the
   no CI job does it. It is covered by the unit tests (level 1) with the fake `gh`, and in
   production by `bot-cancel-stale-queued-runs.yaml`, which runs the released action hourly against
   this repository: a failing real cancel fails that workflow, which is visible on the repository.
-- **Cells per run (T10):** 13 (general) + 10 (cases) on each of the PR, the push and the nightly
+- **Cells per run (T10):** 13 (general) + 11 (cases) on each of the PR, the push and the nightly
   of the released action. `max-parallel: 8`, `fail-fast: false`, `timeout-minutes: 5`.
 
 ### 6.4 Other checks, unchanged
@@ -546,7 +570,7 @@ Release `v3.0.0` (an exact tag, no floating tag, P12). The `v2.0.0` release stay
 | Change                                                                                                                                 | Migration                                                                                          |
 | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | Inputs renamed to kebab-case (`github_token` to `github-token`, `max_age_hours` to `max-age-hours`, `fail_on_error`, `dry_run`)        | Rename the keys.                                                                                   |
-| `force_cancel_buffer_hours` removed, and the `/force-cancel` fallback with it                                                          | Delete the key. A run that `/cancel` refuses with 409 is counted in `skipped-count`.               |
+| `force_cancel_buffer_hours` renamed                                                                                                    | Rename the key to `force-cancel-buffer-hours`. The behaviour is the same.                          |
 | `delete_stuck_runs` removed                                                                                                            | Delete the key. Delete a zombie run by hand with the `gh api` command of the README.               |
 | `max_runs` removed                                                                                                                     | Use `concurrency: { group: ..., cancel-in-progress: true }` in the workflow that creates the runs. |
 | `max_cancellations` and `deferred_count` removed                                                                                       | Use `dry-run` first. The hourly schedule bounds the work of one execution to one backlog.          |
@@ -563,34 +587,37 @@ is validated before any API call; `dry-run` writes nothing.
 
 ## 9. Decisions and risks
 
-- **D1. Remove the force-cancel tier?** The recommendation is to remove it (finding 4). It is the
-  only item that rests on a fact the repository does not contain. Before the change, search the
-  logs of `bot-cancel-stale-queued-runs.yaml` for `Force-cancelling` followed by a 202. If one
-  exists, keep one fallback, `/cancel` then `/force-cancel` on a 5xx, as the only tier, with no
-  buffer input.
-- **D2. Rename the inputs to kebab-case?** Recommended: one convention in the fleet, and the
-  release is breaking anyway. If the cost for consumers is judged too high, keep `snake_case`;
-  nothing else in this document depends on it.
-- **D3. The fixed one-second pause.** It costs one second per cancelled run: a backlog of 300 runs
-  takes five minutes, and the job has `timeout-minutes` to set for it. If that is too slow, make
-  the pause apply only after the 20th request. The simpler rule is kept until a backlog proves
-  it wrong.
-- **R1. The `created` filter is a documented API feature, but a change by GitHub would make the
-  listing return too much, not too little.** The `updated_at` test in `select_stale` is the
-  authority, so the filter can only cost time. A level-1 test asserts that the `created` field is
-  sent, and the nightly dry run on the released action shows a changed behaviour as a failure.
-- **R2. The `(HTTP nnn)` suffix of `gh` errors is how the code is read.** This is the same
-  assumption the current code makes for the listing. The level-1 tests pin the shape. If `gh`
-  changes it, the unknown code is `failed`, which is the safe side (a loud failure, no wrong
-  cancel).
-- **R3. A smaller suite has fewer tests.** The count of tests goes from 1087 to about 150. The
-  aim is that each of them describes a behaviour of section 3, and the mutation check (6.2) is the
-  proof that the boundaries are covered. Coverage of behaviours, not the number of tests, is the
-  measure.
+- **D1. Remove the force-cancel tier?** Decided: **keep it.** It was useful for some repositories
+  in the past, and nothing in the repository proves it useless (finding 4). The target keeps the
+  behaviour as it is: `/cancel` first, then `/force-cancel` on an unexpected error for a run older
+  than `max-age-hours + force-cancel-buffer-hours`. Only the input is renamed. Follow-up, not
+  blocking: search the logs of `bot-cancel-stale-queued-runs.yaml` for a `Force-cancelling` run
+  that ended in 202. If there is none after a year, reopen the decision with that evidence.
+- **D2. Rename the inputs to kebab-case?** Decided: **yes**, as recommended (one convention in the
+  fleet, and the release is breaking anyway).
+- **D3. The fixed one-second pause.** Decided: **keep the simple rule**, as recommended. It costs
+  one second per cancelled run: a backlog of 300 runs takes five minutes, so set `timeout-minutes`
+  for it. If a backlog proves it too slow, apply the pause only after the 20th request.
+- **R1. The `created` filter is a risk to the speed, not to the result.** It was verified
+  empirically with one call (section 5.2), not only read in the documentation. If GitHub ignored
+  it, the listing would return too much, never too little, and the `updated_at` test in
+  `select_stale` is the authority, so the result is the same. Action: a level-1 test asserts that
+  the `created` field is sent. Nothing else.
+- **R2. The `(HTTP nnn)` suffix of `gh` errors is how the code is read.** It is the assumption the
+  current code already makes for the listing. An unknown code is `failed`, the safe side (a loud
+  failure, no wrong cancel). Action: before step 3 of the plan, run one real `gh api -X POST` that
+  returns 409 and one on a missing run that returns 404, paste the exact stderr into the fake `gh`
+  and into `cancel_run.bats`. A format change then fails a test, and the nightly run of the
+  released action shows it.
+- **R3. A smaller suite has fewer tests.** The count goes from 1087 to about 150, and the measure
+  is the coverage of the behaviours of section 3, not the count. Action: follow the order of the
+  plan. The characterization suite comes first (step 1), the old per-function tests are deleted
+  only in the PR of step 3, and that PR is merged only if `make mutation-check` passes on the new
+  suite. A decision without a mutant gets a mutant, not an old test.
 
 ## 10. Rejected alternatives
 
-- **Keep every feature, only refactor.** It keeps the 14 inputs, the doubtful tier, the
+- **Keep every feature, only refactor.** It keeps the 14 inputs, the
   destructive deletion and six times more test code than script. The cost of each feature is paid
   on every change for ever, for a purpose (P1) it does not serve.
 - **Rewrite in Python or JavaScript.** Python is not on every runner image, JavaScript needs a
@@ -619,7 +646,7 @@ releasable.
    dry run, 404 and 409, `fail-on-error`, validation). Nothing in the script changes. This is what
    makes steps 2 and 3 safe.
 2. **Remove the features** (`delete_stuck_runs`, `max_runs`, `max_cancellations`,
-   `cancel_delay_seconds`, force tier, tuning variables), with their tests, mutations and README
+   `cancel_delay_seconds`, tuning variables), with their tests, mutations and README
    text. Behaviour change: listed in section 8.
 3. **Rewrite the core:** `jq` dates, `list_stale` with the `created` filter, `cancel_run` reading
    the code from `gh`, the one `require` table, the one summary. Delete the old functions and the
