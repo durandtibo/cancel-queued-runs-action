@@ -6,7 +6,8 @@ Guidance for coding agents working in this repository.
 
 A GitHub composite action (`action.yaml`) that cancels workflow runs queued longer than
 `max_age_hours`. The logic lives in `scripts/cancel.sh` (bash, must work on GNU/Linux and
-BSD/macOS) and is tested with [bats](https://github.com/bats-core/bats-core) in `tests/`.
+BSD/macOS; Windows is not supported and not tested) and is tested with
+[bats](https://github.com/bats-core/bats-core) in `tests/`.
 `dev/` holds maintainer helpers (`run_for_repos.sh`), not part of the action.
 
 ## Environment
