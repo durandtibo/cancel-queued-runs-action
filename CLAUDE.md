@@ -93,7 +93,8 @@ Conventions:
 
 ## Tests
 
-- Each function in `scripts/cancel.sh` has its own `tests/<function_name>.bats` file.
+- One bats file per behaviour group, named after what it checks (`validate.bats`, `select_stale.bats`,
+  `cancel_run.bats`, ...). Use the fake `gh` of `tests/helpers/fake_gh`; time is injected, never mocked.
 - One behaviour per test; mock `gh` and `date` rather than calling the network.
 - Cover success, failure, and edge cases (boundary ages, empty results, API errors).
 - Every bug fix needs a regression test that fails without the fix.

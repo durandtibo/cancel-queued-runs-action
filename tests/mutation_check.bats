@@ -18,18 +18,18 @@ teardown() {
 }
 
 @test "mutation_check detects a mutation that breaks the tests of a function" {
-  printf '%s\n' 'format_age: no clamp@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/' > "$MUTANTS_FILE"
+  printf '%s\n' 'select_stale: strict@@select_stale.bats@@s/updated_at < \$c/updated_at <= $c/' > "$MUTANTS_FILE"
 
   run "$CHECK"
 
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "killed    format_age: no clamp" ]] || false
+  [[ "$output" =~ "killed    select_stale: strict" ]] || false
   [[ "$output" =~ "1 of 1 mutation(s) detected." ]] || false
 }
 
 @test "mutation_check fails when a mutation survives" {
   # only a comment changes: no test can notice
-  printf '%s\n' 'comment@@format_age.bats@@s/^# Cancel Queued Workflow Runs$/# Changed/' > "$MUTANTS_FILE"
+  printf '%s\n' 'comment@@select_stale.bats@@s/^# Cancel the workflow runs/# Changed the workflow runs/' > "$MUTANTS_FILE"
 
   run "$CHECK"
 
@@ -39,7 +39,7 @@ teardown() {
 }
 
 @test "mutation_check fails when the expression does not change the script" {
-  printf '%s\n' 'nothing@@format_age.bats@@s/this text does not exist/x/' > "$MUTANTS_FILE"
+  printf '%s\n' 'nothing@@select_stale.bats@@s/this text does not exist/x/' > "$MUTANTS_FILE"
 
   run "$CHECK"
 
@@ -48,7 +48,7 @@ teardown() {
 }
 
 @test "mutation_check fails when the mutated script is not valid bash" {
-  printf '%s\n' 'syntax@@format_age.bats@@s/^format_age\(\) \{$/format_age() {{{/' > "$MUTANTS_FILE"
+  printf '%s\n' 'syntax@@select_stale.bats@@s/^select_stale\(\) \{$/select_stale() {{{/' > "$MUTANTS_FILE"
 
   run "$CHECK"
 
@@ -57,7 +57,7 @@ teardown() {
 }
 
 @test "mutation_check ignores the comments and the empty lines" {
-  printf '%s\n' '# a comment' '' 'format_age: no clamp@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/' > "$MUTANTS_FILE"
+  printf '%s\n' '# a comment' '' 'select_stale: strict@@select_stale.bats@@s/updated_at < \$c/updated_at <= $c/' > "$MUTANTS_FILE"
 
   run "$CHECK"
 
@@ -67,17 +67,17 @@ teardown() {
 
 @test "mutation_check only runs the mutations that match the filter" {
   printf '%s\n' \
-    'format_age: no clamp@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/' \
-    'other: nothing@@format_age.bats@@s/this text does not exist/x/' > "$MUTANTS_FILE"
+    'select_stale: strict@@select_stale.bats@@s/updated_at < \$c/updated_at <= $c/' \
+    'other: nothing@@select_stale.bats@@s/this text does not exist/x/' > "$MUTANTS_FILE"
 
-  run "$CHECK" "format_age"
+  run "$CHECK" "select_stale"
 
   [ "$status" -eq 0 ]
   [[ "$output" =~ "1 of 1 mutation(s) detected." ]] || false
 }
 
 @test "mutation_check does not modify the script" {
-  printf '%s\n' 'format_age: no clamp@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/' > "$MUTANTS_FILE"
+  printf '%s\n' 'select_stale: strict@@select_stale.bats@@s/updated_at < \$c/updated_at <= $c/' > "$MUTANTS_FILE"
   before=$(cksum < "$BATS_TEST_DIRNAME/../scripts/cancel.sh")
 
   run "$CHECK"
@@ -88,7 +88,7 @@ teardown() {
 @test "mutation_check does not leave temporary directories" {
   export TMPDIR="$MOCK_DIR/tmp"
   mkdir -p "$TMPDIR"
-  printf '%s\n' 'format_age: no clamp@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/' > "$MUTANTS_FILE"
+  printf '%s\n' 'select_stale: strict@@select_stale.bats@@s/updated_at < \$c/updated_at <= $c/' > "$MUTANTS_FILE"
 
   run "$CHECK"
 
@@ -96,11 +96,11 @@ teardown() {
 }
 
 @test "mutation_check fails when the tests do not pass without the mutation" {
-  printf '%s\n' 'format_age: no clamp@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/' > "$MUTANTS_FILE"
+  printf '%s\n' 'select_stale: strict@@select_stale.bats@@s/updated_at < \$c/updated_at <= $c/' > "$MUTANTS_FILE"
   # a test file that fails on the unmutated script
-  cp "$BATS_TEST_DIRNAME/format_age.bats" "$BATS_TEST_DIRNAME/broken_baseline.bats"
+  cp "$BATS_TEST_DIRNAME/select_stale.bats" "$BATS_TEST_DIRNAME/broken_baseline.bats"
   printf '%s\n' '@test "always fails" {' '  false' '}' >> "$BATS_TEST_DIRNAME/broken_baseline.bats"
-  printf '%s\n' 'x: baseline@@broken_baseline.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/' > "$MUTANTS_FILE"
+  printf '%s\n' 'x: baseline@@broken_baseline.bats@@s/updated_at < \$c/updated_at <= $c/' > "$MUTANTS_FILE"
 
   run "$CHECK"
   rm -f "$BATS_TEST_DIRNAME/broken_baseline.bats"

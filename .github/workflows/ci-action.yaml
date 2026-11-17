@@ -128,15 +128,16 @@ jobs:
           statuses: queued,waiting,pending,requested
           dry_run: true
 
+      # The outputs of the new script (eligible_count, ...) are not in the last release yet: the
+      # check only runs on the local action. Step 5 of review/target_state.md replaces it with the cases table.
       - name: Check the outputs of the dry run
+        if: ${{ !inputs.use-released }}
         env:
-          FOUND_COUNT: ${{ steps.local.outputs.found_count || steps.released.outputs.found_count }}
-          CANCELLED_COUNT: ${{ steps.local.outputs.cancelled_count || steps.released.outputs.cancelled_count }}
-          SKIPPED_COUNT: ${{ steps.local.outputs.skipped_count || steps.released.outputs.skipped_count }}
-          FAILED_COUNT: ${{ steps.local.outputs.failed_count || steps.released.outputs.failed_count }}
-          WOULD_CANCEL_COUNT: ${{ steps.local.outputs.would_cancel_count || steps.released.outputs.would_cancel_count }}
-          CANCELLED_RUN_IDS: ${{ steps.local.outputs.cancelled_run_ids || steps.released.outputs.cancelled_run_ids }}
-          LISTING_TRUNCATED: ${{ steps.local.outputs.listing_truncated || steps.released.outputs.listing_truncated }}
+          ELIGIBLE_COUNT: ${{ steps.local.outputs.eligible_count }}
+          CANCELLED_COUNT: ${{ steps.local.outputs.cancelled_count }}
+          SKIPPED_COUNT: ${{ steps.local.outputs.skipped_count }}
+          FAILED_COUNT: ${{ steps.local.outputs.failed_count }}
+          CANCELLED_RUN_IDS: ${{ steps.local.outputs.cancelled_run_ids }}
         run: |
           ./dev/check_dry_run_outputs.sh
 

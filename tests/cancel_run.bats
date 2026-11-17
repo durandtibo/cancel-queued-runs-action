@@ -1,178 +1,151 @@
 #!/usr/bin/env bats
+#
+# cancel_run: which request is sent for a run and how its answer is classified.
+# The answers are those of gh: an HTTP error exits 1 and writes
+# "gh: <message> (HTTP <code>)" on stderr (checked on the real API, see below).
+
+load helpers/common
+
+H=3600
+# the buffer is 3 hours: a run is force-cancelled after 24 + 3 = 27 hours
+OLD=$((28 * H))
+YOUNG=$((25 * H))
 
 setup() {
-  # ----------------------------
-  # Directories
-  # ----------------------------
-  # Use absolute paths for mocks/logs (macOS BATS can change CWD)
-  TEST_DIR="$BATS_TEST_DIRNAME"
-  MOCK_DIR="$TEST_DIR/mocks"
-  mkdir -p "$MOCK_DIR"
-
-  # Log file for captured gh calls
-  export MOCK_GH_CALL_LOG="$MOCK_DIR/gh_calls.txt"
-  printf "" > "$MOCK_GH_CALL_LOG"
-
-  # Prepend mocks to PATH so the function uses our fake gh
-  export PATH="$MOCK_DIR:$PATH"
-
-  # ----------------------------
-  # Environment variables
-  # ----------------------------
-  export REPO="myorg/myrepo"
-  export MOCK_RESPONSE=202  # default mock response
-
-  # ----------------------------
-  # Create mock gh command
-  # ----------------------------
-  cat > "$MOCK_DIR/gh" << 'EOF'
-#!/usr/bin/env bash
-
-# Log all arguments
-echo "$@" >> "$MOCK_GH_CALL_LOG"
-
-# Simulate a gh failure (e.g., network or authentication error)
-if [ -n "$MOCK_STDERR" ]; then
-    echo "$MOCK_STDERR" >&2
-    exit 1
-fi
-
-# Determine response for cancel endpoints
-if [[ "$@" =~ cancel ]]; then
-    if [ "$MOCK_RESPONSE" = "202" ]; then
-        # Use flexible HTTP version to be OS-agnostic
-        echo "HTTP/2.0 202 Accepted"
-        echo "Content-Type: application/json"
-        echo
-        echo "{}"
-    else
-        echo "HTTP/2.0 500 Internal Server Error"
-        echo "Content-Type: application/json"
-        echo
-        echo '{"message":"internal error"}'
-    fi
-fi
-exit 0
-EOF
-
-  chmod +x "$MOCK_DIR/gh"
-
-  # ----------------------------
-  # Source the functions under test
-  # ----------------------------
-  source "$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  setup_fake_gh
+  # shellcheck source=../scripts/cancel.sh
+  source "$SCRIPT"
 }
 
+# the endpoints that were posted, one per line: "101/cancel"
+endpoints() { grep -E -- '(-X|--method) POST' "$FAKE_GH_LOG" | sed -E 's#.*/runs/([0-9]+/[a-z-]+).*#\1#'; }
 
-teardown() {
-  rm -rf "$MOCK_DIR"
+@test "202 on /cancel: cancelled, with one request" {
+  answer_post 101 202
+  [ "$(cancel_run 101 $YOUNG)" = "cancelled" ]
+  [ "$(endpoints)" = "101/cancel" ]
 }
 
-#----------------------------
-# Test cancel_run calls gh correctly
-#----------------------------
-@test "cancel_run calls gh API with correct arguments" {
-  run cancel_run 12345
-
-  # The function should succeed
-  [ "$status" -eq 0 ]
-
-  # Check that the gh call was logged
-  log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]] || false
-  [[ "$log_contents" =~ "-X" ]] || false
-  [[ "$log_contents" =~ "POST" ]] || false
-  [[ "$log_contents" =~ "-H" ]] || false
-  [[ "$log_contents" =~ "Accept: application/vnd.github+json" ]] || false
+@test "the request is a POST on /repos/REPO/actions/runs/ID/cancel" {
+  answer_post 101 202
+  cancel_run 101 $YOUNG >/dev/null
+  grep -q -- '--method POST /repos/myorg/myrepo/actions/runs/101/cancel' "$FAKE_GH_LOG"
 }
 
-@test "cancel_run calls gh API and returns 202 mock response" {
-  # Call the function
-  run cancel_run 12345
-
-  # Check the exit status
-  [ "$status" -eq 0 ]
-
-  # Flexible regex to match HTTP version + 202 Accepted
-  [[ "$output" =~ HTTP/[0-9.]+\ 202\ Accepted ]] || false
-
-  # Check gh call was logged correctly
-  log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/12345/cancel" ]] || false
+@test "404: skipped, and no force-cancel even for an old run" {
+  answer_post 101 404 "Not Found"
+  [ "$(cancel_run 101 $OLD)" = "skipped" ]
+  [ "$(posted)" -eq 1 ]
 }
 
-@test "cancel_run calls gh API and handles 500 mock response" {
-  # Set mock to 500
-  export MOCK_RESPONSE=500
-
-  run cancel_run 67890
-  [ "$status" -eq 0 ]
-
-  # Flexible regex to match HTTP version + 500 Internal Server Error
-  [[ "$output" =~ HTTP/[0-9.]+\ 500\ Internal\ Server\ Error ]] || false
-
-  log_contents="$(cat "$MOCK_GH_CALL_LOG")"
-  [[ "$log_contents" =~ "/repos/myorg/myrepo/actions/runs/67890/cancel" ]] || false
+@test "409: skipped, and no force-cancel even for an old run" {
+  answer_post 101 409 "Cannot cancel a workflow run that is completed."
+  [ "$(cancel_run 101 $OLD)" = "skipped" ]
+  [ "$(posted)" -eq 1 ]
 }
 
-#----------------------------
-# Test cancel_run with empty run ID
-#----------------------------
-@test "cancel_run fails if run_id is empty" {
-  run cancel_run ""
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"run_id is empty"* ]] || false
+@test "429: rate-limited, and no force-cancel" {
+  answer_post 101 429 "Too Many Requests"
+  [ "$(cancel_run 101 $OLD)" = "rate-limited" ]
+  [ "$(posted)" -eq 1 ]
 }
 
-#----------------------------
-# Test cancel_run surfaces gh errors
-#----------------------------
-@test "cancel_run forwards gh stderr as a warning on stderr" {
-  export MOCK_STDERR="gh: Bad credentials (HTTP 401)"
-
-  err=$(cancel_run 12345 2>&1 >/dev/null)
-
-  [[ "$err" == *"::warning::"* ]] || false
-  [[ "$err" == *"cancel"* ]] || false
-  [[ "$err" == *"run 12345"* ]] || false
-  [[ "$err" == *"Bad credentials (HTTP 401)"* ]] || false
+@test "403 about a rate limit: rate-limited" {
+  answer_post 101 403 "You have exceeded a secondary rate limit."
+  [ "$(cancel_run 101 $OLD)" = "rate-limited" ]
+  [ "$(posted)" -eq 1 ]
 }
 
-@test "cancel_run prints nothing on stdout and succeeds when gh fails without a response" {
-  export MOCK_STDERR="gh: network unreachable"
-
-  run cancel_run 12345
-
-  out=$(cancel_run 12345 2>/dev/null)
-  [ "$status" -eq 0 ]
-  [ -z "$out" ]
+@test "403 about a rate limit is recognized whatever the case" {
+  answer_post 101 403 "API Rate Limit exceeded"
+  [ "$(cancel_run 101 $YOUNG)" = "rate-limited" ]
 }
 
-@test "cancel_run does not print a warning when gh succeeds" {
-  err=$(cancel_run 12345 2>&1 >/dev/null)
-
-  [ -z "$err" ]
+@test "403 without a rate limit on a young run: failed" {
+  answer_post 101 403 "Resource not accessible by integration"
+  [ "$(cancel_run 101 $YOUNG)" = "failed" ]
+  [ "$(posted)" -eq 1 ]
 }
 
-@test "cancel_run does not leave temporary files behind" {
-  export TMPDIR="$BATS_TEST_DIRNAME/mocks/tmp"
-  mkdir -p "$TMPDIR"
-  export MOCK_STDERR="gh: boom"
-
-  cancel_run 12345 >/dev/null 2>&1
-
-  [ -z "$(ls -A "$TMPDIR")" ]
+@test "500 on a young run: failed, and no force-cancel" {
+  answer_post 101 500 "Server Error"
+  [ "$(cancel_run 101 $YOUNG)" = "failed" ]
+  [ "$(endpoints)" = "101/cancel" ]
 }
 
-#----------------------------
-# Test cancel_run retries rate limited requests
-#----------------------------
-@test "cancel_run delegates to post_run_endpoint_with_retry" {
-  post_run_endpoint_with_retry() { echo "delegated: $*"; }
+@test "500 on an old run: /cancel then /force-cancel, in this order" {
+  add_rule POST '*runs/101/force-cancel*' 202 '{}'
+  add_rule POST '*runs/101/cancel*' 500 '{"message":"Server Error"}'
+  [ "$(cancel_run 101 $OLD)" = "cancelled" ]
+  [ "$(endpoints)" = $'101/cancel\n101/force-cancel' ]
+}
 
-  run cancel_run 12345
+@test "403 without a rate limit on an old run: /force-cancel is tried" {
+  add_rule POST '*runs/101/force-cancel*' 202 '{}'
+  add_rule POST '*runs/101/cancel*' 403 '{"message":"Forbidden"}'
+  [ "$(cancel_run 101 $OLD)" = "cancelled" ]
+  [ "$(posted)" -eq 2 ]
+}
 
-  [ "$status" -eq 0 ]
-  [ "$output" = "delegated: 12345 cancel" ]
+@test "the force-cancel is only sent once: a second error is a failure" {
+  answer_post 101 500 "Server Error"
+  [ "$(cancel_run 101 $OLD)" = "failed" ]
+  [ "$(posted)" -eq 2 ]
+}
+
+@test "a 409 or 404 on /force-cancel is skipped" {
+  add_rule POST '*runs/101/force-cancel*' 409 '{"message":"Cannot cancel a workflow run that is completed."}'
+  add_rule POST '*runs/101/cancel*' 500 '{"message":"Server Error"}'
+  [ "$(cancel_run 101 $OLD)" = "skipped" ]
+}
+
+@test "a rate limit on /force-cancel is rate-limited" {
+  add_rule POST '*runs/101/force-cancel*' 429 '{"message":"Too Many Requests"}'
+  add_rule POST '*runs/101/cancel*' 500 '{"message":"Server Error"}'
+  [ "$(cancel_run 101 $OLD)" = "rate-limited" ]
+}
+
+@test "force-cancel boundary: exactly max age + buffer is not force-cancelled" {
+  answer_post 101 500 "Server Error"
+  [ "$(cancel_run 101 $((27 * H)))" = "failed" ]
+  [ "$(posted)" -eq 1 ]
+}
+
+@test "force-cancel boundary: one second more is force-cancelled" {
+  answer_post 101 500 "Server Error"
+  cancel_run 101 $((27 * H + 1)) >/dev/null
+  [ "$(posted)" -eq 2 ]
+}
+
+@test "a buffer of 0 force-cancels as soon as the run is older than max age" {
+  FORCE_BUFFER_HOURS=0
+  answer_post 101 500 "Server Error"
+  cancel_run 101 $((24 * H + 1)) >/dev/null
+  [ "$(posted)" -eq 2 ]
+}
+
+@test "the buffer is added to max age" {
+  FORCE_BUFFER_HOURS=10 MAX_AGE_HOURS=2
+  answer_post 101 500 "Server Error"
+  cancel_run 101 $((12 * H)) >/dev/null
+  [ "$(posted)" -eq 1 ]
+  cancel_run 101 $((12 * H + 1)) >/dev/null
+  [ "$(posted)" -eq 3 ]
+}
+
+@test "an error without an HTTP code (network failure) is a failure, not a skip" {
+  printf '#!/usr/bin/env bash\necho "dial tcp: lookup api.github.com: no such host" >&2\nexit 1\n' >"$WORK/bin/gh.new"
+  chmod +x "$WORK/bin/gh.new" && rm "$WORK/bin/gh" && mv "$WORK/bin/gh.new" "$WORK/bin/gh"
+  [ "$(cancel_run 101 $YOUNG 2>/dev/null)" = "failed" ]
+}
+
+@test "the message of a failure is logged on stderr, not on stdout" {
+  answer_post 101 500 "Server Error"
+  run bash -c 'source "$1"; cancel_run 101 1 2>&1 >/dev/null' _ "$SCRIPT"
+  [[ "$output" == *"Server Error"* ]] || false
+}
+
+@test "an unknown run (the real API answers 404 with the JSON body on stdout)" {
+  # the real stderr: gh: Not Found (HTTP 404)
+  [ "$(cancel_run 99999 $OLD)" = "skipped" ]
 }

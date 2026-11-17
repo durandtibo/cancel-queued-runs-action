@@ -120,17 +120,12 @@ export MAX_AGE_HOURS=24
 ./scripts/cancel.sh
 ```
 
-### Mock GitHub API Responses
+### Fake `gh` for the tests
 
-For testing without actual API calls, you can create wrapper functions:
-
-```bash
-# Override gh command for testing
-gh() {
-  echo "HTTP/1.1 202 Accepted"
-  echo "Status: 202 Accepted"
-}
-```
+The bats tests use one fake `gh`, `tests/helpers/fake_gh`, which answers from a table of rules
+(`METHOD|GLOB|CODE|BODY`, see the header of the file) and logs every call. The helpers of
+`tests/helpers/common.bash` (`setup_fake_gh`, `add_rule`, `list_queued`, `answer_post`) build the
+table. Time is never mocked: the functions take it as an argument.
 
 ---
 
@@ -160,7 +155,7 @@ which lists the assertions that need `|| false`.
 Passing tests prove little if they would also pass with a broken script. `make mutation-check`
 (`dev/mutation_check.sh`, also run by the CI) breaks `scripts/cancel.sh` on purpose, one small
 change at a time (a `>` turned into `>=`, a status code, a regular expression, ...), and runs the
-tests of the function concerned: **every mutation must make a test fail**. The repository is not
+tests concerned: **every mutation must make a test fail**. The repository is not
 modified, the mutations are applied to a temporary copy.
 
 The mutations are listed in `dev/mutants.txt`, one per line:
@@ -169,7 +164,7 @@ The mutations are listed in `dev/mutants.txt`, one per line:
 name@@test file in tests/@@sed -E expression
 ```
 
-When you add or change a function, add a mutation for its most important behaviour. When the check
+When you add or change a decision, add a mutation for its most important behaviour. When the check
 reports:
 
 - `SURVIVED`: a test does not check what its name says. Fix the test, do not remove the mutation
@@ -177,7 +172,7 @@ reports:
   longer gives valid bash). Update the expression
 
 `make mutation-check` takes about a minute. To run one mutation, give a part of its name:
-`dev/mutation_check.sh process_run`.
+`dev/mutation_check.sh cancel_run`.
 
 ---
 
@@ -225,24 +220,3 @@ The action uses a two-tier cancellation strategy:
 - Runs queued >27 hours: Standard cancel first, then force cancel if it was not accepted
 
 This design helps handle edge cases where runs have been stuck in the queue for extended periods.
-
-### Cross-Platform Compatibility
-
-The script handles date parsing differences between:
-
-- **Linux**: GNU `date` command with `-d` flag
-- **macOS**: BSD `date` command with `-j -f` flags
-
-The `to_unix_ts()` function automatically detects the platform and uses the appropriate syntax.
-
-### Temporary Files
-
-The script runs with a single work directory, created by the entry point at the bottom of
-`scripts/cancel.sh` (`create_work_dir`) and removed by an `EXIT` trap (`cleanup_work_dir`). All the
-temporary files are created in it with `make_temp_file`, so nothing is left in `TMPDIR` when the
-step ends with a failure or is stopped by a signal (for example `SIGTERM` when a job is cancelled
-or times out).
-
-The trap is set by the entry point, not by `main`: `main` is called by the tests, where an `EXIT`
-trap would replace the one of bats. When `WORK_DIR` is empty (the functions sourced by a test),
-`make_temp_file` falls back to `TMPDIR` and the function that created the file removes it.
