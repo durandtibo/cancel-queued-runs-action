@@ -11,10 +11,12 @@
 #
 # Requires gh, authenticated (GH_TOKEN or "gh auth login"). The other
 # environment variables of cancel.sh (DRY_RUN, ...) are passed through.
+# On a terminal, rows with cancelled runs are colored yellow (ANSI code in
+# CANCELLED_COLOR, e.g. 31 for red); NO_COLOR disables it.
 set -euo pipefail
 
 usage() {
-	sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # Print the value of a key from a GITHUB_OUTPUT file (0 when missing)
@@ -29,11 +31,14 @@ count_queued() {
 	gh api --method GET "/repos/$1/actions/runs" -f status=queued -f per_page=1 --jq '.total_count' 2>/dev/null || echo "-"
 }
 
-# Print the summary table, sorted by ascending Queued (a "-" last), then by name.
+# Print the summary table (a row with Cancelled > 0 is colored on a terminal), sorted by ascending Queued (a "-" last), then by name.
 # Args: total queued, eligible, cancelled, skipped, then "repo|queued|eligible|cancelled|skipped" rows
 print_summary() {
 	local total_queued="$1" total_found="$2" total_cancelled="$3" total_skipped="$4" row
 	shift 4
+	# ANSI color of the rows with cancelled runs (33 = yellow); empty when not on a terminal or NO_COLOR is set
+	local color=""
+	if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then color="${CANCELLED_COLOR:-33}"; fi
 	echo "=== Summary ==="
 	{
 		printf '%s|%s|%s|%s|%s\n' "Repository" "Queued" "Eligible" "Cancelled" "Skipped"
@@ -41,11 +46,13 @@ print_summary() {
 			awk -F'|' '{ print (($2 == "-") ? 999999999 : $2) "|" $0 }' |
 			LC_ALL=C sort -t'|' -k1,1n -k2,2f | cut -d'|' -f2-
 		printf '%s|%s|%s|%s|%s\n' "Total" "$total_queued" "$total_found" "$total_cancelled" "$total_skipped"
-	} | awk -F'|' '
+	} | awk -F'|' -v color="$color" '
 		{ for (i = 1; i <= 5; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
 		END {
 			for (r = 1; r <= NR; r++) {
-				printf "%-*s  %*s  %*s  %*s  %*s\n", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3], w[4], c[r, 4], w[5], c[r, 5]
+				line = sprintf("%-*s  %*s  %*s  %*s  %*s", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3], w[4], c[r, 4], w[5], c[r, 5])
+				if (color != "" && r > 1 && r < NR && c[r, 4] + 0 > 0) line = "\033[" color "m" line "\033[0m"
+				print line
 				if (r == 1 || r == NR - 1) {
 					printf "%s\n", sep(w[1] + w[2] + w[3] + w[4] + w[5] + 8)
 				}
