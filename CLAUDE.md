@@ -68,6 +68,7 @@ Files are prefixed by role:
   - `ci-shell-bash32.yaml`: bats tests with the system bash 3.2 on macOS.
   - `ci-mutation-check.yaml`: breaks `scripts/cancel.sh` on purpose (`dev/mutants.txt`) and fails if
     the tests do not notice.
+  - `ci-export.yaml`: checks the exported set (`make check-export`, `dev/check_export.sh`).
   - `ci-action.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
     released yet.
 - `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is not
