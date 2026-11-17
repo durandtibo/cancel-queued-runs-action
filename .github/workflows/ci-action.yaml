@@ -1,5 +1,12 @@
-# Workflow testing the action from the current repository code (uses: ./)
-# on multiple operating systems.
+# Workflow testing the action on multiple operating systems. One file tests both versions:
+#   - use-released: false (default, called by ci.yaml): the action from the current checkout
+#     (uses: ./), i.e. the version that is not released yet.
+#   - use-released: true (called by nightly.yaml): the latest released action, to catch
+#     regressions in what consumers pick up. Update the pinned release below when a new
+#     version is released (bot-pin-action.yaml does it).
+# Every job has one step per version, selected by `if`, and one shared verify step, so the two
+# runs cannot drift apart. A step that was skipped has no outputs: the verify steps read
+# `steps.local.outputs.x || steps.released.outputs.x`.
 
 name: Test Action
 on:
@@ -9,11 +16,32 @@ on:
         description: "JSON test matrix from lib-get-test-matrix.yaml, loaded once by the caller"
         required: true
         type: string
+      use-released:
+        description: "Test the latest released action instead of the current checkout"
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      use-released:
+        description: "Test the latest released action instead of the current checkout"
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
 
 jobs:
+  # General behaviour: the default usage on every OS of the matrix
+  get-matrix:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/lib-get-test-matrix.yaml
+    permissions:
+      contents: read
+
   test:
+    needs: get-matrix
+    if: ${{ !cancelled() && (needs.get-matrix.result == 'success' || needs.get-matrix.result == 'skipped') }}
     permissions:
       actions: write
       contents: read
@@ -23,17 +51,25 @@ jobs:
       max-parallel: 8
       fail-fast: false
       matrix:
-        os: ${{ fromJson(inputs.test-matrix).os_matrix }}
+        os: ${{ fromJson(inputs.test-matrix || needs.get-matrix.outputs.test_matrix).os_matrix }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
-      - name: Test action to cancel stale queued runs
+      - name: Test action to cancel stale queued runs (local)
+        if: ${{ !inputs.use-released }}
         uses: ./
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
+      - name: Test action to cancel stale queued runs (released)
+        if: ${{ inputs.use-released }}
+        uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
 
+  # Edge case on one runner: the max_age_hours input
   test-48h:
     permissions:
       actions: write
@@ -43,15 +79,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
-      - name: Test action to cancel stale queued runs (max age 48h)
+      - name: Test action to cancel stale queued runs, max age 48h (local)
+        if: ${{ !inputs.use-released }}
         uses: ./
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
           max_age_hours: 48
+      - name: Test action to cancel stale queued runs, max age 48h (released)
+        if: ${{ inputs.use-released }}
+        uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          max_age_hours: 48
 
-  # Check the wiring of action.yaml (inputs passed to the script, outputs exposed
-  # by the action), which the unit tests of the script cannot see
+  # Edge cases on one runner: the wiring of action.yaml (inputs passed to the script, outputs
+  # exposed by the action), which the unit tests of the script cannot see
   test-outputs:
     permissions:
       actions: write
@@ -63,9 +107,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
       # A dry run never cancels anything, whatever the runs of the repository are
-      - name: Dry run of the action with all the statuses
-        id: dry-run
+      - name: Dry run of the action with all the statuses (local)
+        id: local
+        if: ${{ !inputs.use-released }}
         uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          max_age_hours: 1
+          statuses: queued,waiting,pending,requested
+          max_cancellations: 1
+          dry_run: true
+      - name: Dry run of the action with all the statuses (released)
+        id: released
+        if: ${{ inputs.use-released }}
+        uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
@@ -76,24 +132,35 @@ jobs:
 
       - name: Check the outputs of the dry run
         env:
-          FOUND_COUNT: ${{ steps.dry-run.outputs.found_count }}
-          CANCELLED_COUNT: ${{ steps.dry-run.outputs.cancelled_count }}
-          SKIPPED_COUNT: ${{ steps.dry-run.outputs.skipped_count }}
-          FAILED_COUNT: ${{ steps.dry-run.outputs.failed_count }}
-          WOULD_CANCEL_COUNT: ${{ steps.dry-run.outputs.would_cancel_count }}
-          DEFERRED_COUNT: ${{ steps.dry-run.outputs.deferred_count }}
-          CANCELLED_RUN_IDS: ${{ steps.dry-run.outputs.cancelled_run_ids }}
-          LISTING_TRUNCATED: ${{ steps.dry-run.outputs.listing_truncated }}
-          # the value of max_cancellations of the step above
+          FOUND_COUNT: ${{ steps.local.outputs.found_count || steps.released.outputs.found_count }}
+          CANCELLED_COUNT: ${{ steps.local.outputs.cancelled_count || steps.released.outputs.cancelled_count }}
+          SKIPPED_COUNT: ${{ steps.local.outputs.skipped_count || steps.released.outputs.skipped_count }}
+          FAILED_COUNT: ${{ steps.local.outputs.failed_count || steps.released.outputs.failed_count }}
+          WOULD_CANCEL_COUNT: ${{ steps.local.outputs.would_cancel_count || steps.released.outputs.would_cancel_count }}
+          DEFERRED_COUNT: ${{ steps.local.outputs.deferred_count || steps.released.outputs.deferred_count }}
+          CANCELLED_RUN_IDS: ${{ steps.local.outputs.cancelled_run_ids || steps.released.outputs.cancelled_run_ids }}
+          LISTING_TRUNCATED: ${{ steps.local.outputs.listing_truncated || steps.released.outputs.listing_truncated }}
+          # the value of max_cancellations of the steps above
           MAX_CANCELLATIONS: 1
         run: |
           ./dev/check_dry_run_outputs.sh
 
-      # The error annotation of this step is expected: the step must fail
-      - name: Run the action with an invalid input
-        id: invalid-input
+      # The error annotation of these steps is expected: the step must fail
+      - name: Run the action with an invalid input (local)
+        id: invalid-local
+        if: ${{ !inputs.use-released }}
         continue-on-error: true
         uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          max_age_hours: not-a-number
+          dry_run: true
+      - name: Run the action with an invalid input (released)
+        id: invalid-released
+        if: ${{ inputs.use-released }}
+        continue-on-error: true
+        uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
@@ -102,7 +169,7 @@ jobs:
 
       - name: Check that the invalid input failed the step
         env:
-          OUTCOME: ${{ steps.invalid-input.outcome }}
+          OUTCOME: ${{ steps.invalid-local.outcome == 'failure' && 'failure' || steps.invalid-released.outcome }}
         run: |
           if [ "$OUTCOME" != "failure" ]; then
             echo "::error::An invalid max_age_hours must fail the action (outcome: '$OUTCOME')"

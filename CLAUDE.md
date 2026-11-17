@@ -72,7 +72,7 @@ Files are prefixed by role:
     released yet.
 - `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is not
   called from `ci.yaml`, so it can be a required check.
-- `nightly.yaml`: scheduled entry point that calls `nightly-test-released.yaml`, which
+- `nightly.yaml`: scheduled entry point that calls `ci-action.yaml` with `use-released: true`, which
   tests the latest released action. It is not part of `ci.yaml`.
 - `lib-get-test-matrix.yaml`: reusable workflow that loads the shared OS matrix once; callers pass it
   down through the `test-matrix` input.
@@ -101,7 +101,7 @@ Conventions:
 
 The strategy is the same for all the action repositories of `durandtibo`. The full reasoning and
 the properties (T1 to T16) are in `review/testing.md`. This repository does not follow it
-everywhere yet (for example it still has `nightly-test-released.yaml`): follow the target when you
+everywhere yet (for example the action cases are not in a JSON file): follow the target when you
 add or change tests, and do not migrate the rest in an unrelated PR.
 
 Three levels:
@@ -127,8 +127,8 @@ Rules:
 - Target layout: one reusable `ci-action.yaml` with a boolean input `use-released`. `ci.yaml` calls
   it with `false`, `nightly.yaml` with `true`. Each job has two action steps, `uses: ./` with
   `if: ${{ !inputs.use-released }}` and the pinned release with `if: ${{ inputs.use-released }}`,
-  and one verify step reading `steps.local.outputs.x || steps.released.outputs.x`. Until the
-  migration, change `ci-action.yaml` and `nightly-test-released.yaml` together.
+  and one verify step reading `steps.local.outputs.x || steps.released.outputs.x`. This repository
+  already follows it.
 - Put the cases in a JSON file (a new case is a row, not a job). A row has `"released": false` until
   the last release has the feature; the released run skips those rows.
 - Every input has a case that sets it and asserts its effect, not only that the action succeeds.
