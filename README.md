@@ -52,7 +52,8 @@ This action requires:
   `GITHUB_TOKEN` provided by GitHub Actions has this permission.
 - **GitHub CLI** (`gh`) and **jq**: Pre-installed on all GitHub-hosted runners (ubuntu-latest,
   macos-latest, etc.). On a self-hosted runner, install both.
-- **Shell Environment**: Works on both Linux (GNU) and macOS (BSD) runners
+- **Shell Environment**: Works on both Linux (GNU) and macOS (BSD) runners. Windows runners are not
+  supported and are not tested.
 
 ---
 
