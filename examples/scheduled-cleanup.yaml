@@ -17,6 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: durandtibo/cancel-queued-runs-action@v1.9
+      - uses: durandtibo/cancel-queued-runs-action@v3.0.0
         with:
-          max_age_hours: 12
+          max-age-hours: 12

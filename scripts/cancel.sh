@@ -21,8 +21,8 @@
 #                      be cancelled into a warning
 #   DRY_RUN            true or false (default): log what would be cancelled only
 #
-# Outputs, written to $GITHUB_OUTPUT on every path: eligible_count,
-# cancelled_count, skipped_count, failed_count, cancelled_run_ids (JSON array).
+# Outputs, written to $GITHUB_OUTPUT on every path: eligible-count,
+# cancelled-count, skipped-count, failed-count, cancelled-run-ids (JSON array).
 # cancelled + skipped + failed = eligible outside a dry run. A summary table is
 # appended to $GITHUB_STEP_SUMMARY.
 #
@@ -191,7 +191,7 @@ cancel_all() {
 # Write the five outputs: eligible cancelled skipped failed ids (no-op without $GITHUB_OUTPUT)
 write_outputs() {
 	[ -n "${GITHUB_OUTPUT:-}" ] || return 0
-	printf 'eligible_count=%s\ncancelled_count=%s\nskipped_count=%s\nfailed_count=%s\ncancelled_run_ids=%s\n' \
+	printf 'eligible-count=%s\ncancelled-count=%s\nskipped-count=%s\nfailed-count=%s\ncancelled-run-ids=%s\n' \
 		"$1" "$2" "$3" "$4" "$5" >>"$GITHUB_OUTPUT"
 }
 

@@ -14,14 +14,14 @@ setup() {
 
 @test "write_outputs writes the five outputs, one per line" {
   write_outputs 5 2 1 2 '[101,102]'
-  [ "$(cat "$GITHUB_OUTPUT")" = $'eligible_count=5\ncancelled_count=2\nskipped_count=1\nfailed_count=2\ncancelled_run_ids=[101,102]' ]
+  [ "$(cat "$GITHUB_OUTPUT")" = $'eligible-count=5\ncancelled-count=2\nskipped-count=1\nfailed-count=2\ncancelled-run-ids=[101,102]' ]
 }
 
 @test "write_outputs appends to the file" {
   echo "other=1" >"$GITHUB_OUTPUT"
   write_outputs 0 0 0 0 '[]'
   [ "$(head -n 1 "$GITHUB_OUTPUT")" = "other=1" ]
-  [ "$(output_of cancelled_run_ids)" = "[]" ]
+  [ "$(output_of cancelled-run-ids)" = "[]" ]
 }
 
 @test "write_outputs does nothing without GITHUB_OUTPUT" {
@@ -33,7 +33,7 @@ setup() {
 
 @test "the ids are valid JSON on one line, readable with fromJSON" {
   write_outputs 2 2 0 0 '[7,8]'
-  [ "$(output_of cancelled_run_ids | jq -c .)" = "[7,8]" ]
+  [ "$(output_of cancelled-run-ids | jq -c .)" = "[7,8]" ]
 }
 
 @test "write_summary writes one table with the four counts" {

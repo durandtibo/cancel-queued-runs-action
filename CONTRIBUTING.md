@@ -26,10 +26,8 @@ If you encounter a bug or have a feature request:
    - Update documentation as needed
 3. **Test your changes**:
    - Run shellcheck on modified scripts: `shellcheck scripts/*.sh`
-   - Run the unit tests: `bats tests/` (end `[[ ... ]]` and `! cmd` assertions with `|| false`, see
-     [dev/README.md](dev/README.md#writing-bats-tests), and check them with `make lint-bats`)
-   - Check that the tests detect breakages of the script: `make mutation-check` (see
-     [dev/README.md](dev/README.md#checking-the-tests-with-mutations))
+   - Run the unit tests: `bats --recursive tests` (see [Tests](#tests) below)
+   - Check that the tests detect breakages of the script: `make mutation-check`
    - Test the action locally if possible
 4. **Commit your changes**:
    - Use clear and descriptive commit messages
@@ -61,15 +59,6 @@ export MAX_AGE_HOURS=24  # optional
 ./scripts/cancel.sh
 ```
 
-### Testing Multiple Repositories
-
-For testing across multiple repositories:
-
-Run `./dev/run_for_repos.sh -u <username>` (default `durandtibo`): it runs the script on the public,
-non-archived repositories of the user. See `--help` for `MAX_AGE_HOURS` and `MAX_RUNS`.
-
-See [dev/README.md](dev/README.md) for more details on development and debugging.
-
 ### Running Tests
 
 The project uses BATS (Bash Automated Testing System) for unit tests:
@@ -86,8 +75,22 @@ brew install bats-core
 bats --recursive tests
 
 # Run specific test file
-bats tests/to_unix_ts.bats
+bats tests/cancel_run.bats
 ```
+
+## Tests
+
+- One file per behaviour group in `tests/` (`validate.bats`, `select_stale.bats`, ...). They use one
+  fake `gh`, `tests/helpers/fake_gh`: a table of `METHOD|GLOB|CODE|BODY` rules and a log of the
+  calls (see the helpers in `tests/helpers/common.bash`). Time is injected, never mocked.
+- The local bash can be 3.2 (macOS): a failing `[[ ... ]]` or `! cmd` that is not the last command
+  of a test does not fail it. End such assertions with `|| false`; `make lint-bats` checks it.
+- `make mutation-check` breaks `scripts/cancel.sh` on purpose, one decision at a time, and every
+  mutation must make a test fail. The mutations are in `dev/mutants.txt`
+  (`name@@test files@@sed -E expression`): add one when you add a decision, anchored on a short
+  token, not on a whole line. `SURVIVED` means a test does not check what its name says.
+- `tests/action_readme_sync.bats` keeps the inputs and outputs of `action.yaml` and `README.md`
+  identical (names, defaults and descriptions): update both.
 
 ## Code Style
 
@@ -105,7 +108,6 @@ When making changes, please update relevant documentation:
 - Update [README.md](README.md) for user-facing changes
 - Update [CHANGELOG.md](../CHANGELOG.md) with your changes
 - Add examples to [examples/](../examples/) for new use cases
-- Update [dev/README.md](dev/README.md) for development-related information
 
 ## Code of Conduct
 
