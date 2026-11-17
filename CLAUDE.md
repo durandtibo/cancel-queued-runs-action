@@ -97,6 +97,55 @@ Conventions:
 - Every bug fix needs a regression test that fails without the fix.
 - If a check fails for a real reason, report it rather than weakening the test.
 
+## Testing strategy
+
+The strategy is the same for all the action repositories of `durandtibo`. The full reasoning and
+the properties (T1 to T16) are in `review/testing.md`. This repository does not follow it
+everywhere yet (for example it still has `nightly-test-released.yaml`): follow the target when you
+add or change tests, and do not migrate the rest in an unrelated PR.
+
+Three levels:
+
+1. **Code**: each script or function, tested alone with mocks (bats, pytest). It covers the logic and
+   every edge case. No network, no GitHub.
+2. **Local action**: the action from this checkout (`uses: ./`) in a real workflow.
+3. **Released action**: the latest stable release (`uses: durandtibo/<repo>@<sha>`), run nightly
+   with the same cases as level 2. Never run it on pull requests.
+
+Rules:
+
+- Test a behaviour at the cheapest level that can show it. The action tests (levels 2 and 3) check
+  the contract and the wiring: inputs reach the script, outputs are set, the action fails on an
+  invalid input. Do not re-test a script's logic there; add it to level 1.
+- Split the action tests in two. **General behaviour** (the default usage and the main documented
+  usage) runs on the full matrix: `os_matrix`, and `python_versions` when the action depends on
+  Python. **Edge cases** (one input, one invalid value, an unusual file) run on one runner, or on
+  `os_latest` when the case depends on the OS. There is no reduced matrix on pull requests: the
+  same matrix runs on pull requests, pushes and the schedule.
+- Never write an OS or a Python version in a workflow: read the lists from
+  `durandtibo/workflow-config-action` through `lib-get-test-matrix.yaml`.
+- Target layout: one reusable `ci-action.yaml` with a boolean input `use-released`. `ci.yaml` calls
+  it with `false`, `nightly.yaml` with `true`. Each job has two action steps, `uses: ./` with
+  `if: ${{ !inputs.use-released }}` and the pinned release with `if: ${{ inputs.use-released }}`,
+  and one verify step reading `steps.local.outputs.x || steps.released.outputs.x`. Until the
+  migration, change `ci-action.yaml` and `nightly-test-released.yaml` together.
+- Put the cases in a JSON file (a new case is a row, not a job). A row has `"released": false` until
+  the last release has the feature; the released run skips those rows.
+- Every input has a case that sets it and asserts its effect, not only that the action succeeds.
+  Every validated input has a case with an invalid value that asserts the action failed in the
+  validation. Assert the value or the format of outputs, never just print them.
+- Failure paths use `continue-on-error: true`, an `id`, and a step that asserts `steps.<id>.outcome`.
+  Assert an id or an exact output, not a message. A negative test needs a positive run on the same
+  runner before it, so it cannot pass for the wrong reason.
+- Tests have no side effects outside the runner: `dry_run`, mocks, throwaway files. If something
+  cannot be tested in CI, write down which check covers it.
+- Check what is shipped: the exported set (`git archive --worktree-attributes HEAD | tar t`) must
+  contain every file the action needs, because `uses: ./` runs the whole checkout and hides a
+  missing file.
+- Set `timeout-minutes` and `fail-fast: false` on matrix jobs. Put assertions shared by the local
+  and released runs in one script, not in two workflows.
+- Keep the README inputs and outputs in step with `action.yaml` (`tests/action_readme_sync.bats`).
+
 ## Reporting
 
 - State which checks ran (`make lint`, `make format`, `bats tests/`) and which did not.
