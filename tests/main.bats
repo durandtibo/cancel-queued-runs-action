@@ -2,7 +2,7 @@
 #
 # The whole script as a process, with the fake gh: the flow, the outputs on every
 # path, the summary, the exit codes. The rules themselves (threshold, dry run,
-# 404 and 409, fail_on_error, validation) are pinned in characterization.bats.
+# 404 and 409, fail-on-error, validation) are pinned in the files of each function.
 
 load helpers/common
 
@@ -163,4 +163,12 @@ only_gh_path() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::MAX_AGE_HOURS"* ]] || false
   [ ! -s "$FAKE_GH_LOG" ]
+}
+
+@test "fail-on-error false does not hide a failure to list the runs" {
+  add_rule GET '*' 500 '{"message":"Server Error"}'
+  FAIL_ON_ERROR=false run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [ "$(posted)" -eq 0 ]
+  [ "$(output_of eligible-count)" = "0" ]
 }

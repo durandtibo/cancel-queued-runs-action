@@ -12,21 +12,21 @@
 # operator, a name), not on a whole line, so that a refactoring keeps it valid.
 # If the list grows over 25, the script grew again.
 
-select_stale: a run exactly max age old is selected (<= instead of <)@@select_stale.bats characterization.bats@@s/updated_at < \$c/updated_at <= $c/
-select_stale: a run younger than the cutoff is kept@@select_stale.bats characterization.bats@@s/map\(select\(\.updated_at < \$c\)\)/./
+select_stale: a run exactly max age old is selected (<= instead of <)@@select_stale.bats@@s/updated_at < \$c/updated_at <= $c/
+select_stale: a run younger than the cutoff is kept@@select_stale.bats@@s/map\(select\(\.updated_at < \$c\)\)/./
 select_stale: duplicates are not removed@@select_stale.bats main.bats@@s/unique_by\(\.id\)/./
 select_stale: the runs are not sorted, oldest first@@select_stale.bats main.bats@@s/sort_by\(\.updated_at\)/./
 cutoff: the age is computed in minutes, not hours@@select_stale.bats@@s/\$h \* 3600/$h * 60/
-cancel_all: the dry run sends requests@@cancel_all.bats characterization.bats@@s/"\$DRY_RUN" = true \]; then$/"$DRY_RUN" = never ]; then/
-cancel_run: a 404 or a 409 is a failure@@cancel_run.bats characterization.bats@@s/\[\[ \$code == 404 \|\| \$code == 409 \]\]/[[ $code == 000 ]]/
+cancel_all: the dry run sends requests@@cancel_all.bats@@s/"\$DRY_RUN" = true \]; then$/"$DRY_RUN" = never ]; then/
+cancel_run: a 404 or a 409 is a failure@@cancel_run.bats@@s/\[\[ \$code == 404 \|\| \$code == 409 \]\]/[[ $code == 000 ]]/
 cancel_all: a rate limit does not stop the loop@@cancel_all.bats main.bats@@s/stop=true$/stop=false/
 cancel_run: force-cancel is also sent after a 404 or a 409@@cancel_run.bats@@s/if \[\[ \$code == 404 \|\| \$code == 409 \]\]; then/if false; then/
 cancel_run: force-cancel is sent to a run that is not old enough@@cancel_run.bats@@s/ && \[ "\$2" -gt [^]]*\]/ \&\& true/
 cancel_run: force-cancel threshold >= instead of >@@cancel_run.bats@@s/\[ "\$2" -gt \$\(\(\(MAX_AGE_HOURS/[ "$2" -ge $(((MAX_AGE_HOURS/
 cancel_run: the buffer is ignored@@cancel_run.bats@@s/MAX_AGE_HOURS \+ FORCE_BUFFER_HOURS\)/MAX_AGE_HOURS)/
 cancel_run: a 403 about a rate limit is a plain failure@@cancel_run.bats@@s/grep -qi 'rate limit'/grep -qi 'no such text'/
-main: fail_on_error false is ignored@@main.bats characterization.bats@@s/\[ "\$FAIL_ON_ERROR" = true \]/true/
-require: any boolean is accepted@@validate.bats characterization.bats@@s/\[\[ \$value == true \|\| \$value == false \]\]/true/
+main: fail_on_error false is ignored@@main.bats@@s/\[ "\$FAIL_ON_ERROR" = true \]/true/
+require: any boolean is accepted@@validate.bats@@s/\[\[ \$value == true \|\| \$value == false \]\]/true/
 require: a positive integer may be 0@@validate.bats@@s/pint\) \[\[ \$value =~ \^\[1-9\]/pint) [[ $value =~ ^[0-9]/
 list_stale: a status listed twice is requested twice@@list_stale.bats@@s/case "\$seen" in \*" \$status "\*\) continue ;; esac//
 list_stale: the branch and event filters are dropped@@list_stale.bats main.bats@@s/extra\+=\(-f "(branch|event)=\$(BRANCH|EVENT)"\)/:/
