@@ -91,7 +91,7 @@ list_stale() {
 		[ -z "$out" ] && continue
 		printf '%s\n' "$out"
 		if [ "$(printf '%s\n' "$out" | grep -c .)" -ge 1000 ]; then
-			echo "::warning::GitHub lists at most 1000 runs per status: older '$status' runs may be missing, the next execution continues" >&2
+			echo "::warning title=Run list truncated::GitHub lists at most 1000 runs per status: older '$status' runs may be missing, the next execution continues" >&2
 		fi
 	done
 }
@@ -187,12 +187,12 @@ cancel_all() {
 			;;
 		skipped)
 			skipped=$((skipped + 1))
-			echo "::warning::Run $id was gone or no longer cancellable (HTTP 404 or 409)" >&2
+			echo "::warning title=Run not cancelled::Run $id no longer exists or cannot be cancelled (HTTP 404 or 409)" >&2
 			;;
 		rate-limited)
 			failed=$((failed + 1))
 			stop=true
-			echo "::warning::GitHub rate limited the requests: the runs after $id are left for the next execution" >&2
+			echo "::warning title=Rate limited::GitHub rate limited the requests: the runs after $id are left for the next execution" >&2
 			;;
 		*) failed=$((failed + 1)) ;;
 		esac
@@ -255,7 +255,7 @@ main() {
 			die "$failed run(s) could not be cancelled"
 			return 1
 		fi
-		echo "::warning::$failed run(s) could not be cancelled, but FAIL_ON_ERROR is false"
+		echo "::warning title=Cancellation failed::$failed run(s) could not be cancelled, but FAIL_ON_ERROR is false"
 	fi
 }
 
