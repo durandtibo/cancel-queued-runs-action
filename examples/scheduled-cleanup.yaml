@@ -10,7 +10,6 @@ on:
 
 permissions:
   actions: write # required to cancel the runs
-  contents: read
 
 jobs:
   cleanup:

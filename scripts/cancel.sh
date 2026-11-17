@@ -97,7 +97,7 @@ list_stale() {
 }
 
 # Read {id, updated_at} lines, print "id age_seconds" for the runs whose
-# updated_at is strictly before $1 (cutoff), without duplicates, oldest first.
+# updated_at is strictly before $1 (cutoff), without duplicates, oldest first (within the listed runs).
 # $2: now (epoch seconds), only used for the age. ISO 8601 UTC strings compare
 # as plain strings.
 select_stale() {
