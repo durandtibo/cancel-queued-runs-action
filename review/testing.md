@@ -97,7 +97,9 @@ drift impossible by construction.
 (`workflow-config-action/configs/versions.json`). A job that crosses them
 (`extract-pyproject-metadata-action` `test`, `verify-uv-build-action` `test`)
 has up to 13 x 8 = 104 cells, run on every push and every night, for local
-**and** released. A job that only crosses OS has 13. These numbers are computed;
+**and** released. The full matrix on PRs and pushes is a decision of the
+maintainer (T4, section 6); the cost is controlled by what crosses the matrix
+(T16), not by shrinking the matrix. A job that only crosses OS has 13. These numbers are computed;
 how many cells run today was not measured.
 
 **F3. `lib-get-test-matrix.yaml` is copied 11 times, and the copies differ (T3).**
@@ -132,10 +134,10 @@ and `workflow-config-action` also have a `.gitattributes`, without the check.
 `verify-uv-build-action/review/target_state.md` (section 3.6, P14) proposes to
 delete `nightly-test-released.yaml`: the scheduled `ci.yaml` already exercises
 uv, twine, pyright and the runner with the full case table, and the released
-run adds signal only when `main` and the release differ. This review keeps level
-3 (the goal asks for it, and consumers run the tag), but the argument is right
-about the cost: the answer is to make level 3 cheap (one file, same cases), not
-to drop it. See open point 1.
+run adds signal only when `main` and the release differ. Decision of the
+maintainer: the nightly of the released action is kept in every repo. The
+argument about cost is answered by the single file and the case table (T7, T8),
+and by the split of T16.
 
 **F7. Behaviour that CI cannot test as such (T11).**
 
@@ -182,25 +184,26 @@ tested only by `build-pypi-package-action`. `read-json-action`,
 
 ## 3. Properties of the testing
 
-The target state must satisfy these properties.
+The target state must satisfy these 16 properties.
 
-| #   | Property                | Meaning                                                                                                                                                                                                                                      |
-| --- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T1  | Three levels            | Each repo has code, local action and released action tests. A level is empty only when there is no code outside `action.yaml`, and the README says so.                                                                                       |
-| T2  | Same shape              | The 11 repos use the same file names and the same entry points: `ci.yaml`, `ci-<code-check>.yaml`, `ci-action.yaml`, `nightly.yaml`. A reader who knows one repo finds the files in the others.                                              |
-| T3  | One matrix source       | OS and Python lists come from `workflow-config-action`. The loader `lib-get-test-matrix.yaml` is the same file in every repo (same keys), or a call to a reusable workflow of one repo.                                                      |
-| T4  | Supported equals tested | Every OS and Python version the README claims is in a matrix, and every cell is claimed. Windows is tested only where the README supports it. The claim is written in `CLAUDE.md` and README.                                                |
-| T5  | Cheapest layer          | A behaviour is tested at the cheapest level that can show it. GitHub jobs (level 2 and 3) test the wiring and what only GitHub can show; logic and edge cases are tested at level 1.                                                         |
-| T6  | Same cases, one source  | The local and the released action run the same cases, defined once. Drift between the two is impossible by construction, or detected by a check.                                                                                             |
-| T7  | One file for both       | `ci-action.yaml` is one reusable workflow with a boolean input `use-released`. `nightly.yaml` calls it with `true`; `ci.yaml` calls it with `false`. There is no `nightly-test-released.yaml`.                                               |
-| T8  | Cases are data          | Case tables live in one JSON file; a case has `released: true/false` for features the last release lacks. A new case is a row, not a job. Verification code is shared (`test-helper.sh`).                                                    |
-| T9  | Shipped = tested        | What consumers get (`git archive`) is what is tested: the exported set is checked, or the local action runs from the exported archive. A file the action needs is never `export-ignore`d.                                                    |
-| T10 | Bounded cost            | Every job has `timeout-minutes`, matrices use `fail-fast: false` and `max-parallel`. The cells per run are counted and documented; the full matrix runs on the schedule, a reduced one on PRs.                                               |
-| T11 | No side effects         | Tests change nothing outside the runner: `dry_run`, fakes, throwaway artifacts and releases. What cannot be tested in CI is written down with the check that covers it (bot, manual run).                                                    |
-| T12 | Tests that can fail     | Failure paths are asserted (`continue-on-error` plus an outcome check), with the `failed-check` id or the exact output, not the message. A negative test has a positive control on the same runner. Where cheap, a mutation check proves it. |
-| T13 | Local equals CI         | Every command run by CI is a `make` target. The unit tier runs on a laptop. Checks that need GitHub say so in the PR.                                                                                                                        |
-| T14 | Docs match code         | A test compares the README inputs and outputs to `action.yaml`, and the README examples to fixtures. Release notes carry history, the README tells the current behaviour.                                                                    |
-| T15 | Safe                    | `permissions: {}` at workflow level, least privilege per job, actions pinned to a SHA with a `ratchet` comment, inputs through `env:`, no `concurrency`.                                                                                     |
+| #   | Property                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1  | Three levels            | Each repo has code, local action and released action tests. A level is empty only when there is no code outside `action.yaml`, and the README says so.                                                                                                                                                                                                                                                                                          |
+| T2  | Same shape              | The 11 repos use the same file names and the same entry points: `ci.yaml`, `ci-<code-check>.yaml`, `ci-action.yaml`, `nightly.yaml`. A reader who knows one repo finds the files in the others.                                                                                                                                                                                                                                                 |
+| T3  | One matrix source       | OS and Python lists come from `workflow-config-action`. The loader `lib-get-test-matrix.yaml` is the same file in every repo (same keys), or a call to a reusable workflow of one repo.                                                                                                                                                                                                                                                         |
+| T4  | Supported equals tested | Every OS and Python version the README claims is in a matrix, and every cell is claimed. Windows is tested only where the README supports it. The claim is written in `CLAUDE.md` and README.                                                                                                                                                                                                                                                   |
+| T5  | Cheapest layer          | A behaviour is tested at the cheapest level that can show it. The code tests (level 1) check each script or function, including every edge case. The action tests (level 2 and 3) check the contract and the wiring (T16).                                                                                                                                                                                                                      |
+| T6  | Same cases, one source  | The local and the released action run the same cases, defined once. Drift between the two is impossible by construction, or detected by a check.                                                                                                                                                                                                                                                                                                |
+| T7  | One file for both       | `ci-action.yaml` is one reusable workflow with a boolean input `use-released`. `nightly.yaml` calls it with `true`; `ci.yaml` calls it with `false`. There is no `nightly-test-released.yaml`.                                                                                                                                                                                                                                                  |
+| T8  | Cases are data          | Case tables live in one JSON file; a case has `released: true/false` for features the last release lacks. A new case is a row, not a job. Verification code is shared (`test-helper.sh`).                                                                                                                                                                                                                                                       |
+| T9  | Shipped = tested        | What consumers get (`git archive`) is what is tested: the exported set is checked, or the local action runs from the exported archive. A file the action needs is never `export-ignore`d.                                                                                                                                                                                                                                                       |
+| T10 | Bounded cost            | Every job has `timeout-minutes`, matrices use `fail-fast: false` and `max-parallel`. The cells per run are counted and documented. The matrix is the same on PRs, pushes and the schedule; the cost is bounded by what crosses it (T16).                                                                                                                                                                                                        |
+| T11 | No side effects         | Tests change nothing outside the runner: `dry_run`, fakes, throwaway artifacts and releases. What cannot be tested in CI is written down with the check that covers it (bot, manual run).                                                                                                                                                                                                                                                       |
+| T12 | Tests that can fail     | Failure paths are asserted (`continue-on-error` plus an outcome check), with the `failed-check` id or the exact output, not the message. A negative test has a positive control on the same runner. Where cheap, a mutation check proves it.                                                                                                                                                                                                    |
+| T13 | Local equals CI         | Every command run by CI is a `make` target. The unit tier runs on a laptop. Checks that need GitHub say so in the PR.                                                                                                                                                                                                                                                                                                                           |
+| T14 | Docs match code         | A test compares the README inputs and outputs to `action.yaml`, and the README examples to fixtures. Release notes carry history, the README tells the current behaviour.                                                                                                                                                                                                                                                                       |
+| T15 | Safe                    | `permissions: {}` at workflow level, least privilege per job, actions pinned to a SHA with a `ratchet` comment, inputs through `env:`, no `concurrency`.                                                                                                                                                                                                                                                                                        |
+| T16 | General vs edge cases   | The action tests are split in two. **General behaviour**: the default and the main documented usage, run on the full matrix (`os_matrix`, and `python_versions` where it applies), to show that the action works on every supported OS. **Edge cases** (one input, one invalid value, one unusual file): run on one runner, or on `os_latest` when the case is OS-sensitive. The action tests check the contract and the wiring, not the logic. |
 
 ## 4. The three levels
 
@@ -231,25 +234,47 @@ Rules:
 
 ### 4.2 Level 2: the local action (`ci-action.yaml`, `use-released: false`)
 
-Level 2 tests what only GitHub can show: `action.yaml` wiring (inputs, defaults,
-outputs, `shell: bash`, step order), the real runner, the real tools, the
-packaging. It is not the place for edge cases that level 1 can show.
+Level 2 tests the contract and the wiring: `action.yaml` inputs, defaults and
+outputs, `shell: bash`, step order, the real runner, the real tools, the
+packaging. It does not re-test the logic of the scripts: each script and
+function is tested by level 1 (T5), so a failure at level 2 means that the
+wiring is broken.
 
-Jobs, named the same in every repo:
+The tests are split in two groups (T16).
 
-| Job                    | What it checks                                                                                           | Runs on             |
-| ---------------------- | -------------------------------------------------------------------------------------------------------- | ------------------- |
-| `test`                 | Default usage succeeds; outputs have the expected value                                                  | the OS matrix of T4 |
-| `test-<input>`         | One job (or one case row) per input that changes behaviour, with an assertion of the effect              | one runner          |
-| `test-invalid-<input>` | An invalid input fails (`continue-on-error`, outcome and `failed-check` assertion), and nothing was done | one runner          |
-| `cases`                | The table of `cases.json`: one matrix cell per row                                                       | one runner          |
-| `test-export`          | The action runs from the exported archive (T9)                                                           | one runner          |
+**General behaviour: the full matrix.** It shows that the action works on every
+supported OS (and Python version, where the action depends on it). It holds few
+jobs, each with a real assertion on the outputs.
+
+| Job            | What it checks                                                                                                             | Runs on                                            |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `test`         | The default usage succeeds and the outputs have the expected value                                                         | `os_matrix` (x `python_versions` where it applies) |
+| `test-<usage>` | A main documented usage (for example the README example, or the inputs most callers set), when it differs from the default | `os_matrix` (x `python_versions` where it applies) |
+
+**Edge cases: one runner.** One job or one case row per input, per invalid
+value and per unusual situation. They run on `ubuntu-latest`, or on `os_latest`
+(Linux and macOS) when the case is OS-sensitive (paths, `sed`, `date`, file
+system). They do not cross the Python matrix.
+
+| Job                    | What it checks                                                                                           | Runs on                              |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `test-<input>`         | One job (or one case row) per input that changes behaviour, with an assertion of the effect              | one runner                           |
+| `test-invalid-<input>` | An invalid input fails (`continue-on-error`, outcome and `failed-check` assertion), and nothing was done | one runner                           |
+| `cases`                | The table of `cases.json`: one matrix cell per row                                                       | one runner, or `os_latest` if needed |
+| `test-export`          | The action runs from the exported archive (T9)                                                           | one runner                           |
+
+A case that is general behaviour in one repo can be an edge case in another:
+the rule is that the full matrix proves "it works everywhere" and the other
+jobs prove "this input does this". If an edge case turns out to depend on the OS,
+it is moved to `os_latest` or to the full matrix.
 
 Rules:
 
 - Every input has a case that sets it and asserts its effect, not only that the
-  action succeeds. Every validated input has a case that passes an invalid
-  value and asserts that it failed in the validation.
+  action succeeds. A case that only needs the contract (the input reaches the
+  script, the output is set) is enough: the values are tested at level 1.
+  Every validated input has a case that passes an invalid value and asserts
+  that it failed in the validation.
 - Outputs are asserted by value or format, not printed.
 - Dependent matrices (package x Python) come from a generated file (as
   `uv-install-package-action`, `bot-generate-package-versions.yaml`).
@@ -338,17 +363,19 @@ nightly.yaml                schedule; calls ci-action.yaml with use-released: tr
 Single source: `durandtibo/workflow-config-action`, read by
 `lib-get-test-matrix.yaml`. The file is the same in every repo and exposes the
 same keys: `os_matrix`, `os_macos`, `os_latest`, `python_versions`,
-`python_versions_standard`, `python_min_max` (the first and the last of
-`python_versions_standard`, as `read-json-action` already computes).
+`python_versions_standard`. `os_latest` is for some edge cases only (T16).
+There is no reduced matrix for pull requests and pushes (decision of the
+maintainer): the schedule and the PRs use the same matrix.
 
-| Dimension | Applies to                                                                                                      | PR and push                                 | Schedule (nightly) |
-| --------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------ |
-| OS        | Actions whose behaviour depends on the OS (shell tools, `sed`, `date`, `sha256sum`, paths)                      | `os_latest`: ubuntu-latest and macos-latest | `os_matrix`        |
-| Python    | Actions that run in the user's Python (`setup-venv`, `uv-install`, `verify-uv-build`, `build-pypi`, `extract`)  | `python_min_max`                            | `python_versions`  |
-| None      | `format-files`, `verify-github-workflow`, `workflow-config`, `sign` and `read-json` (Python only for `python3`) | one Python                                  | one Python         |
+| Dimension | Applies to                                                                                                      | General behaviour (PR, push, schedule) | Edge cases                                   |
+| --------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------- |
+| OS        | Every action                                                                                                    | `os_matrix`                            | one runner, or `os_latest`                   |
+| Python    | Actions that run in the user's Python (`setup-venv`, `uv-install`, `verify-uv-build`, `build-pypi`, `extract`)  | `python_versions`                      | none (the latest, or the one the case needs) |
+| None      | `format-files`, `verify-github-workflow`, `workflow-config`, `sign` and `read-json` (Python only for `python3`) | no Python dimension                    | no Python dimension                          |
 
-This table is a proposal (open point 2): it cuts the 104-cell jobs of F2 to 4
-cells on a PR and keeps the full coverage nightly. Rules:
+The cost of the full matrix (F2: up to 104 cells for a job that crosses OS and
+Python) is controlled by T16: only the few general-behaviour jobs cross it. The
+level 1 tests use the same matrix as the general-behaviour jobs. Rules:
 
 - The OS and Python choice of a repo is written in its `CLAUDE.md` (T4) and
   matches its README. Windows is added only with a README claim, as in
@@ -361,19 +388,19 @@ cells on a PR and keeps the full coverage nightly. Rules:
 Items are in the order in which they should be done. "Single file" is the T7
 change. Nothing here is implemented.
 
-| Repo                                | Do                                                                                                                                                                                                                                         |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `cancel-queued-runs-action`         | Single file (3 jobs: easy). Add `ci-export` (it has the `.gitattributes` rule). Reduce OS to `os_latest` on PRs: each OS cell runs a real cancel of stale runs, so 13 cells make 13 API-bound runs. Keep bats, bash 3.2, mutation check.   |
-| `extract-pyproject-metadata-action` | Single file. Keep the golden approach (3 cases for wiring, the rest in `test_golden.py`). Cut `test` from `os x python_versions` to the section 6 rule. Keep `test-old-python`.                                                            |
-| `uv-install-package-action`         | Already has `action-ref`; rename it `use-released` and move `ci-action-deps` and `ci-action-edge-cases` under one `ci-action.yaml` input. Keep `ci-export`. Rename `ci-test` to `ci-python`.                                               |
-| `verify-uv-build-action`            | Single file: `test_workflow_mirror.bats`, `load-cases.sh` and the `released` filter of the loader go away (their target state proposes it for the whole nightly, this review keeps the nightly). Keep the `released` flag in `cases.json`. |
-| `sign-pypi-package-action`          | Already single file (`released`); rename to `use-released`. Keep the unit tier with the fake `gh`, the real-release job, and `ci-contract`. This is the reference for T5 and T11.                                                          |
-| `read-json-action`                  | Already single file (`use-released`). Reference for T7 and T8. Add `ci-export` (has a `.gitattributes`). Add level 1 tests for `validate-json.py` (pytest or a case table: a Python script with many cases).                               |
-| `build-pypi-package-action`         | Single file (stage 2 of its F8). Keep `released` flags, `failed-check` assertions, Windows. Document the trigger-dependent cases (F7). Move inline logic to scripts or extract the steps (as `sign`), for T5.                              |
-| `format-files-action`               | Single file; the released file lacks 3 of the 9 jobs today. Add the "consumer-like directory" run of its review (B2). Document that PR creation is covered by the bot (F7), not by the matrix.                                             |
-| `setup-venv-uv-action`              | Single file: removes the 874 vs 852 lines. Turn the 27 jobs into case rows where only the inputs differ (`test-invalid-inputs` already is one). Add `ci-export`. Keep the `check_readme_inputs.py` check in CI.                            |
-| `verify-github-workflow-action`     | Single file: this closes the 15 vs 2 gap in one change. Keep the positive-control rule and the `ran-<tool>` markers. Document that the tools are downloaded, so a nightly failure can be upstream.                                         |
-| `workflow-config-action`            | Single file. It is the matrix source for the 10 others: assert the content of outputs (valid JSON, keys, sorted, non-empty). Add the `downloaded-files` job to level 2. Add `ci-export` (has a `.gitattributes`).                          |
+| Repo                                | Do                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cancel-queued-runs-action`         | Single file (3 jobs: easy). Add `ci-export` (it has the `.gitattributes` rule). Its layout already follows T16: `test` on `os_matrix` is the general behaviour (each cell runs a real cancel, so the 13 cells are API-bound: accepted), and `test-48h` and `test-outputs` (dry run, invalid input) are edge cases on one runner. Keep bats, bash 3.2, mutation check. |
+| `extract-pyproject-metadata-action` | Single file. Keep the golden approach (3 cases for wiring, the rest in `test_golden.py`). Keep `test` on `os_matrix` x `python_versions` (general behaviour); `test-warning`, `test-default-path`, `test-path-with-spaces`, `test-strict`, `test-invalid-inputs` are edge cases and run on one runner. Keep `test-old-python`.                                        |
+| `uv-install-package-action`         | Already has `action-ref`; rename it `use-released` and move `ci-action-deps` and `ci-action-edge-cases` under one `ci-action.yaml` input. Keep `ci-export`. Rename `ci-test` to `ci-python`.                                                                                                                                                                          |
+| `verify-uv-build-action`            | Single file: `test_workflow_mirror.bats`, `load-cases.sh` and the `released` filter of the loader go away (their target state proposes it for the whole nightly, this review keeps the nightly). Keep the `released` flag in `cases.json`.                                                                                                                            |
+| `sign-pypi-package-action`          | Already single file (`released`); rename to `use-released`. Keep the unit tier with the fake `gh`, the real-release job, and `ci-contract`. This is the reference for T5 and T11.                                                                                                                                                                                     |
+| `read-json-action`                  | Already single file (`use-released`). Reference for T7 and T8. Add `ci-export` (has a `.gitattributes`). Add level 1 tests for `validate-json.py` (pytest or a case table: a Python script with many cases).                                                                                                                                                          |
+| `build-pypi-package-action`         | Single file (stage 2 of its F8). Keep `released` flags, `failed-check` assertions, Windows. Document the trigger-dependent cases (F7). Move inline logic to scripts or extract the steps (as `sign`), for T5.                                                                                                                                                         |
+| `format-files-action`               | Single file; the released file lacks 3 of the 9 jobs today. Add the "consumer-like directory" run of its review (B2). Document that PR creation is covered by the bot (F7), not by the matrix.                                                                                                                                                                        |
+| `setup-venv-uv-action`              | Single file: removes the 874 vs 852 lines. Turn the 27 jobs into case rows where only the inputs differ (`test-invalid-inputs` already is one). Add `ci-export`. Keep the `check_readme_inputs.py` check in CI.                                                                                                                                                       |
+| `verify-github-workflow-action`     | Single file: this closes the 15 vs 2 gap in one change. Keep the positive-control rule and the `ran-<tool>` markers. Document that the tools are downloaded, so a nightly failure can be upstream.                                                                                                                                                                    |
+| `workflow-config-action`            | Single file. It is the matrix source for the 10 others: assert the content of outputs (valid JSON, keys, sorted, non-empty). Add the `downloaded-files` job to level 2. Add `ci-export` (has a `.gitattributes`).                                                                                                                                                     |
 
 Order across repos:
 
@@ -393,16 +420,17 @@ One pull request per repo and per change.
 
 ## 8. Open points to verify
 
-1. **Keep the nightly of the released action (F6).** The goal of this review
-   says to test it, so it is kept. `verify-uv-build-action` proposes to delete
-   it. The single-file design costs one `uses:` step per job. If that cost is
-   judged too high for a repo, the alternative is to keep that repo's nightly as
-   one smoke job on the released tag, not the full table. Decision for the
-   maintainer.
-2. **Reduced matrix on PRs (section 6).** It cuts the cost, but a failure on an
-   old Python or on `ubuntu-22.04` is then found a night later. Confirm that
-   this is acceptable, and measure the real number of cells and the minutes
-   (macOS is the main cost) before and after.
+1. **Cost of the full matrix.** Decided: the nightly of the released action is
+   kept, and there is no reduced matrix on PRs and pushes. The cost is bounded
+   by T16 (few general-behaviour jobs on the matrix). Measure the real number of
+   cells and the minutes (macOS is the main cost) per repo once T16 is applied,
+   and report it, before deciding anything else.
+2. **Which jobs are general behaviour.** T16 needs a decision per repo: which
+   jobs cross the matrix and which run on one runner. The plan of section 7
+   gives the first answer for `cancel-queued-runs-action` and
+   `extract-pyproject-metadata-action`; the other repos need the same list
+   written in their `CLAUDE.md`. A job such as `test-package` of
+   `setup-venv-uv-action` can be argued either way.
 3. **Single file versus two files.** `setup-venv-uv-action`'s review (6.2)
    chose to keep two files and to release often instead of a generator, and
    `format-files-action`'s review (4.5) leaves the choice open. This review
