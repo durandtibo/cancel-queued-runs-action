@@ -37,7 +37,6 @@ backlogs.
 - Configurable maximum queue age (in hours)
 - Dry-run mode to preview which runs would be cancelled
 - Optional filters to only cancel the runs of one workflow, one branch or one event
-- Optional safety limit on the number of runs cancelled by one execution
 - Lightweight composite action
 - Works with private and public repositories
 - Requires only the GitHub-provided `GITHUB_TOKEN`
@@ -106,25 +105,23 @@ jobs:
 
 ## 📤 Outputs
 
-| Name                 | Description                                                                                                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `found_count`        | Number of workflow runs found with the considered `statuses` (`queued` by default)                                                                                       |
-| `cancelled_count`    | Number of runs for which a cancel request was accepted                                                                                                                   |
-| `skipped_count`      | Number of runs skipped: no longer cancellable (404 or 409)                                                                                                               |
-| `failed_count`       | Number of runs that could not be cancelled or processed (for example an invalid timestamp, or a list of runs that cannot be parsed)                                      |
-| `would_cancel_count` | Number of runs that would be cancelled (dry run only, otherwise `0`)                                                                                                     |
-| `cancelled_run_ids`  | JSON array with the IDs of the cancelled runs, in the order they were processed (for example `[101,102]`), `[]` if none and in a dry run                                 |
-| `listing_truncated`  | `true` if the listing reached the 1000 runs that GitHub returns for a status, so older runs may be missing (see [Troubleshooting](#-troubleshooting)), otherwise `false` |
+| Name                | Description                                                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eligible_count`    | Number of runs older than `max_age_hours` that match the `statuses` and the filters (in a dry run: the number that would be cancelled)                  |
+| `cancelled_count`   | Number of runs for which a cancel request was accepted (always `0` in a dry run)                                                                        |
+| `skipped_count`     | Number of runs that were gone or no longer cancellable (HTTP 404 or 409)                                                                                |
+| `failed_count`      | Number of runs that could not be cancelled, and of runs left unprocessed because GitHub rate limited the execution                                      |
+| `cancelled_run_ids` | JSON array with the IDs of the cancelled runs, in the order they were processed (for example `[101,102]`), `[]` if none and in a dry run (`fromJSON()`) |
+
+`cancelled_count + skipped_count + failed_count = eligible_count`, except in a dry run.
 
 The outputs are written even when some runs failed (the step then fails unless `fail_on_error` is
 `false`, so use `if: always()` on a following step to read them), and the action appends the same
 counts as a table to the
 [job summary](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary).
 
-The job summary also lists the runs that were cancelled, skipped, failed or (in a dry run) would be
-cancelled, in a table with a link to each run, its age and the result. Runs that were left alone
-because they are not old enough are not listed. At most 50 runs are listed; the summary then says
-how many more are not shown, and all of them are in the logs of the step.
+The job summary is one table (eligible, cancelled, skipped and failed runs), followed by the first
+50 cancelled runs as links. The logs of the step list every run.
 
 ```yaml
 - uses: durandtibo/cancel-queued-runs-action@v1.9
@@ -211,7 +208,7 @@ workflows can share it.
 
 `branch` and `event` are filters applied by GitHub, on top of the others (`workflow`, `statuses`).
 They only take one value each. `branch` is a branch name such as `main` or `feat/my-feature`, not a
-ref (`refs/heads/main` is rejected), and the match is case sensitive. It is the head branch of the
+ref (`refs/heads/main` matches nothing), and the match is case sensitive. It is the head branch of the
 run: for a run triggered by a pull request, the branch of the pull request, not the branch it
 targets. `event` is the name of the event that triggered the run, for example `push`,
 `pull_request`, `schedule` or `workflow_dispatch`.
@@ -281,18 +278,23 @@ For additional use cases and complete workflow examples, see the [examples/](exa
 
 ## 🧩 How It Works
 
-1. **Fetch Runs**: Uses the GitHub API to list all workflow runs with each of the `statuses`
-   (`queued` by default), restricted to the `workflow`, `branch` and `event` when they are set. A
-   run listed under two statuses, because its status changed between the two calls, is only
+1. **Validate**: Every input is checked before the first API call
+2. **Cutoff**: Computes the instant `max_age_hours` ago, once, so that all the runs are compared
+   with the same instant
+3. **List**: Asks GitHub for the runs of each of the `statuses` (`queued` by default), restricted to
+   the `workflow`, `branch` and `event` when they are set, and created before the cutoff. A run
+   listed under two statuses, because its status changed between the two calls, is only
    considered once
-2. **Calculate Age**: Determines how old each run is, measured from its last update
-   (`updated_at`), which moves forward when a run is re-run, for example after a failure
-3. **Filter**: Identifies runs older than the configured `max_age_hours`
-4. **Cancel**: Sends cancellation requests for eligible runs (or only logs them with `dry_run: true`)
-5. **Report**: Logs the status of each operation
+4. **Select**: Keeps the runs whose last update (`updated_at`) is strictly older than the cutoff,
+   oldest first. The age is measured from `updated_at`, which moves forward when a run is re-run,
+   for example after a failure, so such a run is not cancelled
+5. **Cancel**: Sends a cancellation request for each selected run, oldest first, with one second
+   between two requests (or only logs them with `dry_run: true`)
+6. **Report**: Sets the outputs, writes the summary, and fails if a run could not be cancelled
+   (unless `fail_on_error` is `false`)
 
-The action uses the GitHub CLI (`gh`) internally to interact with GitHub's Actions API. It includes
-cross-platform timestamp parsing to work correctly on both Linux (GNU date) and macOS (BSD date).
+The action uses the GitHub CLI (`gh`) and `jq`, which are on the GitHub-hosted runners. Dates are
+handled by `jq`, so it behaves the same on Linux and macOS.
 
 ### Cancellation Strategy
 
@@ -321,11 +323,8 @@ Set `force_cancel_buffer_hours: 0` to allow the force-cancel fallback for every 
 `max_age_hours`.
 
 Ages are compared with a one-second precision, so a run queued for 24 hours and 30 minutes is
-already eligible for cancellation.
-
-The current time is read once, when the runs are processed, and all the runs are compared with that
-same instant, even when the retries make the execution last several minutes. An age is
-therefore never larger than the real one: a run is never cancelled before it is old enough.
+already eligible for cancellation. A run is cancelled only when it is strictly older than
+`max_age_hours`.
 
 This design helps handle edge cases where runs have been stuck in the queue for extended periods.
 
@@ -347,8 +346,9 @@ The action checks for `gh` and `jq` before doing anything else and fails with
 **Cause**: Very old workflow runs (several months old) may fail to cancel due to GitHub API
 limitations.
 
-**Solution**: These runs may need to be manually deleted. See [dev/README.md](dev/README.md) for
-notes on handling stale runs.
+**Solution**: These runs may need to be manually deleted, see the next entry. The action sends
+`/force-cancel` once for a run older than `max_age_hours + force_cancel_buffer_hours` when `/cancel`
+fails with an unexpected error.
 
 ### A run stays queued and is skipped at every execution (HTTP 409)
 
@@ -360,18 +360,15 @@ cancelled and `/cancel` answers `409`. The action skips it and counts it in `ski
 has no job: `gh api -X DELETE /repos/OWNER/REPO/actions/runs/RUN_ID` (the run and its history are
 lost; GitHub may refuse with `403`, and only GitHub Support can then remove it).
 
-### Log shows `::warning::gh api (cancel) failed ...` or `No HTTP response`
+### A run could not be cancelled (`failed_count`)
 
-**Cause**: The `gh api` call failed, and the error message of `gh` is forwarded as a warning
-annotation. Typical reasons are an invalid or expired token (`HTTP 401`), a missing permission
-(`HTTP 403`), a server error (`HTTP 5xx`), or a network error.
+**Cause**: The `gh api` call failed, and the message of `gh` is printed in the log. Typical reasons
+are an invalid or expired token (`HTTP 401`), a missing permission (`HTTP 403`), a server error
+(`HTTP 5xx`) or a network error.
 
-**Solution**: Read the message after the colon, it is the error reported by `gh`.
-
-A run that no longer exists (`HTTP 404`) or that cannot be cancelled anymore (`HTTP 409`) is not
-reported this way: it gives a single `::warning::Run ... could not be cancelled (HTTP ...: <message>)`
-and is skipped. When runs are skipped, the final log line says so instead of reporting full success:
-a run that stays queued with a `409` often has no jobs (a stuck run on the GitHub side).
+**Solution**: Read the message in the log, it is the error reported by `gh`. A run that no longer
+exists (`HTTP 404`) or that cannot be cancelled anymore (`HTTP 409`) is not a failure: it is skipped
+with a warning and counted in `skipped_count`.
 
 ### Log shows `::error::Cannot list the workflow runs of ...`
 
@@ -379,40 +376,9 @@ a run that stays queued with a `409` often has no jobs (a stuck run on the GitHu
 permission, a wrong `repo` or `workflow`, a network error or a GitHub outage. The error reported by
 `gh` is printed just above.
 
-**Solution**: Fix the cause reported by `gh`. No run is cancelled in this case, the step fails, and
-the [outputs](#-outputs) are all set to `0` so that the next steps do not read empty values.
-
-A transient error (a rate limit, a server error such as `HTTP 502`, or a network error) is retried
-before the step fails, see the next entry. An error that is not transient (`401`, `403` without a
-rate limit, `404`, ...) is not retried.
-
-### Log shows `::warning::Listing the runs with the status ... failed`
-
-**Cause**: The call that lists the runs failed with a transient error: a rate limit (`HTTP 429`, or
-`403` with a rate limit message), a server error (`HTTP 500`, `502`, `503`, `504`) or a network
-error (timeout, connection reset).
-
-**Solution**: Nothing to do if the next attempt succeeds. The call is retried up to 3 times, waiting
-5, 10 and 20 seconds. If the last attempt fails too, the warning says that the action gives up and
-the step fails with `::error::Cannot list the workflow runs of ...` (see above): run the action
-again later.
-
-### Log shows `::error::Cannot parse the list of workflow runs of ...`
-
-**Cause**: The runs were listed but the list could not be read as JSON (for example a corrupted
-output of `gh`), so the runs cannot even be counted.
-
-**Solution**: Like a failure to list the runs, no run is cancelled, the step fails (whatever
-`fail_on_error` is) and the [outputs](#-outputs) are all set to `0`. Run the action again, and open
-an issue if it keeps happening.
-
-### Log shows `::error::Invalid timestamp ...`
-
-**Cause**: A run has a timestamp that is not in the `YYYY-MM-DDTHH:MM:SSZ` format returned by the
-GitHub API, so its age cannot be computed.
-
-**Solution**: The run is skipped, counted as a failure, and the other runs are still processed.
-Please open an issue with the log line if this happens with the GitHub API.
+**Solution**: Fix the cause reported by `gh`. No run is cancelled in this case, the step fails
+(whatever `fail_on_error` is), and the [outputs](#-outputs) are all set to `0` so that the next steps
+do not read empty values. The listing is not retried: the next scheduled execution is the retry.
 
 ### Action fails immediately with a `REPO` or a `No GitHub credentials found` error
 
@@ -422,33 +388,22 @@ must be available (the `github_token` input, which must not be empty).
 
 **Solution**: Fix the input named in the error message.
 
-### Log shows `::warning::1000 runs were listed for the status ...`
+### Log shows `::warning::GitHub lists at most 1000 runs per status`
 
-**Cause**: GitHub does not return more than 1000 runs for a status, so the list is probably
-truncated and some runs are not considered by this execution.
+**Cause**: GitHub does not return more than 1000 runs for a status. The action only asks for the
+runs created before the cutoff, so the 1000 are candidates, but older ones may be missing.
 
-**Solution**: Nothing to do in most cases: the action cancels the runs it has, and the next
-execution lists the following ones. For a very large backlog, run the action more often or several
-times in a row.
+**Solution**: Nothing to do: the runs that are cancelled leave the queue, so the next execution
+lists the following ones. For a very large backlog, run the action more often.
 
-The `listing_truncated` [output](#-outputs) is `true` (and the job summary shows a warning) when
-this happens, so that a following step can decide to run the action again:
+### Log shows `::warning::GitHub rate limited the requests`
 
-```yaml
-- id: cancel
-  uses: durandtibo/cancel-queued-runs-action@v1.9
-- if: steps.cancel.outputs.listing_truncated == 'true'
-  uses: durandtibo/cancel-queued-runs-action@v1.9
-```
+**Cause**: GitHub rate limited the cancel requests (HTTP `429`, or `403` with a rate limit message).
+The action stops: the run and the ones after it are counted in `failed_count`.
 
-### Log shows `::warning::Rate limited on run ... giving up`
-
-**Cause**: GitHub rate limited the cancel requests and the quota did not come back within the
-retries (3 retries, at most 60 seconds each).
-
-**Solution**: Nothing to do in most cases: the affected runs are reported as failed and are retried
-the next time the action runs. For very large backlogs, use a lower frequency or a token with a
-higher rate limit (for example a GitHub App token).
+**Solution**: Nothing to do in most cases: the next execution cancels them. For very large
+backlogs, use a lower frequency or a token with a higher rate limit (for example a GitHub App
+token).
 
 ### Permission denied error
 
@@ -467,7 +422,7 @@ permissions:
 **Check**:
 
 1. Verify you have runs with the considered `statuses` older than `max_age_hours`
-2. Check the action logs to see what runs were found
+2. Check `eligible_count` and the logs of the step to see what runs were selected
 3. Ensure the repository name format is correct (`owner/name`)
 
 ---
@@ -488,7 +443,7 @@ failure. A run that was created three days ago but re-run an hour ago is therefo
 is not cancelled with `max_age_hours: 24`. This is deliberate: the action must not cancel a run
 that was queued again only because its first attempt is old. It applies to every status considered
 (`queued`, `waiting`, `pending` and `requested`). The age is shown in the logs
-(`Run 12947114653 is 30h12m old.`).
+(`Run 12947114653 (age 108720s): cancelled`).
 
 ### Will it cancel the workflow that calls this action?
 
@@ -526,16 +481,13 @@ processed, and the step exits with code `1` (unless `fail_on_error` is `false`).
   cancelled
 - **Single Repository**: Each action invocation targets one repository (use multiple steps or matrix
   strategies for multiple repos)
-- **API Rate Limits**: Subject to GitHub API rate limits. The call that lists the runs is retried up
-  to 3 times (waiting 5, 10 and 20 seconds) when it fails with a transient error (a rate limit, an
-  `HTTP 500`, `502`, `503` or `504` error, or a network error). A cancel request rejected because
-  of a rate limit (HTTP `429`, or `403` with a rate limit header or message) is retried up to 3 times,
-  waiting for the delay requested by GitHub (`Retry-After` or `X-RateLimit-Reset`) or, if there is
-  none, 5, 10 and 20 seconds. A limit that requires waiting more than 60 seconds is not waited for:
-  the run is reported as failed and is retried by the next execution of the action
+- **API Rate Limits**: Subject to GitHub API rate limits. Nothing is retried: a transient error
+  while listing the runs fails the step, and a rate limit while cancelling stops the execution (the
+  runs left are counted in `failed_count`). The next execution continues. One second separates two
+  cancel requests
 - **At most 1000 runs per status**: GitHub returns at most 1000 runs for a query that filters on the
   status. If more runs are queued, the action warns and cancels the ones it was given; the others
-  are processed by the next executions of the action
+  are processed by the next executions of the action, as the cancelled runs leave the queue
 - **Very Old Runs**: Runs that are extremely old (several months) may fail to cancel via the API
   (see [Troubleshooting](#-troubleshooting))
 

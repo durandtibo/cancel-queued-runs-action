@@ -54,6 +54,8 @@ if [ "$method" = "POST" ]; then
 		printf 'HTTP/2.0 %s Status\r\nContent-Type: application/json\r\n\r\n%s\n' "$code" "$body"
 	fi
 	if [ "$code" -ge 400 ]; then
+		# like gh: the body of the error is on stdout, the message on stderr
+		[[ "$joined" == *" -i"* ]] || printf '%s' "$body"
 		echo "gh: $(printf '%s' "$body" | jq -r '.message // "error"') (HTTP $code)" >&2
 		exit 1
 	fi

@@ -6,52 +6,11 @@
 # rules that must survive the refactoring of review/target_state.md: the age
 # threshold, the dry run, 404 and 409, fail_on_error and the validation.
 
+load helpers/common
+
 setup() {
-  WORK="$BATS_TEST_TMPDIR"
-  mkdir -p "$WORK/bin"
-  ln -s "$BATS_TEST_DIRNAME/helpers/fake_gh" "$WORK/bin/gh"
-  export PATH="$WORK/bin:$PATH"
-  export FAKE_GH_LOG="$WORK/gh_calls.txt"
-  export FAKE_GH_TABLE="$WORK/table.txt"
-  export GITHUB_OUTPUT="$WORK/github_output"
-  : >"$FAKE_GH_LOG"
-  : >"$FAKE_GH_TABLE"
-  : >"$GITHUB_OUTPUT"
-  unset GITHUB_STEP_SUMMARY
-  export REPO="myorg/myrepo"
-  export GH_TOKEN="test-token"
-  export MAX_AGE_HOURS=24
-  export CANCEL_DELAY_SECONDS=0
-  unset DRY_RUN FAIL_ON_ERROR STATUSES WORKFLOW BRANCH EVENT FORCE_BUFFER_HOURS \
-    MAX_CANCELLATIONS MAX_RUNS DELETE_STUCK_RUNS
-  SCRIPT="$BATS_TEST_DIRNAME/../scripts/cancel.sh"
+  setup_fake_gh
 }
-
-# ISO 8601 UTC time N seconds ago, computed by jq (same on GNU and BSD)
-ago() { jq -nr --argjson s "$1" 'now - $s | floor | todate'; }
-
-# list RUN_ID SECONDS_AGO...: the queued runs that the fake API lists.
-# Each argument is "id:seconds"; the run was created and updated that long ago.
-list_queued() {
-  local body entries="" spec id secs ts
-  for spec in "$@"; do
-    id="${spec%%:*}"
-    secs="${spec#*:}"
-    ts=$(ago "$secs")
-    entries="${entries:+$entries,}{\"id\":$id,\"created_at\":\"$ts\",\"updated_at\":\"$ts\"}"
-  done
-  body="{\"workflow_runs\":[$entries]}"
-  printf 'GET|*actions/runs?status=queued*|200|%s\n' "$body" >>"$FAKE_GH_TABLE"
-}
-
-# answer_post ID CODE [MESSAGE]
-answer_post() {
-  printf 'POST|*runs/%s/cancel*|%s|{"message":"%s"}\n' "$1" "$2" "${3:-}" >>"$FAKE_GH_TABLE"
-}
-
-posted() { grep -c -- '-X POST' "$FAKE_GH_LOG" || true; }
-posted_to() { grep -- '-X POST' "$FAKE_GH_LOG" | grep -c "runs/$1/" || true; }
-output_of() { grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-; }
 
 # --- the age threshold -------------------------------------------------------
 
@@ -88,7 +47,7 @@ output_of() { grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-; }
   [ "$(posted_to 101)" -eq 1 ]
   [ "$(posted_to 102)" -eq 0 ]
   [ "$(posted_to 103)" -eq 1 ]
-  [ "$(output_of found_count)" = "3" ]
+  [ "$(output_of eligible_count)" = "2" ]
   [ "$(output_of cancelled_count)" = "2" ]
 }
 
@@ -112,7 +71,7 @@ output_of() { grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-; }
 
   [ "$status" -eq 0 ]
   [ "$(posted)" -eq 0 ]
-  [ "$(output_of found_count)" = "0" ]
+  [ "$(output_of eligible_count)" = "0" ]
 }
 
 @test "threshold: only the statuses that were asked for are listed" {
@@ -146,7 +105,7 @@ output_of() { grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-; }
 
   run "$SCRIPT"
 
-  [ "$(output_of would_cancel_count)" = "1" ]
+  [ "$(output_of eligible_count)" = "1" ]
   [ "$(output_of cancelled_count)" = "0" ]
 }
 
@@ -212,14 +171,14 @@ output_of() { grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-; }
 }
 
 @test "fail_on_error: false does not hide a failure to list the runs" {
-  printf 'GET|*actions/runs?status=queued*|500|{"message":"Server Error"}\n' >>"$FAKE_GH_TABLE"
+  printf 'GET|*actions/runs*status=queued*|500|{"message":"Server Error"}\n' >>"$FAKE_GH_TABLE"
   export FAIL_ON_ERROR=false MAX_RETRIES=0
 
   run "$SCRIPT"
 
   [ "$status" -eq 1 ]
   [ "$(posted)" -eq 0 ]
-  [ "$(output_of found_count)" = "0" ]
+  [ "$(output_of eligible_count)" = "0" ]
 }
 
 # --- the validation ----------------------------------------------------------

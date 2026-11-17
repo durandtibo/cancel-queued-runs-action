@@ -177,15 +177,15 @@ only_in_first() {
 
 @test "sync: every output of action.yaml is written by the script" {
   for name in $(action_outputs); do
-    grep -qE "echo \"$name=" "$SCRIPT_FILE" || { echo "the script does not write $name"; false; }
+    awk '/^write_outputs\(\)/ {f=1} f {print} f && /^}/ {exit}' "$SCRIPT_FILE" | grep -q "$name=" ||
+      { echo "the script does not write $name"; false; }
   done
 }
 
 @test "sync: every output written by the script is exposed by action.yaml" {
-  written=$(grep -oE 'echo "[a-z_]+=' "$SCRIPT_FILE" | sed -E 's/echo "//; s/=$//' | sort -u)
-  # only the lines of write_outputs write the outputs
-  in_function=$(awk '/^write_outputs\(\)/ {f=1} f {print} f && /^}/ {exit}' "$SCRIPT_FILE" | grep -oE 'echo "[a-z_]+=' | sed -E 's/echo "//; s/=$//')
-  [ -n "$written" ]
+  # only write_outputs writes the outputs
+  in_function=$(awk '/^write_outputs\(\)/ {f=1} f {print} f && /^}/ {exit}' "$SCRIPT_FILE" | sed 's/\\n/ /g' | grep -oE '[a-z_]+_(count|ids)=' | sed -E 's/=$//')
+  [ -n "$in_function" ]
 
   missing=$(only_in_first "$in_function" "$(action_outputs)")
 
@@ -217,7 +217,7 @@ only_in_first() {
   [ -n "$vars" ]
 
   for var in $vars; do
-    awk '/^set -euo/ {exit} {print}' "$SCRIPT_FILE" | grep -qE "^#   $var - " ||
+    awk '/^set -euo/ {exit} {print}' "$SCRIPT_FILE" | grep -qE "^#   $var( |,)" ||
       { echo "$var is not documented in the header of the script"; false; }
   done
 }
@@ -278,9 +278,9 @@ use_copies() {
 
 @test "sync helpers: an output removed from the README is reported" {
   use_copies
-  grep -v '^| `listing_truncated`' "$README_FILE" > "$README_FILE.new" && mv "$README_FILE.new" "$README_FILE"
+  grep -v '^| `cancelled_run_ids`' "$README_FILE" > "$README_FILE.new" && mv "$README_FILE.new" "$README_FILE"
 
-  [ "$(only_in_first "$(action_outputs)" "$(readme_names Outputs)")" = "listing_truncated" ]
+  [ "$(only_in_first "$(action_outputs)" "$(readme_names Outputs)")" = "cancelled_run_ids" ]
 }
 
 @test "sync helpers: an input that becomes required is reported" {

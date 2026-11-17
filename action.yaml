@@ -89,38 +89,28 @@ inputs:
     required: false
 
 outputs:
-  found_count:
+  eligible_count:
     description: >
-      Number of workflow runs found in the repository with the considered statuses (see the
-      statuses input; queued by default).
-    value: ${{ steps.cancel.outputs.found_count }}
+      Number of runs older than max_age_hours that match the statuses and the filters. In a dry
+      run, this is the number of runs that would be cancelled.
+    value: ${{ steps.cancel.outputs.eligible_count }}
   cancelled_count:
-    description: Number of runs for which a cancel request was accepted.
+    description: Number of runs for which a cancel request was accepted (always 0 in a dry run).
     value: ${{ steps.cancel.outputs.cancelled_count }}
   skipped_count:
-    description: >
-      Number of runs skipped because they were no longer cancellable (HTTP 404 or 409).
+    description: Number of runs that were gone or no longer cancellable (HTTP 404 or 409).
     value: ${{ steps.cancel.outputs.skipped_count }}
   failed_count:
     description: >
-      Number of runs that could not be cancelled or processed (for example an invalid timestamp,
-      or a list of runs that cannot be parsed).
+      Number of runs that could not be cancelled, and of runs left unprocessed because GitHub rate
+      limited the execution.
     value: ${{ steps.cancel.outputs.failed_count }}
-  would_cancel_count:
-    description: Number of runs that would be cancelled (only set in dry run, otherwise 0).
-    value: ${{ steps.cancel.outputs.would_cancel_count }}
   cancelled_run_ids:
     description: >
       JSON array with the IDs of the runs for which a cancel request was accepted, in the order
       they were processed (for example "[101,102]"), "[]" if none. Read it with fromJSON().
       Always "[]" in a dry run.
     value: ${{ steps.cancel.outputs.cancelled_run_ids }}
-  listing_truncated:
-    description: >
-      "true" if GitHub listed as many runs as it can return for a status (1000), so that older
-      runs may be missing and were not considered; run the action again to process them. "false"
-      otherwise.
-    value: ${{ steps.cancel.outputs.listing_truncated }}
 
 runs:
   using: "composite"
