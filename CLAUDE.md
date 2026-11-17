@@ -58,6 +58,8 @@ BSD/macOS; Windows is not supported and not tested) and is tested with
   the script is sourced by tests.
 - Quote all variables; validate inputs early with clear `::error` messages.
 - Code must pass `shellcheck` and `shfmt` via `make lint` / `make format`.
+- A function that can fail is followed by an explicit `return 1` on failure
+  (`cmd || { die ...; return 1; }`). Never rely on `set -e`: a caller in an `||` list turns it off.
 
 ## Workflow structure (`.github/workflows/`)
 
@@ -82,7 +84,7 @@ Files are prefixed by role:
 - `lib-get-test-matrix.yaml`: reusable workflow that loads the shared OS matrix once; callers pass it
   down through the `test-matrix` input.
 - `bot-*.yaml`: scheduled automation that opens PRs or acts on runs (format files, pin actions, sync
-  `.make/`, cancel stale runs, report queued runs).
+  `.make/`, cancel stale runs).
 - `security-*.yaml`: dependency review and OSSF Scorecard.
 
 Conventions:
@@ -130,16 +132,17 @@ Rules:
   same matrix runs on pull requests, pushes and the schedule.
 - Never write an OS or a Python version in a workflow: read the lists from
   `durandtibo/workflow-config-action` through `lib-get-test-matrix.yaml`.
-- Target layout: one reusable `ci-action.yaml` with a boolean input `use-released`. `ci.yaml` calls
+- Layout: one reusable `ci-action.yaml` with a boolean input `use-released`. `ci.yaml` calls
   it with `false`, `nightly.yaml` with `true`. Each job has two action steps, `uses: ./` with
   `if: ${{ !inputs.use-released }}` and the pinned release with `if: ${{ inputs.use-released }}`,
-  and one verify step reading `steps.local.outputs.x || steps.released.outputs.x`. This repository
-  already follows it.
+  and one verify step reading `steps.local.outputs.x || steps.released.outputs.x`.
 - Put the cases in a JSON file (a new case is a row, not a job). A row has `"released": false` until
   the last release has the feature; the released run skips those rows.
-- Every input has a case that sets it and asserts its effect, not only that the action succeeds.
-  Every validated input has a case with an invalid value that asserts the action failed in the
-  validation. Assert the value or the format of outputs, never just print them.
+- The action tests use the real `gh` and the real API, never a fake, with no side effect on a
+  repository. The effect of an input (a filter, a real cancel) is a level 1 test with the fake `gh`.
+- Every input has a case with an invalid value that asserts the action failed in the validation: it
+  can only fail if the input reached the script, so it proves the wiring. Assert the value or the
+  format of outputs, never just print them.
 - Failure paths use `continue-on-error: true`, an `id`, and a step that asserts `steps.<id>.outcome`.
   Assert an id or an exact output, not a message. A negative test needs a positive run on the same
   runner before it, so it cannot pass for the wrong reason.
