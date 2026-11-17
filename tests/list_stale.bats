@@ -114,5 +114,5 @@ calls() { grep -c . "$FAKE_GH_LOG" || true; }
   add_rule GET '*' 200 "{\"workflow_runs\":$(jq -nc '[range(1000) | {id: ., updated_at: "2020-01-01T00:00:00Z"}]')}"
   run list_stale "$CUT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"::warning::"*"1000"* ]] || false
+  [[ "$output" == *"::warning title="*"1000"* ]] || false
 }

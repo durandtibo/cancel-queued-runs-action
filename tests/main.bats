@@ -93,7 +93,7 @@ setup() {
   answer_post 1 500 "Server Error"
   FAIL_ON_ERROR=false run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"::warning::1 run(s) could not be cancelled"* ]] || false
+  [[ "$output" == *"::warning title=Cancellation failed::1 run(s) could not be cancelled"* ]] || false
 }
 
 @test "a rate limit stops the execution: the other runs are failed, not sent" {
