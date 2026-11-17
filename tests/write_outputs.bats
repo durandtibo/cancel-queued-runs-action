@@ -11,7 +11,6 @@ setup() {
   SKIPPED_COUNT=2
   FAILED_COUNT=1
   WOULD_CANCEL_COUNT=4
-  DEFERRED_COUNT=5
 }
 
 teardown() {
@@ -85,20 +84,6 @@ teardown() {
   grep -qx "listing_truncated=true" "$GITHUB_OUTPUT"
 }
 
-@test "write_outputs writes deferred_count" {
-  write_outputs 10
-
-  grep -qx "deferred_count=5" "$GITHUB_OUTPUT"
-}
-
-@test "write_outputs writes deferred_count=0 after a reset" {
-  reset_counters
-
-  write_outputs 0
-
-  grep -qx "deferred_count=0" "$GITHUB_OUTPUT"
-}
-
 @test "write_outputs writes cancelled_run_ids as a JSON array" {
   record_run 101 "30h00m" cancelled
   record_run 102 "30h00m" skipped
@@ -126,10 +111,3 @@ teardown() {
   [ "$(grep -c '^cancelled_run_ids=' "$GITHUB_OUTPUT")" -eq 1 ]
 }
 
-@test "write_outputs writes deleted_count" {
-  DELETED_COUNT=7
-
-  run write_outputs 10
-
-  grep -qx "deleted_count=7" "$GITHUB_OUTPUT"
-}

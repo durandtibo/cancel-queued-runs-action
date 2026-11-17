@@ -2,12 +2,11 @@
 #
 # Run scripts/cancel.sh on all the public, non-archived repositories of a user.
 #
-# Usage: dev/run_for_repos.sh [-u USERNAME] [-a MAX_AGE_HOURS] [-r MAX_RUNS]
+# Usage: dev/run_for_repos.sh [-u USERNAME] [-a MAX_AGE_HOURS]
 #
 # Options:
 #   -u, --username USERNAME        GitHub user or organization (default: durandtibo)
 #   -a, --max-age-hours HOURS      Value of MAX_AGE_HOURS (default: that of cancel.sh)
-#   -r, --max-runs N               Value of MAX_RUNS (default: that of cancel.sh)
 #   -h, --help                     Show this help
 #
 # Requires gh, authenticated (GH_TOKEN or "gh auth login"). The other
@@ -48,19 +47,18 @@ print_summary() {
 }
 
 main() {
-	local username="durandtibo" max_age="" max_runs=""
+	local username="durandtibo" max_age=""
 
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
-		-u | --username | -a | --max-age-hours | -r | --max-runs)
+		-u | --username | -a | --max-age-hours)
 			if [ "$#" -lt 2 ]; then
 				echo "::error::Missing value for $1" >&2
 				return 2
 			fi
 			case "$1" in
 			-u | --username) username="$2" ;;
-			-a | --max-age-hours) max_age="$2" ;;
-			*) max_runs="$2" ;;
+			*) max_age="$2" ;;
 			esac
 			shift 2
 			;;
@@ -81,7 +79,6 @@ main() {
 		return 2
 	fi
 	if [ -n "$max_age" ]; then export MAX_AGE_HOURS="$max_age"; fi
-	if [ -n "$max_runs" ]; then export MAX_RUNS="$max_runs"; fi
 
 	local repos
 	repos=$(gh repo list "$username" --visibility public --no-archived \

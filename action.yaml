@@ -72,33 +72,6 @@ inputs:
     default: ""
     required: false
 
-  cancel_delay_seconds:
-    description: >
-      Number of seconds to wait between two cancel requests, to stay under the secondary rate
-      limits of GitHub when many runs are cancelled (GitHub asks for about one second between
-      requests that modify data). Must be a non-negative integer; 0 means no delay.
-    default: "0"
-    required: false
-
-  max_cancellations:
-    description: >
-      Maximum number of runs cancelled by one execution, as a safety valve against a
-      misconfiguration (for example a too small max_age_hours). The other runs that are old
-      enough are left alone, counted in the deferred_count output, and are processed by the next
-      execution. In a dry run, the runs that would be cancelled count. Runs that are skipped or
-      that fail do not count. Must be a non-negative integer; 0 means no limit.
-    default: "0"
-    required: false
-
-  max_runs:
-    description: >
-      Maximum number of runs to keep: only the max_runs most recent runs (by queue time) are
-      kept, and the older ones are cancelled whatever their age. The max_age_hours threshold
-      still applies to the kept runs. The limit is applied to the runs selected by statuses,
-      workflow, branch and event. Must be a non-negative integer; 0 means no limit.
-    default: "0"
-    required: false
-
   fail_on_error:
     description: >
       If "true" (the default), the step fails when a run could not be cancelled. If "false", it
@@ -106,15 +79,6 @@ inputs:
       output. Invalid inputs and a failure to list the runs always fail the step. Must be "true"
       or "false".
     default: "true"
-    required: false
-
-  delete_stuck_runs:
-    description: >
-      If "true", delete a run that is older than max_age_hours+2*force_cancel_buffer_hours, that
-      GitHub still refuses to cancel (HTTP 409) and that has no job. Such a zombie run stays queued
-      forever and deleting it is the only way to remove it. The run and its history are lost. A
-      run with jobs is never deleted. Must be "true" or "false".
-    default: "false"
     required: false
 
   dry_run:
@@ -133,15 +97,9 @@ outputs:
   cancelled_count:
     description: Number of runs for which a cancel request was accepted.
     value: ${{ steps.cancel.outputs.cancelled_count }}
-  deleted_count:
-    description: >
-      Number of zombie runs (no job, cannot be cancelled) that were deleted, see the
-      delete_stuck_runs input (0 when it is false).
-    value: ${{ steps.cancel.outputs.deleted_count }}
   skipped_count:
     description: >
-      Number of runs skipped because they were no longer cancellable (HTTP 404 or 409), or
-      because GitHub refused to delete them (HTTP 403, see delete_stuck_runs).
+      Number of runs skipped because they were no longer cancellable (HTTP 404 or 409).
     value: ${{ steps.cancel.outputs.skipped_count }}
   failed_count:
     description: >
@@ -157,11 +115,6 @@ outputs:
       they were processed (for example "[101,102]"), "[]" if none. Read it with fromJSON().
       Always "[]" in a dry run.
     value: ${{ steps.cancel.outputs.cancelled_run_ids }}
-  deferred_count:
-    description: >
-      Number of runs that were old enough to be cancelled but were left alone because the
-      max_cancellations limit was reached (0 when there is no limit).
-    value: ${{ steps.cancel.outputs.deferred_count }}
   listing_truncated:
     description: >
       "true" if GitHub listed as many runs as it can return for a status (1000), so that older
@@ -185,9 +138,5 @@ runs:
         WORKFLOW: ${{ inputs.workflow }}
         BRANCH: ${{ inputs.branch }}
         EVENT: ${{ inputs.event }}
-        CANCEL_DELAY_SECONDS: ${{ inputs.cancel_delay_seconds }}
-        MAX_CANCELLATIONS: ${{ inputs.max_cancellations }}
-        MAX_RUNS: ${{ inputs.max_runs }}
         FAIL_ON_ERROR: ${{ inputs.fail_on_error }}
-        DELETE_STUCK_RUNS: ${{ inputs.delete_stuck_runs }}
         DRY_RUN: ${{ inputs.dry_run }}

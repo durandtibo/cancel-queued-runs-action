@@ -249,9 +249,9 @@ use_copies() {
 
 @test "sync helpers: an input removed from the README is reported" {
   use_copies
-  grep -v '^| `cancel_delay_seconds`' "$README_FILE" > "$README_FILE.new" && mv "$README_FILE.new" "$README_FILE"
+  grep -v '^| `branch`' "$README_FILE" > "$README_FILE.new" && mv "$README_FILE.new" "$README_FILE"
 
-  [ "$(only_in_first "$(action_inputs)" "$(readme_names Inputs)")" = "cancel_delay_seconds" ]
+  [ "$(only_in_first "$(action_inputs)" "$(readme_names Inputs)")" = "branch" ]
 }
 
 @test "sync helpers: an input renamed in action.yaml is reported on both sides" {

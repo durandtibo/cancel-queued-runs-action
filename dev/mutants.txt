@@ -37,12 +37,9 @@ to_unix_ts: trailing characters accepted@@to_unix_ts.bats@@s/\[0-9\]\{2\}Z\$/[0-
 to_unix_ts: BSD date not in UTC@@to_unix_ts.bats@@s/date -j -u -f/date -j -f/
 format_age: minutes computed from 30 seconds@@format_age.bats@@s/\(\(seconds % 3600\) \/ 60\)/((seconds % 3600) \/ 30)/
 format_age: negative age not clamped@@format_age.bats@@s/\[ "\$seconds" -lt 0 \]/[ "$seconds" -lt -999999999 ]/
-throttle_requests: waits even without a delay@@throttle_requests.bats@@s/\[ "\$REQUEST_SENT" = "true" \] && \[ "\$CANCEL_DELAY_SECONDS" -gt 0 \]/[ "$REQUEST_SENT" = "true" ]/
-throttle_requests: waits before the first request@@throttle_requests.bats@@s/\[ "\$REQUEST_SENT" = "true" \] && \[ "\$CANCEL_DELAY_SECONDS" -gt 0 \]/[ "$CANCEL_DELAY_SECONDS" -gt 0 ]/
 process_all_runs: cancelled runs counted twice@@process_all_runs.bats@@s/CANCELLED_COUNT=\$\(\(CANCELLED_COUNT \+ 1\)\)/CANCELLED_COUNT=$((CANCELLED_COUNT + 2))/
 process_all_runs: skipped runs not counted@@process_all_runs.bats@@s/skipped\) SKIPPED_COUNT=\$\(\(SKIPPED_COUNT \+ 1\)\) ;;/skipped) : ;;/
 write_outputs: failed_count reports the skipped runs@@write_outputs.bats@@s/echo "failed_count=\$FAILED_COUNT"/echo "failed_count=$SKIPPED_COUNT"/
-write_summary_runs: no limit on the runs listed@@write_summary_runs.bats@@s/\[ "\$shown" -ge "\$SUMMARY_MAX_RUNS" \]/[ "$shown" -ge 999999 ]/
 describe_outcome: failed described as cancelled@@describe_outcome.bats@@s/failed\) echo "Failed" ;;/failed) echo "Cancelled" ;;/
 validate_max_age_hours: zero accepted@@validate_max_age_hours.bats@@s/\^\[1-9\]\[0-9\]\*\$ \]\]; then$/^[0-9]+$ ]]; then/
 validate_force_buffer_hours: zero rejected@@validate_force_buffer_hours.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[1-9][0-9]*$ ]]; then/
@@ -52,9 +49,7 @@ validate_workflow: '..' accepted@@validate_workflow.bats@@s/ \|\| \[ "\$workflow
 validate_repo: path traversal accepted@@validate_repo.bats@@s/ \|\| \[\[ "\$target_repo" =~ \/\\\.\{1,2\}\$ \]\]//
 validate_dry_run: any value accepted@@validate_dry_run.bats@@s/\[ "\$dry_run" != "true" \] && \[ "\$dry_run" != "false" \]/false/
 validate_fail_on_error: any value accepted@@validate_fail_on_error.bats@@s/\[ "\$fail_on_error" != "true" \] && \[ "\$fail_on_error" != "false" \]/false/
-validate_cancel_delay_seconds: leading zero accepted@@validate_cancel_delay_seconds.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[0-9]+$ ]]; then/
 validate_auth: credentials never found@@validate_auth.bats@@s/-n "\$\{GH_TOKEN:-\}" \] \|\| \[ -n "\$\{GITHUB_TOKEN:-\}" \]/-n "" ] || [ -n "" ]/
-validate_tuning_variables: zero accepted for positive integers@@validate_tuning_variables.bats@@s/pattern='\^\[1-9\]\[0-9\]\*\$'/pattern='^(0|[1-9][0-9]*)$'/
 process_all_runs: current time not shared by the runs@@process_all_runs.bats@@s/compute_age_seconds "\$queued_at" "\$now"/compute_age_seconds "$queued_at"/
 to_unix_ts: GNU date not in UTC@@to_unix_ts.bats@@s/date -u -d "\$ts" \+%s/date -d "$ts" +%s/
 make_temp_file: WORK_DIR ignored@@make_temp_file.bats@@s/mktemp "\$\{WORK_DIR:-\$\{TMPDIR:-\/tmp\}\}\//mktemp "${TMPDIR:-\/tmp}\//
@@ -79,19 +74,6 @@ list_runs_of_status: delay does not grow@@list_runs_of_status.bats@@s/get_retry_
 list_runs_of_status: no wait between attempts@@list_runs_of_status.bats@@s/^\t\tsleep "\$delay"$/\t\t:/
 is_old_enough: age equal to the threshold accepted@@is_old_enough.bats@@s/\[ "\$age_seconds" -gt \$\(\(MAX_AGE_HOURS \* 3600\)\) \]/[ "$age_seconds" -ge $((MAX_AGE_HOURS * 3600)) ]/
 is_old_enough: threshold in minutes@@is_old_enough.bats@@s/\$\(\(MAX_AGE_HOURS \* 3600\)\) \]$/$((MAX_AGE_HOURS * 60)) ]/
-cancellation_limit_reached: limit reached one run too late@@cancellation_limit_reached.bats@@s/-ge "\$MAX_CANCELLATIONS" \]/-gt "$MAX_CANCELLATIONS" ]/
-cancellation_limit_reached: no limit not honoured@@cancellation_limit_reached.bats@@s/\[ "\$MAX_CANCELLATIONS" -gt 0 \] &&/true \&\&/
-cancellation_limit_reached: dry run not counted@@cancellation_limit_reached.bats@@s/DELETED_COUNT \+ WOULD_CANCEL_COUNT\)\)/DELETED_COUNT))/
-cancellation_limit_reached: skipped runs counted@@cancellation_limit_reached.bats@@s/DELETED_COUNT \+ WOULD_CANCEL_COUNT\)\)/DELETED_COUNT + WOULD_CANCEL_COUNT + SKIPPED_COUNT))/
-process_all_runs: runs not old enough left alone too@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if cancellation_limit_reached; then/
-process_all_runs: limit ignored@@process_all_runs.bats@@s/if cancellation_limit_reached \&\& \{ is_old_enough "\$age_seconds" \|\| \[ "\$over_limit" = "true" \]; \}; then/if false; then/
-process_all_runs: left-alone runs not counted@@process_all_runs.bats@@s/DEFERRED_COUNT=\$\(\(DEFERRED_COUNT \+ 1\)\)/DEFERRED_COUNT=$DEFERRED_COUNT/
-process_all_runs: no warning for the runs left alone@@process_all_runs.bats@@s/^\tif \[ "\$DEFERRED_COUNT" -gt 0 \]; then$/\tif false; then/
-reset_counters: runs left alone not reset@@reset_counters.bats@@s/^\tDEFERRED_COUNT=0$/\t:/
-write_outputs: deferred_count reports the skipped runs@@write_outputs.bats@@s/echo "deferred_count=\$DEFERRED_COUNT"/echo "deferred_count=$SKIPPED_COUNT"/
-write_summary: no limit warning@@write_summary.bats@@s/^\t\tif \[ "\$DEFERRED_COUNT" -gt 0 \]; then$/\t\tif false; then/
-validate_max_cancellations: leading zero accepted@@validate_max_cancellations.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[0-9]+$ ]]; then/
-validate_max_cancellations: zero rejected@@validate_max_cancellations.bats@@s/\^\(0\|\[1-9\]\[0-9\]\*\)\$ \]\]; then$/^[1-9][0-9]*$ ]]; then/
 cancelled_run_ids_json: runs that would be cancelled listed@@cancelled_run_ids_json.bats@@s/\$3 == "cancelled" &&/($3 == "cancelled" || $3 == "would-cancel") \&\&/
 cancelled_run_ids_json: failed runs listed@@cancelled_run_ids_json.bats@@s/\$3 == "cancelled" &&/$3 != "skipped" \&\&/
 cancelled_run_ids_json: outcome matched by prefix@@cancelled_run_ids_json.bats@@s/\$3 == "cancelled" &&/$3 ~ \/^cancelled\/ \&\&/
@@ -112,17 +94,4 @@ validate_event: uppercase accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$
 validate_event: dash accepted@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z][a-z_-]*$/
 validate_event: anything accepted after the first letter@@validate_event.bats@@s/\^\[a-z\]\[a-z_\]\*\$/^[a-z]/
 write_summary: branch not shown@@write_summary.bats@@s/echo "Branch: /echo "Ignored: /
-process_run: over-limit run ignored@@process_run.bats@@s/ \|\| \[ "\$over_limit" = "true" \]; then/; then/
-select_excess_run_ids: keeps the oldest runs instead of the newest@@select_excess_run_ids.bats@@s/sort_by\(\.queued_at\) \| reverse/sort_by(.queued_at)/
-select_excess_run_ids: keeps one run too few@@select_excess_run_ids.bats@@s/\.\[\$keep:\]\[\]/.[$keep + 1:][]/
-delete_zombie_run: deletes even when DELETE_STUCK_RUNS is false@@delete_zombie_run.bats process_run.bats@@s/\[ "\$DELETE_STUCK_RUNS" != "true" \] \|\| ! run_has_no_jobs/false || ! run_has_no_jobs/
-delete_zombie_run: deletes a run that has jobs@@delete_zombie_run.bats process_run.bats@@s/\|\| ! run_has_no_jobs "\$run_id"; then/|| false; then/
-delete_zombie_run: a 404 is a failure@@delete_zombie_run.bats@@s/ \|\| \[ "\$status_code" = "404" \]; then$/; then/
-run_has_no_jobs: any answer is accepted@@run_has_no_jobs.bats@@s/\[ "\$total" = "0" \]/[ -n "$total" ]/
-process_run: zombie deleted without a 409@@process_run.bats@@s/if \[ "\$status_code" = "409" \] && \[ "\$age_seconds" -gt "\$delete_age_seconds" \] &&$/if [ "$age_seconds" -gt "$delete_age_seconds" ] \&\&/
-cancellation_limit_reached: deleted runs not counted@@process_all_runs.bats@@s/CANCELLED_COUNT \+ DELETED_COUNT \+ WOULD/CANCELLED_COUNT + WOULD/
-process_run: delete threshold ignored@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$delete_age_seconds" \]/true/
-process_run: delete threshold without the second buffer@@process_run.bats@@s/MAX_AGE_HOURS \+ 2 \* FORCE_BUFFER_HOURS/MAX_AGE_HOURS + FORCE_BUFFER_HOURS/
-process_run: delete threshold >= instead of >@@process_run.bats@@s/\[ "\$age_seconds" -gt "\$delete_age_seconds" \]/[ "$age_seconds" -ge "$delete_age_seconds" ]/
-delete_zombie_run: a 403 is a failure@@delete_zombie_run.bats process_run.bats@@s/elif \[ "\$status_code" = "403" \]; then/elif false; then/
-process_run: a skipped deletion fails the run@@process_run.bats@@s/ \|\| \[ "\$PROCESS_RUN_OUTCOME" = "skipped" \]; then$/; then/
+write_summary_runs: no limit on the runs listed@@write_summary_runs.bats@@s/\[ "\$shown" -ge "\$SUMMARY_MAX_RUNS" \]/[ "$shown" -ge 999999 ]/
