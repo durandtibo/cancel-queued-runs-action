@@ -2,11 +2,13 @@ ifndef ACTIONS_MK_INCLUDED
 ACTIONS_MK_INCLUDED := 1
 
 include $(dir $(lastword $(MAKEFILE_LIST)))tool-info.mk
+include $(dir $(lastword $(MAKEFILE_LIST)))files.mk
 
 # Targets for linting GitHub Actions workflow files.
 #
 # Optional variables (set before including this file):
 #   ACTIONS_LINT_PATH ?= .   # path searched for workflow/action files passed to actionlint
+#   USE_GITIGNORE ?= 1   # 1: skip the files ignored by .gitignore (see files.mk)
 
 ACTIONS_LINT_PATH ?= .
 
@@ -54,8 +56,8 @@ install-zizmor:
 .PHONY: lint-actions
 lint-actions: install-actionlint ## Lint GitHub Actions workflow files with actionlint
 	@echo "⚙️ Running actionlint on GitHub Actions workflow files..."
-	find $(ACTIONS_LINT_PATH) -type d -name '.make' -prune -o -type f -path '*/.github/workflows/*' \( -name '*.yml' -o -name '*.yaml' \) -print0 \
-		| xargs -0 -r actionlint -color
+	@{ $(call list-files,$(ACTIONS_LINT_PATH),**/.github/workflows/*.yml); \
+	$(call list-files,$(ACTIONS_LINT_PATH),**/.github/workflows/*.yaml); } | xargs -0 -r actionlint -color
 	@echo "✅ Actionlint passed"
 
 endif
