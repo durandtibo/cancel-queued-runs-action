@@ -28,7 +28,7 @@ list-files = if $(use-gitignore); then \
 	git ls-files -z --cached --others --exclude-standard -- ':(glob)$(1)/$(2)' ':(exclude,glob)**/.make/**' \
 	| xargs -0 sh -c 'for f; do [ -e "$$f" ] && printf "%s\0" "$$f"; done' _; \
 	else \
-	find $(1) -type d -name '.make' -prune -o -type f -path '*/$(subst **/,,$(2))' -print0; \
+	find $(1) -type d -name '.make' -prune -o -type f -path '*/$(patsubst **/%,%,$(2))' -print0; \
 	fi
 
 endif
