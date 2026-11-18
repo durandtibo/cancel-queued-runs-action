@@ -15,7 +15,7 @@ setup() {
 }
 
 @test "check_export fails when a needed file is not exported" {
-	tmp="$BATS_TEST_TMPDIR/repo"
+	tmp="${BATS_TEST_TMPDIR:-$(mktemp -d)}/repo"
 	mkdir -p "$tmp/scripts"
 	cd "$tmp"
 	git init -q
