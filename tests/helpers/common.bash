@@ -6,6 +6,9 @@
 # and the tests of the whole script build their timestamps with ago.
 
 setup_fake_gh() {
+  # bats < 1.4 (apt on ubuntu-22.04) does not set BATS_TEST_TMPDIR
+  : "${BATS_TEST_TMPDIR:=$(mktemp -d)}"
+  export BATS_TEST_TMPDIR
   WORK="$BATS_TEST_TMPDIR"
   mkdir -p "$WORK/bin"
   ln -s "$BATS_TEST_DIRNAME/helpers/fake_gh" "$WORK/bin/gh"
