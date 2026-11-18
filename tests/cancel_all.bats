@@ -101,3 +101,13 @@ all() { cancel_all 2>/dev/null; }
   run bash -c 'source "$1"; printf "1 100\n" | cancel_all 2>&1 >/dev/null' _ "$SCRIPT"
   ! printf '%s\n' "$output" | grep -q '^::error::injected' || false
 }
+
+@test "format_age prints seconds as hours, minutes and seconds" {
+	run format_age 91663
+	[ "$output" = "25h27m43s" ]
+}
+
+@test "format_age prints zero hours and minutes for a short age" {
+	run format_age 5
+	[ "$output" = "0h0m5s" ]
+}
