@@ -132,6 +132,11 @@ select_stale() {
 		| .[] | "\(.id) \($now - (.updated_at | fromdateiso8601))"'
 }
 
+# Print $1 seconds as 25h12m3s (hours are not split into days).
+format_age() {
+	echo "$(($1 / 3600))h$(($1 % 3600 / 60))m$(($1 % 60))s"
+}
+
 # Cancel run $1 (age $2 in seconds) and print cancelled, skipped, rate-limited
 # or failed. gh api exits non-zero from HTTP 400 and writes "(HTTP nnn)" on
 # stderr. A 404 or 409 (gone, finished) is skipped; a 429, or a 403 about a rate
@@ -174,12 +179,12 @@ cancel_all() {
 			continue
 		fi
 		if [ "$DRY_RUN" = true ]; then
-			echo "[dry-run] Would cancel run $id (age ${age}s)" >&2
+			echo "[dry-run] Would cancel run $id (age ${age}s, $(format_age "$age"))" >&2
 			continue
 		fi
 		if [ $((cancelled + skipped + failed)) -gt 0 ]; then sleep 1; fi
 		outcome=$(cancel_run "$id" "$age")
-		echo "Run $id (age ${age}s): $outcome" >&2
+		echo "Run $id (age ${age}s, $(format_age "$age")): $outcome" >&2
 		case "$outcome" in
 		cancelled)
 			cancelled=$((cancelled + 1))
