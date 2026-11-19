@@ -43,7 +43,7 @@ check_success_outputs() {
 		is_count "$value" || fail "The output $name must be a non-negative integer (got '$value')"
 	done
 	[ "$errors" -eq 0 ] || return 0
-	if ! jq -e 'type == "array" and all(.[]; type == "number" and . == floor)' <<<"${CANCELLED_RUN_IDS:-}" >/dev/null 2>&1; then
+	if [ -z "${CANCELLED_RUN_IDS:-}" ] || ! jq -e 'type == "array" and all(.[]; type == "number" and . == floor)' <<<"${CANCELLED_RUN_IDS:-}" >/dev/null 2>&1; then
 		fail "The output CANCELLED_RUN_IDS must be a JSON array of integers (got '${CANCELLED_RUN_IDS:-}')"
 		return 0
 	fi
