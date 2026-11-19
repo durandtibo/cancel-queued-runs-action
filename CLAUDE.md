@@ -31,6 +31,8 @@ BSD/macOS; Windows is not supported and not tested) and is tested with
   `docs:` or `feat:` (the type prefix is only for branch names). The squash-merge appends the PR
   number, so do not add one.
 - PR descriptions cover what changed, what was deliberately left alone, and any behaviour change.
+- Do not escape special characters such as the backtick (`` ` ``) in PR titles and descriptions
+  (no `\``): the escape characters are not rendered well. Write them as plain Markdown.
 - On conflicts with `main`, merge `origin/main` into the branch; do not rebase and force-push.
 - Update `README.md` when inputs, behaviour, or workflows change.
 - Releases are immutable exact version tags (`v1.9`, ...). Do not create or move floating tags
