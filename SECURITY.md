@@ -59,7 +59,7 @@ When using this action:
 
    ```yaml
    # Good
-   uses: durandtibo/cancel-queued-runs-action@v1.9
+   uses: durandtibo/cancel-queued-runs-action@v3.0.0
 
    # Avoid
    uses: durandtibo/cancel-queued-runs-action@main

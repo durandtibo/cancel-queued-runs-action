@@ -98,25 +98,23 @@ jobs:
         uses: ./
         with:
           dry-run: true
-      # The pinned release still has the v2 names (snake_case inputs and outputs). Once the
-      # pinned release is v3.0.0, use the kebab-case names here and in the verify step.
       - name: Dry run of the action (released)
         id: released
         if: ${{ inputs.use-released }}
-        uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
+        uses: durandtibo/cancel-queued-runs-action@0ba2e858302a043106df9d58f05bb083b9695236 # ratchet:durandtibo/cancel-queued-runs-action@v3.0.0
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
-          dry_run: true
+          dry-run: true
       - name: Check the outputs
         env:
           CASE: '{"id":"default-dry-run","inputs":{"dry-run":"true"},"expect":"success"}'
           OUTCOME: success
-          ELIGIBLE_COUNT: ${{ steps.local.outputs.eligible-count || steps.released.outputs.would_cancel_count }}
-          CANCELLED_COUNT: ${{ steps.local.outputs.cancelled-count || steps.released.outputs.cancelled_count }}
-          SKIPPED_COUNT: ${{ steps.local.outputs.skipped-count || steps.released.outputs.skipped_count }}
-          FAILED_COUNT: ${{ steps.local.outputs.failed-count || steps.released.outputs.failed_count }}
-          CANCELLED_RUN_IDS: ${{ steps.local.outputs.cancelled-run-ids || steps.released.outputs.cancelled_run_ids }}
+          ELIGIBLE_COUNT: ${{ steps.local.outputs.eligible-count || steps.released.outputs.eligible-count }}
+          CANCELLED_COUNT: ${{ steps.local.outputs.cancelled-count || steps.released.outputs.cancelled-count }}
+          SKIPPED_COUNT: ${{ steps.local.outputs.skipped-count || steps.released.outputs.skipped-count }}
+          FAILED_COUNT: ${{ steps.local.outputs.failed-count || steps.released.outputs.failed-count }}
+          CANCELLED_RUN_IDS: ${{ steps.local.outputs.cancelled-run-ids || steps.released.outputs.cancelled-run-ids }}
         run: ./dev/check_action_case.sh
         shell: bash
 
@@ -148,7 +146,7 @@ jobs:
           dry-run: true
       - name: Positive run before a failure case (released)
         if: ${{ inputs.use-released && matrix.case.released && matrix.case.expect == 'failure' }}
-        uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
+        uses: durandtibo/cancel-queued-runs-action@0ba2e858302a043106df9d58f05bb083b9695236 # ratchet:durandtibo/cancel-queued-runs-action@v3.0.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
@@ -175,7 +173,7 @@ jobs:
         id: released
         if: ${{ inputs.use-released && matrix.case.released }}
         continue-on-error: true
-        uses: durandtibo/cancel-queued-runs-action@b5f191982afc3b7cbe8797f1a2033bdd634324ce # ratchet:durandtibo/cancel-queued-runs-action@v2.0.0
+        uses: durandtibo/cancel-queued-runs-action@0ba2e858302a043106df9d58f05bb083b9695236 # ratchet:durandtibo/cancel-queued-runs-action@v3.0.0
         with:
           github-token: ${{ matrix.case.inputs['github-token'] || secrets.GITHUB_TOKEN }}
           repo: ${{ matrix.case.inputs.repo || github.repository }}
