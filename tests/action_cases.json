@@ -5,7 +5,7 @@
       "dry-run": "true"
     },
     "expect": "success",
-    "released": false
+    "released": true
   },
   {
     "id": "huge-age",
@@ -14,7 +14,7 @@
       "dry-run": "true"
     },
     "expect": "success",
-    "released": false,
+    "released": true,
     "eligible-count": "0"
   },
   {
@@ -24,7 +24,7 @@
       "dry-run": "true"
     },
     "expect": "success",
-    "released": false
+    "released": true
   },
   {
     "id": "invalid-age",
@@ -32,7 +32,7 @@
       "max-age-hours": "not-a-number"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -41,7 +41,7 @@
       "max-age-hours": "87601"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -50,7 +50,7 @@
       "statuses": "running"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -60,7 +60,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -70,7 +70,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -80,7 +80,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -89,7 +89,7 @@
       "force-cancel-buffer-hours": "-1"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -99,7 +99,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -108,7 +108,7 @@
       "dry-run": "yes"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -118,7 +118,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "unset"
   },
   {
@@ -128,7 +128,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "zero"
   },
   {
@@ -138,7 +138,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "zero"
   },
   {
@@ -148,7 +148,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "zero"
   },
   {
@@ -159,7 +159,7 @@
       "dry-run": "true"
     },
     "expect": "failure",
-    "released": false,
+    "released": true,
     "outputs": "zero"
   }
 ]
