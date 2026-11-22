@@ -66,4 +66,4 @@ if [ "$code" -ge 400 ]; then
 	echo "gh: $(printf '%s' "$body" | jq -r '.message // "error"') (HTTP $code)" >&2
 	exit 1
 fi
-printf '%s\n' "$body" | jq -c "$filter"
+printf '%s\n' "$body" | jq -cr "$filter"
