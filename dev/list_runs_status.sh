@@ -2,7 +2,7 @@
 #
 # Print a table with the status of the active workflow runs (queued or running) of
 # several repositories, sorted by update time (oldest first). Columns: rank (1 = the
-# least recently updated), repository, run name, status, created at, updated at (UTC).
+# least recently updated), repository, run name, status, created at, updated at (UTC), run ID.
 #
 # Usage: dev/list_runs_status.sh [-u OWNER] [OWNER/NAME...]
 #
@@ -34,30 +34,30 @@ default_repos() {
 	gh repo list "$1" --visibility public --no-archived --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner' | sort -f
 }
 
-# Print the queued and running runs of repo $1 as "repo|name|status|created|updated"
+# Print the queued and running runs of repo $1 as "repo|name|status|created|updated|id"
 # (fails when they cannot be listed)
 list_runs() {
 	local status
 	for status in queued in_progress; do
 		gh api --method GET "/repos/$1/actions/runs" --paginate -f status="$status" -f per_page=100 \
-			--jq '.workflow_runs[] | ["'"$1"'", .name, (if .status == "in_progress" then "running" else .status end), .created_at, .updated_at] | join("|")' || return 1
+			--jq '.workflow_runs[] | ["'"$1"'", .name, (if .status == "in_progress" then "running" else .status end), .created_at, .updated_at, (.id | tostring)] | join("|")' || return 1
 	done
 }
 
-# Read "repo|name|status|created|updated" rows on stdin; print the table sorted by
+# Read "repo|name|status|created|updated|id" rows on stdin; print the table sorted by
 # update time (oldest first), the header first
 print_table() {
 	{
-		printf '%s|%s|%s|%s|%s|%s\n' "#" "Repository" "Job" "Status" "Created at" "Updated at"
+		printf '%s|%s|%s|%s|%s|%s|%s\n' "#" "Repository" "Job" "Status" "Created at" "Updated at" "Job ID"
 		LC_ALL=C sort -t'|' -k5,5 | awk '{ print NR "|" $0 }'
 	} | awk -F'|' '
-		{ for (i = 1; i <= 6; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
+		{ for (i = 1; i <= 7; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
 		END {
 			for (r = 1; r <= NR; r++) {
-				printf "%*s  %-*s  %-*s  %-*s  %-*s  %-*s\n", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3], w[4], c[r, 4], w[5], c[r, 5], w[6], c[r, 6]
+				printf "%*s  %-*s  %-*s  %-*s  %-*s  %-*s  %*s\n", w[1], c[r, 1], w[2], c[r, 2], w[3], c[r, 3], w[4], c[r, 4], w[5], c[r, 5], w[6], c[r, 6], w[7], c[r, 7]
 				if (r == 1) {
 					s = ""
-					for (i = 0; i < w[1] + w[2] + w[3] + w[4] + w[5] + w[6] + 10; i++) s = s "-"
+					for (i = 0; i < w[1] + w[2] + w[3] + w[4] + w[5] + w[6] + w[7] + 12; i++) s = s "-"
 					print s
 				}
 			}
