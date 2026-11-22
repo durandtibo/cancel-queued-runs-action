@@ -29,7 +29,7 @@ setup() {
   run print_table 1767312000 <<<"o/b|B|queued|2026-01-01T00:00:00Z|2026-01-03T00:00:00Z|222
 o/a|A|running|2026-01-01T00:00:00Z|2026-01-02T00:00:00Z|111"
   [ "$status" -eq 0 ]
-  [[ ${lines[0]} == "#"*"Updated ago"*"Job ID" ]] || false
+  [[ ${lines[0]} == "#"*"Updated at"*"Job ID" ]] || false
   [[ ${lines[2]} == "1  o/a"* ]] || false
   [[ ${lines[3]} == "2  o/b"* ]] || false
   [[ ${lines[2]} == *"  111" ]] || false
@@ -48,20 +48,20 @@ o/a|A|running|2026-01-01T00:00:00Z|2026-01-02T00:00:00Z|111"
   [ "$status" -eq 2 ]
 }
 
-@test "print_table: updated at is shown as the age at now, as 12h34m56s" {
+@test "print_table: updated at is followed by the age at now, as 12h34m56s" {
   # now = 2026-01-02T00:00:00Z
   run print_table 1767312000 <<<"o/a|A|running|c|2026-01-01T11:25:04Z|1
 o/a|B|queued|c|2026-01-01T23:59:59Z|2
 o/a|C|queued|c|2026-01-02T00:00:10Z|3"
   [ "$status" -eq 0 ]
-  [[ ${lines[2]} == *"12h34m56s"* ]] || false
-  [[ ${lines[3]} == *"0h00m01s"* ]] || false
-  [[ ${lines[4]} == *"0h00m00s"* ]] || false
+  [[ ${lines[2]} == *"(12h34m56s)"* ]] || false
+  [[ ${lines[3]} == *"(0h00m01s)"* ]] || false
+  [[ ${lines[4]} == *"(0h00m00s)"* ]] || false
 }
 
 @test "print_table: ages across a month and a leap day" {
   # now = 2024-03-01T00:00:00Z (1709251200)
   run print_table 1709251200 <<<"o/a|A|running|c|2024-02-28T00:00:00Z|1"
   [ "$status" -eq 0 ]
-  [[ ${lines[2]} == *"48h00m00s"* ]] || false
+  [[ ${lines[2]} == *"(48h00m00s)"* ]] || false
 }

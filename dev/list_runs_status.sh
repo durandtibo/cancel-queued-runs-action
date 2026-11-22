@@ -2,7 +2,7 @@
 #
 # Print a table with the status of the active workflow runs (queued or running) of
 # several repositories, sorted by update time (oldest first). Columns: rank (1 = the
-# least recently updated), repository, run name, status, created at, the time since the last update (12h34m56s), run ID.
+# least recently updated), repository, run name, status, created at, updated at with the time since then (2026-11-21T16:44:44Z (8h31m59s)), run ID.
 #
 # Usage: dev/list_runs_status.sh [-u OWNER] [OWNER/NAME...]
 #
@@ -45,7 +45,7 @@ list_runs() {
 }
 
 # awk program: print each row "repo|name|status|created|updated|id" with a rank in front and
-# the update time replaced by its age at the epoch "now", written 12h34m56s
+# the age of the update time appended to it at the epoch "now", written 12h34m56s
 # shellcheck disable=SC2016 # awk code: no shell expansion wanted
 AWK_AGE='
 function epoch(t,   y, m, d, era, yoe, doy, doe) {
@@ -58,7 +58,7 @@ function epoch(t,   y, m, d, era, yoe, doy, doe) {
 }
 {
 	age = now - epoch($5); if (age < 0) age = 0
-	$5 = sprintf("%dh%02dm%02ds", int(age / 3600), int(age % 3600 / 60), age % 60)
+	$5 = $5 sprintf(" (%dh%02dm%02ds)", int(age / 3600), int(age % 3600 / 60), age % 60)
 	print NR, $0
 }'
 
@@ -66,7 +66,7 @@ function epoch(t,   y, m, d, era, yoe, doy, doe) {
 # update time (oldest first), the header first. Arg: the epoch "now", the same for all rows
 print_table() {
 	{
-		printf '%s|%s|%s|%s|%s|%s|%s\n' "#" "Repository" "Job" "Status" "Created at" "Updated ago" "Job ID"
+		printf '%s|%s|%s|%s|%s|%s|%s\n' "#" "Repository" "Job" "Status" "Created at" "Updated at" "Job ID"
 		LC_ALL=C sort -t'|' -k5,5 | awk -F'|' -v now="$1" -v OFS='|' "$AWK_AGE"
 	} | awk -F'|' '
 		{ for (i = 1; i <= 7; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
