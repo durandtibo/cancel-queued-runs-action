@@ -2,7 +2,7 @@
 #
 # Print a table with the status of the active workflow runs (queued or running) of
 # several repositories, sorted by update time (oldest first). Columns: rank (1 = the
-# least recently updated), repository, run name, status, created at, updated at (UTC), run ID.
+# least recently updated), repository, run name, status, created at, the time since the last update (12h34m56s), run ID.
 #
 # Usage: dev/list_runs_status.sh [-u OWNER] [OWNER/NAME...]
 #
@@ -44,12 +44,30 @@ list_runs() {
 	done
 }
 
+# awk program: print each row "repo|name|status|created|updated|id" with a rank in front and
+# the update time replaced by its age at the epoch "now", written 12h34m56s
+# shellcheck disable=SC2016 # awk code: no shell expansion wanted
+AWK_AGE='
+function epoch(t,   y, m, d, era, yoe, doy, doe) {
+	y = substr(t, 1, 4) + 0; m = substr(t, 6, 2) + 0; d = substr(t, 9, 2) + 0
+	if (m <= 2) y--
+	era = int(y / 400); yoe = y - era * 400
+	doy = int((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1
+	doe = yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+	return (era * 146097 + doe - 719468) * 86400 + substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
+}
+{
+	age = now - epoch($5); if (age < 0) age = 0
+	$5 = sprintf("%dh%02dm%02ds", int(age / 3600), int(age % 3600 / 60), age % 60)
+	print NR, $0
+}'
+
 # Read "repo|name|status|created|updated|id" rows on stdin; print the table sorted by
-# update time (oldest first), the header first
+# update time (oldest first), the header first. Arg: the epoch "now", the same for all rows
 print_table() {
 	{
-		printf '%s|%s|%s|%s|%s|%s|%s\n' "#" "Repository" "Job" "Status" "Created at" "Updated at" "Job ID"
-		LC_ALL=C sort -t'|' -k5,5 | awk '{ print NR "|" $0 }'
+		printf '%s|%s|%s|%s|%s|%s|%s\n' "#" "Repository" "Job" "Status" "Created at" "Updated ago" "Job ID"
+		LC_ALL=C sort -t'|' -k5,5 | awk -F'|' -v now="$1" -v OFS='|' "$AWK_AGE"
 	} | awk -F'|' '
 		{ for (i = 1; i <= 7; i++) { c[NR, i] = $i; if (length($i) > w[i]) w[i] = length($i) } }
 		END {
@@ -104,7 +122,7 @@ main() {
 			failed=1
 		fi
 	done
-	printf '%s\n' "$rows" | print_table
+	printf '%s\n' "$rows" | print_table "$(date +%s)"
 	[ "$failed" -eq 0 ] || return 1
 }
 
