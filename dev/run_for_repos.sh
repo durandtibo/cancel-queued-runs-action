@@ -28,7 +28,10 @@ read_output() {
 
 # Print the number of runs of repo $1 whose status is queued right now (- when it cannot be read)
 count_queued() {
-	gh api --method GET "/repos/$1/actions/runs" -f status=queued -f per_page=1 --jq '.total_count' 2>/dev/null || echo "-"
+	# On failure gh prints the error body on stdout, so keep the output only when it is a number
+	local count
+	count=$(gh api --method GET "/repos/$1/actions/runs" -f status=queued -f per_page=1 --jq '.total_count' 2>/dev/null) || count=""
+	if [[ $count =~ ^[0-9]+$ ]]; then echo "$count"; else echo "-"; fi
 }
 
 # Print the summary table (a row with Cancelled > 0 is colored on a terminal), sorted by ascending Queued (a "-" last), then by name.
